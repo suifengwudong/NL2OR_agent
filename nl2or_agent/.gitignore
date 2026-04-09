@@ -1,0 +1,6 @@
+# python runtime files
+__pycache__/
+
+# virtual environment
+.conda/
+
