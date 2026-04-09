@@ -1,143 +1,163 @@
-## 一、整体架构分层（MVC 扩展）
+# NL2OR 设计文档（AI 生成，仅供参考）
 
-| 层次 | 对应模块 | 职责 |
-|------|----------|------|
-| **表示层 (View)** | CLI / Web API / 消息接口 | 接收用户自然语言输入，展示输出结果（含追问、矫正信息、最终解） |
-| **控制层 (Controller)** | 交互核心 (InteractCore) | 编排对话流程：调用 LLM 解析、管理状态、决策何时查询模型库、何时调用求解器 |
-| **服务层 (Service)** | LLM 服务、模型库服务、求解器服务、代码生成服务、知识库服务 | 提供领域能力：LLM 调用、模型检索/矫正、求解器适配、代码生成、范例检索 |
-| **数据层 (Data)** | 模型库、本地存储、知识库 | 持久化存储：预定义模型、用户会话、历史记录、范例/知识片段 |
+## 一、技术栈表（聚焦 user → NL2OR system → LLM 主循环）
 
-> **MVC 映射**：  
-> - View = 用户界面（CLI/API）  
-> - Controller = 交互核心  
-> - Model = 服务层 + 数据层（领域模型与数据访问）
+| 层次 | 组件 | 推荐技术 | 对应模块图元素 | 对应活动图步骤 |
+|------|------|----------|----------------|----------------|
+| **View** | 用户交互界面 | CLI / FastAPI + Swagger | `用户` ↔ `交互核心` | 用户输入自然语言问题；输出自然语言追问/结果 |
+| **Controller** | 交互核心 | Python 状态机（`Enum` + `match`） | `交互核心` | 整个序列图的核心控制：解析、确认、矫正、求解 |
+| **Service** | **统一 LLM 接口** | `litellm`（统一调用 OpenAI/DeepSeek/通义千问等） | `LLM`（外部） | 解析问题、返回中间表示、模型矫正 |
+| **Service** | 模型库接口 | 自定义 `ModelLibraryService` + `jq` 命令行 | `模型库接口` | 请求相关模型信息、查询模型库、返回模型信息 |
+| **Service** | 求解器接口 | `SolverService`（执行生成的 Gurobi 代码） | `求解器接口` | 请求求解、调用求解器、返回求解结果 |
+| **Service** | 代码生成工具 | `CodeGenService`（基于 LLM 生成 Gurobi 脚本） | `代码生成工具` | （隐含在交互核心与 LLM 之间，生成代码后可选保存） |
+| **Service** | 模型校验 | Pydantic + 规则引擎 + 验证 LLM | （内部逻辑，未显式在模块图中） | 在确认前或矫正时进行校验 |
+| **Data** | 模型库 | JSON 文件 + `jq` 命令行查询 | `模型库` | 模型库接口查询时读取 |
+| **Data** | 本地存储 | SQLite（会话、历史、生成的代码文件） | `本地存储` | 存储中间表示、代码等 |
+| **Data** | 知识库（TODO） | YAML 文件 + 可选向量检索 | （扩展） | 提供范例，辅助 LLM 解析 |
+
+### 主循环数据流（对应活动图）
+
+| 数据对象 | 格式 | 产生于 | 消费于 |
+|----------|------|--------|--------|
+| 用户自然语言 | `str` | 用户 | 交互核心 → LLM |
+| 中间表示 (IR) | JSON (Pydantic schema) | LLM | 交互核心 → 用户确认 → 模型库接口/求解器接口 |
+| 模型信息（模板） | JSON | 模型库 | 交互核心 → 用户 |
+| 矫正后的模型 | JSON | LLM（矫正） | 交互核心 → 用户 |
+| 求解结果 | `{status, objective, variables}` | 求解器 | 交互核心 → 用户 |
 
 ---
 
-## 二、目录结构（Python 项目示例）
+## 二、开发文档（全局，严格基于你的模块图与活动图）
+
+### 1. 项目概述
+
+**NL2OR** 是一个将自然语言运筹学问题转化为数学模型并求解的智能体系统。系统严格遵循以下两个核心设计：
+
+- **功能架构**：按照你提供的 Mermaid 模块图划分：交互核心、模型库接口、求解器接口、代码生成工具、本地存储，以及外部 LLM、用户、模型库、求解器。
+- **交互流程**：按照你提供的 Mermaid 序列图实现：用户输入 → 交互核心调用 LLM 解析 → 返回中间表示 → 追问用户确认 → 根据模型信息是否确定，分支查询模型库或请求 LLM 矫正 → 用户确认求解 → 调用求解器接口 → 返回结果。
+
+**项目性质**：教学研究型原型，支持自动闭环求解和可选代码导出（供 VSCode 手动调试）。
+
+### 2. 功能架构（模块图映射）
 
 ```
-nl2or_agent/
-├── app.py                     # 应用入口（CLI 或 FastAPI 启动）
-├── config.py                  # 配置（LLM API key，求解器路径等）
-├── requirements.txt
-│
-├── controller/                # 控制层
-│   ├── __init__.py
-│   └── interact_core.py       # 交互核心：状态机、对话管理、决策逻辑
-│
-├── service/                   # 服务层（领域能力）
-│   ├── llm_service.py         # 封装 LLM 调用：自然语言解析、中间表示生成、模型矫正
-│   ├── model_library_service.py  # 模型库接口：检索、添加、更新模型
-│   ├── solver_service.py      # 求解器接口：统一调用 ortools/gurobi 等
-│   ├── code_gen_service.py    # 代码生成工具：将模型转成 Python/MPS 等格式
-│   └── knowledge_service.py   # 知识库服务（TODO）：检索范例 / 具体化示例
-│
-├── data/                      # 数据层
-│   ├── model_library/         # 模型库存储（JSON / 数据库）
-│   │   ├── lp_models.json
-│   │   └── milp_models.json
-│   ├── local_storage/         # 本地存储（会话、历史）
-│   │   └── sessions.db        # sqlite 或文件
-│   └── knowledge_base/        # 知识库（范例、流程说明）
-│       └── examples.yaml
-│
-├── domain/                    # 领域模型（数据结构定义）
-│   ├── __init__.py
-│   ├── conversation.py        # 对话状态、消息记录
-│   ├── or_model.py            # 中间表示（变量、目标、约束）
-│   └── solution.py            # 求解结果
-│
-├── adapter/                   # 外部接口适配器
-│   ├── solver_adapter/        # 具体求解器适配
-│   │   ├── base.py
-│   │   ├── ortools_adapter.py
-│   │   └── gurobi_adapter.py
-│   └── llm_adapter/           # LLM 适配（OpenAI, Claude, 本地模型）
-│       ├── base.py
-│       └── openai_adapter.py
-│
-├── utils/                     # 辅助工具
-│   ├── logger.py
-│   └── validator.py           # 模型合法性校验
-│
-└── tests/                     # 单元测试
+┌─────────────────────────────────────────────────────────────┐
+│                        用户                                  │
+└─────────────────────────────────────────────────────────────┘
+                              ↕
+┌─────────────────────────────────────────────────────────────┐
+│                    NL2OR 系统                                │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
+│  │ 交互核心     │↔ │ 模型库接口  │  │ 求解器接口  │         │
+│  └─────────────┘  └─────────────┘  └─────────────┘         │
+│         ↕                ↕                ↕                 │
+│  ┌─────────────┐  ┌─────────────┐                           │
+│  │ 代码生成工具 │  │ 本地存储    │                           │
+│  └─────────────┘  └─────────────┘                           │
+└─────────────────────────────────────────────────────────────┘
+         ↕                   ↕                   ↕
+┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+│    LLM      │      │   模型库    │      │   求解器    │
+└─────────────┘      └─────────────┘      └─────────────┘
 ```
 
+- **交互核心**：控制器，实现序列图中的所有逻辑分支。
+- **模型库接口**：服务层，封装对模型库的查询（使用 `jq`）。
+- **求解器接口**：服务层，封装对求解器的调用（执行 Gurobi 代码）。
+- **代码生成工具**：服务层，调用 LLM 生成求解代码。
+- **本地存储**：数据层，存储会话、生成的代码文件等。
+
+### 3. 交互流程（严格按活动图实现）
+
+序列图的关键步骤对应代码实现：
+
+| 序列图步骤 | 代码模块 | 说明 |
+|-----------|----------|------|
+| 用户输入自然语言问题 | `InteractCore.receive_input()` | 入口 |
+| 交互核心 → LLM：解析问题并组织数据发送 | `LLMService.parse()` | 调用统一 LLM 接口 |
+| LLM → 交互核心：返回中间表示 | 返回 IR (JSON) | |
+| 交互核心 → 用户：输出自然语言追问确认 | `_format_confirmation()` | 将 IR 转为自然语言 |
+| 用户 → 交互核心：可能的回复或确认 | 状态机接收用户反馈 | |
+| **分支：模型类型已确定** → 查询模型库 | `ModelLibraryService.search()` | 使用 `jq` 查询 JSON |
+| **分支：模型信息缺失或不准确** → 请求 LLM 矫正 | `LLMService.correct_model()` | 重新生成 IR |
+| 用户确认开始求解 → 请求求解器接口 | `SolverService.solve()` | 执行代码或调用 Gurobi API |
+| 求解器 → 交互核心：返回结果 | 解析求解输出 | |
+| 交互核心 → 用户：输出最终结果 | 自然语言解释 | |
+
+### 4. 代码架构（MVC 分层）
+
+- **View**：CLI / FastAPI 路由（接收用户输入，展示输出）
+- **Controller**：`controller/interact_core.py`（状态机，对话流程）
+- **Service**：`service/` 下的各个服务（LLM、模型库、求解器、代码生成、校验）
+- **Data**：`data/`（模型库 JSON、SQLite 会话、工作区代码文件）
+
+### 5. 统一 LLM 接口
+
+使用 `litellm` 库，通过环境变量 `LLM_MODEL` 切换提供商（OpenAI、DeepSeek、通义千问等）。所有对 LLM 的调用（解析、矫正、代码生成）均通过此统一接口。
+
+### 6. 教学演示模式：代码生成后的可选打开
+
+**不是命令行参数强制打开**，而是在流程中：
+
+- 当用户确认求解，且系统生成了 Gurobi 代码（例如在 `CodeGenService` 保存文件后），**交互核心**会询问用户：“代码已生成，是否在 VSCode 中打开进行手动调试？”
+- 用户输入 `yes` 或 `no`。
+- 若用户选择打开，系统调用 `code` 命令打开该文件。
+
+实现伪代码：
+```python
+# 在 interact_core.py 的 SOLVING 分支中
+if user_wants_manual_debug:
+    filepath = code_gen_service.save(ir)
+    user_choice = input("是否在 VSCode 中打开代码？(y/n): ")
+    if user_choice.lower() == 'y':
+        subprocess.run(["code", filepath])
+    # 然后返回提示，让用户手动运行
+    return "代码已打开，请运行后告知结果。"
+else:
+    # 自动求解
+    result = solver_service.solve(ir)
+    return explain_result(result)
+```
+
+### 7. 环境配置与依赖
+
+**基础环境**：Python 3.10+
+
+**核心依赖**（`requirements.txt`）：
+```
+fastapi==0.115.0
+uvicorn==0.30.0
+pydantic==2.9.0
+litellm==1.40.0
+python-dotenv==1.0.0
+jq                   # 需要系统安装 jq 二进制
+gurobipy             # 可选，若直接调用 API
+```
+
+**环境变量**（`.env`）：
+```bash
+LLM_MODEL="deepseek/deepseek-chat"   # 或 openai/gpt-4o, qwen/qwen-plus
+DEEPSEEK_API_KEY="sk-xxx"
+OPENAI_API_KEY="sk-xxx"
+WORKSPACE_DIR="./workspace"
+```
+
+### 8. 运行方式
+
+- **CLI 模式**：`python app.py --mode cli`
+- **Web API 模式**：`uvicorn app:app --reload`
+- 教学模式下，用户可在流程中选择打开 VSCode（无需特殊启动参数）
+
+### 9. 测试
+
+- `pytest tests/`：单元测试，mock LLM 响应，验证状态机分支、模型库查询、代码生成等。
+
+### 10. 扩展点
+
+- **新增 LLM 提供商**：修改 `LLM_MODEL`，无需改代码。
+- **新增求解器**：修改 `CodeGenService` 生成对应代码，或修改 `SolverService` 支持其他求解器 API。
+- **增强知识库**：后续可替换 YAML 为向量数据库（Chroma）进行语义检索。
+
 ---
 
-## 三、核心模块职责详解
-
-### 1. 交互核心（`interact_core.py`）
-- **状态机管理**：对话阶段（`parsing` → `confirming` → `model_fixing` → `solving` → `done`）
-- **编排服务**：根据当前状态调用 `LLMService`、`ModelLibraryService`、`SolverService`
-- **对话上下文**：存储用户历史输入、LLM 返回的中间表示、矫正后的模型
-- **决策逻辑**（对应序列图的 alt 分支）：
-  - 若模型类型明确 → 查询模型库
-  - 若模型信息缺失/不准确 → 调用 LLM 矫正
-  - 若用户确认求解 → 调用求解器
-
-### 2. LLM 服务（`llm_service.py`）
-- `parse_natural_language(user_input: str) -> IntermediateRepresentation`  
-  将自然语言转为结构化中间表示（JSON schema 定义变量、目标、约束）
-- `correct_model(model_ir: dict, user_feedback: str) -> IntermediateRepresentation`  
-  根据用户反馈矫正模型
-- `generate_explanation(model_ir: dict) -> str`  
-  生成解释性自然语言（供用户确认）
-
-### 3. 模型库服务（`model_library_service.py`）
-- `search_model(keywords: str, model_type: str) -> ModelTemplate`  
-  从模型库中匹配预定义模板
-- `save_model(model_ir: dict, name: str)`  
-  将用户确认后的新模型存入模型库（扩展）
-- `get_model_info(model_id: str) -> dict`  
-  获取模型元数据（变量数、约束类型等）
-
-### 4. 求解器服务（`solver_service.py`）
-- 统一接口 `solve(model_ir: dict, solver_name: str = "ortools") -> Solution`
-- 内部通过适配器模式调用具体求解器，返回标准解结构（目标值、变量值、状态）
-
-### 5. 代码生成服务（`code_gen_service.py`）
-- `generate_code(model_ir: dict, language="python") -> str`  
-  生成可执行脚本（如 ortools 或 pulp 代码），便于用户离线使用
-
-### 6. 知识库服务（`knowledge_service.py`）
-- `retrieve_examples(problem_description: str) -> List[Example]`  
-  根据用户问题检索相似范例（具体化流程），用于 Few-shot 提示 LLM 或指导模型矫正
-
----
-
-## 四、交互流程（对应活动图实现）
-
-1. **用户输入** → `InteractCore` 接收
-2. **解析阶段**：调用 `LLMService.parse` → 得到中间表示 `ir`
-3. **确认阶段**：`InteractCore` 将 `ir` 转为自然语言追问用户确认
-4. **模型矫正分支**：
-   - 若用户确认模型类型 → 调用 `ModelLibraryService.search_model` 获取模板，填充参数
-   - 若用户指出错误 → 调用 `LLMService.correct_model`，生成新 `ir`，再次确认
-5. **求解阶段**：用户确认后 → 调用 `SolverService.solve` → 返回结果
-6. **输出**：展示解 + 可选生成代码（调用 `CodeGenService`）
-
----
-
-## 五、技术选型建议
-
-| 组件 | 推荐技术 | 说明 |
-|------|----------|------|
-| 后端框架 | FastAPI / Flask | 提供 REST API，便于集成 Web 前端 |
-| LLM 集成 | OpenAI API / 本地 vLLM | 支持函数调用（function calling）可增强结构化输出 |
-| 求解器 | OR-Tools, PuLP, Gurobi | 优先 OR-Tools（开源、支持多种问题类型） |
-| 模型库存储 | SQLite + JSON | 简单场景用 JSON，复杂场景用 SQLite |
-| 代码生成 | Jinja2 模板 | 基于模板生成 Python 求解代码 |
-| 对话状态 | 内存字典 + Redis（可选） | 维护会话状态，支持多轮 |
-
----
-
-## 六、扩展性说明
-
-- **新增求解器**：只需实现 `adapter/solver_adapter/base.py` 接口，并在配置中注册。
-- **新增 LLM 提供商**：实现 `adapter/llm_adapter/base.py`。
-- **知识库增强**：可接入向量数据库（Chroma）实现语义检索范例。
-- **MVC 分离**：控制层不依赖具体服务实现，通过依赖注入（如使用 `abc` 抽象类）降低耦合。
-
-这个架构能够完整覆盖你提供的流程图与活动图，并且遵循了 TODO 中提到的“知识库、流程范例、MVC 架构”要求。你可以基于此架构逐步实现运筹学智能体。
+> 使用 AI 生成，仅供参考
