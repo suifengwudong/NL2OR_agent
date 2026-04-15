@@ -24,7 +24,7 @@ flowchart TD
     modelParser <--> modelBank[模型库]
     solverInterface <--> solver[求解器]
     codeGen <--> localStorage[本地存储]
-    subgraph backEnd[后端/知识库]
+    subgraph backEnd[后端/WIKI]
         direction TB
         modelBank
         solver[求解器]
@@ -89,9 +89,12 @@ sequenceDiagram
 5. 模型库接口：负责与模型库进行交互，查询相关的模型信息。
 6. 求解器接口：负责与求解器进行交互，调用求解器进行求解，并返回求解结果。
 7. 模型库：负责存储各种模型的信息，可以是预先定义好的模型，也可以是用户添加的模型（必须要符合模型的规则以及“人类经验”的条件，也就是不能随意的添加，但必须要有这么个功能）。模型库的设计需要考虑到模型的分类、检索以及更新等功能。【具体的设计需要更多的实验】
-8. 求解器：负责执行求解任务，可以是各种不同类型且具有统一接口（这里就涉及分发）的求解器。目前具体实现依靠 Gurobi。
+8. 求解器：负责执行求解任务，可以是各种不同类型且具有统一接口（这里就涉及分发）的求解器。目前采用 Gurobi 作为开发使用的求解器。
 
-<!-- TODO -->
+<!-- TODOs -->
 > 知识库
 > 流程：范例 / Example（具体化）
 > MVC 架构
+> Raw Resources --generate-> Wiki files <-structure-- Schema (style)
+> **结构** + 建模 + 拆分的 tools (functions)
+> "上下文"上动态拼接 `skill.md`，知识库
