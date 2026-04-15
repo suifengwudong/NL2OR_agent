@@ -1,14 +1,3 @@
-<style>
-table {
-    width: 100% !important; /* 强制表格宽度占满页面 */
-    table-layout: fixed !important; /* 启用固定布局以控制列宽 */
-    word-break: break-word !important; /* 允许在单词内换行 */
-    overflow-wrap: break-word !important; /* 处理长字符串换行 */
-}
-th, td {
-    white-space: normal !important;
-}
-</style>
 # 运筹学“智能体”
 
 ## 一、探索与需求分析
