@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import yaml
+import importlib.resources
 
 from hamlet.core import CodeAgent, LiteLLMModel
 
@@ -56,7 +58,7 @@ def build_nl2or_agent(
     resolved_model_id = (
         model_id
         or os.getenv("HAMLET_MODEL_ID")
-        or "openai/gpt-4o-mini"
+        or "openrouter/deepseek/deepseek-chat"
     )
     resolved_workspace = Path(workspace_dir) if workspace_dir else _DEFAULT_WORKSPACE
     resolved_workspace.mkdir(parents=True, exist_ok=True)
@@ -70,6 +72,17 @@ def build_nl2or_agent(
 
     system_prompt = _load_system_prompt()
 
+    # Load default hamlet prompt templates and override the system prompt
+    default_prompts_file = importlib.resources.files("hamlet.core.prompts").joinpath("code_agent.yaml")
+    if default_prompts_file.exists():
+        with default_prompts_file.open("r", encoding="utf-8") as f:
+            prompt_templates = yaml.safe_load(f)
+    else:
+        prompt_templates = None
+
+    if prompt_templates and system_prompt:
+        prompt_templates["system_prompt"] = system_prompt
+
     agent = CodeAgent(
         model=model,
         tools=tools,
@@ -78,8 +91,12 @@ def build_nl2or_agent(
             "An intelligent agent that converts natural language Operations Research "
             "problems into mathematical models and solves them automatically."
         ),
-        system_prompt=system_prompt if system_prompt else None,
+        prompt_templates=prompt_templates,
         verbosity_level=verbosity_level,
+        additional_authorized_imports=[
+            "scipy.optimize", "scipy", "gurobipy", "pulp", 
+            "numpy", "pandas", "json", "math", "os"
+        ],
     )
 
     return agent
