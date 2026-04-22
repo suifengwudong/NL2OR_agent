@@ -98,3 +98,52 @@ sequenceDiagram
 > Raw Resources --generate-> Wiki files <-structure-- Schema (style)
 > **结构** + 建模 + 拆分的 tools (functions)
 > "上下文"上动态拼接 `skill.md`，知识库
+
+---
+
+## HAMLET 实现映射
+
+> 以下说明当前 `nl2or_agent/` 目录下的实现如何与本流程图对应，使用 [HAMLET](https://github.com/MINDS-THU/HAMLET) 框架（`minds-hamlet` 包）。
+
+### 模块图 → HAMLET 组件
+
+```mermaid
+flowchart TD
+    subgraph hamlet[HAMLET CodeAgent]
+        direction TB
+        codeAgent[CodeAgent\n交互核心 + 代码生成器]
+        queryTool[QueryModelLibraryTool\n模型库接口]
+        solverTool[RunSolverTool\n求解器接口]
+        codeAgent -->|调用| queryTool
+        codeAgent -->|调用| solverTool
+    end
+    litellm[(LiteLLMModel\nLLM)] <--> codeAgent
+    user((用户)) <--> codeAgent
+    queryTool --> modelBank[(models.json\n模型库)]
+    solverTool --> workspace[(workspace/\n本地存储)]
+    solverTool --> gurobi[gurobipy\n求解器]
+```
+
+### 活动图 → Agent 执行步骤
+
+| 活动图步骤 | HAMLET 实现 | 位置 |
+|-----------|-------------|------|
+| 用户输入自然语言问题 | `agent.run(user_input)` | `main.py` |
+| 解析问题并组织数据发送 | `CodeAgent` 内置多步推理 + `LiteLLMModel` | `hamlet.core` |
+| 返回中间表示，追问用户 | Agent 输出文本，CLI/Gradio 回显 | `main.py` |
+| 请求相关模型信息 | `QueryModelLibraryTool.forward(keywords)` | `tools/model_library_tool.py` |
+| 查询模型库 | 读取 `data/model_bank/models.json` | `tools/model_library_tool.py` |
+| 请求代码生成 | `CodeAgent` 自动生成 Python 代码块并执行 | `hamlet.core` |
+| 存储生成的代码 | `RunSolverTool.save_code()` → `data/workspace/` | `tools/solver_tool.py` |
+| 调用求解器求解 | `RunSolverTool.forward(code)` → subprocess | `tools/solver_tool.py` |
+| 返回求解结果 | stdout/stderr 返回给 Agent，Agent 解释给用户 | `tools/solver_tool.py` |
+
+### 运行方式
+
+```bash
+cd nl2or_agent
+uv sync                          # 安装依赖
+cp .env.example .env             # 配置 API Key
+uv run python main.py            # CLI 模式
+uv run python main.py --mode web # Gradio 界面
+```

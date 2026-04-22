@@ -1,0 +1,91 @@
+{
+  "models": [
+    {
+      "id": "lp_general",
+      "name": "通用线性规划（General LP）",
+      "type": "linear_programming",
+      "keywords": ["线性规划", "linear programming", "LP", "maximize", "minimize", "连续变量"],
+      "description": "标准形式的线性规划：min/max c^T x，subject to Ax <= b, x >= 0",
+      "variables": ["x_i: 决策变量（连续）"],
+      "objective": "min/max sum(c_i * x_i)",
+      "constraints": ["sum(a_ij * x_j) <= b_i  for all i", "x_i >= 0"],
+      "solver_hint": "gurobipy Model, addVar(lb=0), addConstr, setObjective",
+      "template_code": "import gurobipy as gp\nfrom gurobipy import GRB\n\nm = gp.Model('LP')\n# 定义变量\nx = m.addVars(n, lb=0, name='x')\n# 设置目标函数\nm.setObjective(gp.quicksum(c[i]*x[i] for i in range(n)), GRB.MINIMIZE)\n# 添加约束\nfor i in range(len(b)):\n    m.addConstr(gp.quicksum(A[i][j]*x[j] for j in range(n)) <= b[i])\nm.optimize()\n"
+    },
+    {
+      "id": "ilp_general",
+      "name": "整数线性规划（ILP）",
+      "type": "integer_programming",
+      "keywords": ["整数规划", "integer programming", "ILP", "MIP", "0-1规划", "binary", "整数"],
+      "description": "决策变量为整数或二元变量的线性规划",
+      "variables": ["x_i: 整数或二元决策变量"],
+      "objective": "min/max sum(c_i * x_i)",
+      "constraints": ["sum(a_ij * x_j) <= b_i  for all i", "x_i in {0,1} 或 x_i >= 0 整数"],
+      "solver_hint": "gurobipy addVar(vtype=GRB.INTEGER) 或 GRB.BINARY",
+      "template_code": "import gurobipy as gp\nfrom gurobipy import GRB\n\nm = gp.Model('ILP')\n# 定义整数变量\nx = m.addVars(n, vtype=GRB.BINARY, name='x')  # 或 GRB.INTEGER\n# 目标函数\nm.setObjective(gp.quicksum(c[i]*x[i] for i in range(n)), GRB.MINIMIZE)\n# 约束\nfor i in range(len(b)):\n    m.addConstr(gp.quicksum(A[i][j]*x[j] for j in range(n)) <= b[i])\nm.optimize()\n"
+    },
+    {
+      "id": "transportation",
+      "name": "运输问题（Transportation Problem）",
+      "type": "transportation",
+      "keywords": ["运输", "transportation", "shipping", "供需", "supply", "demand", "配送"],
+      "description": "将货物从 m 个产地运到 n 个销地，使总运输成本最小",
+      "variables": ["x_ij: 从产地 i 运往销地 j 的数量"],
+      "objective": "min sum(c_ij * x_ij)",
+      "constraints": [
+        "sum_j(x_ij) = supply_i  for all i  （产地供给约束）",
+        "sum_i(x_ij) = demand_j  for all j  （销地需求约束）",
+        "x_ij >= 0"
+      ],
+      "solver_hint": "gurobipy addVars((sources, sinks), lb=0), supply/demand constraints",
+      "template_code": "import gurobipy as gp\nfrom gurobipy import GRB\n\nm = gp.Model('Transportation')\nx = m.addVars(sources, sinks, lb=0, name='x')\nm.setObjective(gp.quicksum(cost[i,j]*x[i,j] for i in sources for j in sinks), GRB.MINIMIZE)\nfor i in sources:\n    m.addConstr(gp.quicksum(x[i,j] for j in sinks) == supply[i])\nfor j in sinks:\n    m.addConstr(gp.quicksum(x[i,j] for i in sources) == demand[j])\nm.optimize()\n"
+    },
+    {
+      "id": "assignment",
+      "name": "指派问题（Assignment Problem）",
+      "type": "assignment",
+      "keywords": ["指派", "assignment", "匹配", "分配", "人员分配", "任务分配"],
+      "description": "将 n 个任务分配给 n 个执行者，每人恰好执行一个任务，最小化总成本",
+      "variables": ["x_ij ∈ {0,1}: 是否将任务 j 分配给执行者 i"],
+      "objective": "min sum(c_ij * x_ij)",
+      "constraints": [
+        "sum_j(x_ij) = 1  for all i  （每个执行者恰好一个任务）",
+        "sum_i(x_ij) = 1  for all j  （每个任务恰好一个执行者）",
+        "x_ij ∈ {0,1}"
+      ],
+      "solver_hint": "gurobipy addVars with GRB.BINARY, row/column sum constraints",
+      "template_code": "import gurobipy as gp\nfrom gurobipy import GRB\n\nm = gp.Model('Assignment')\nx = m.addVars(workers, tasks, vtype=GRB.BINARY, name='x')\nm.setObjective(gp.quicksum(cost[i,j]*x[i,j] for i in workers for j in tasks), GRB.MINIMIZE)\nfor i in workers:\n    m.addConstr(gp.quicksum(x[i,j] for j in tasks) == 1)\nfor j in tasks:\n    m.addConstr(gp.quicksum(x[i,j] for i in workers) == 1)\nm.optimize()\n"
+    },
+    {
+      "id": "knapsack",
+      "name": "背包问题（Knapsack Problem）",
+      "type": "knapsack",
+      "keywords": ["背包", "knapsack", "选择", "容量限制", "价值最大", "0-1选择"],
+      "description": "在容量限制下，选择物品使总价值最大",
+      "variables": ["x_i ∈ {0,1}: 是否选择物品 i"],
+      "objective": "max sum(v_i * x_i)",
+      "constraints": ["sum(w_i * x_i) <= W  （容量约束）", "x_i ∈ {0,1}"],
+      "solver_hint": "gurobipy addVars with GRB.BINARY, single capacity constraint",
+      "template_code": "import gurobipy as gp\nfrom gurobipy import GRB\n\nm = gp.Model('Knapsack')\nx = m.addVars(n_items, vtype=GRB.BINARY, name='x')\nm.setObjective(gp.quicksum(value[i]*x[i] for i in range(n_items)), GRB.MAXIMIZE)\nm.addConstr(gp.quicksum(weight[i]*x[i] for i in range(n_items)) <= capacity)\nm.optimize()\n"
+    },
+    {
+      "id": "facility_location",
+      "name": "选址问题（Facility Location）",
+      "type": "facility_location",
+      "keywords": ["选址", "facility location", "仓库选址", "开设", "固定成本", "服务"],
+      "description": "决定开设哪些设施，使总固定成本和服务成本最小",
+      "variables": [
+        "y_j ∈ {0,1}: 是否在 j 处开设设施",
+        "x_ij ∈ {0,1}: 是否由设施 j 服务顾客 i"
+      ],
+      "objective": "min sum(f_j * y_j) + sum(c_ij * x_ij)",
+      "constraints": [
+        "sum_j(x_ij) = 1  for all i  （每个顾客恰好被一个设施服务）",
+        "x_ij <= y_j  for all i,j  （只有开设的设施才能服务）",
+        "y_j, x_ij ∈ {0,1}"
+      ],
+      "solver_hint": "gurobipy two sets of binary vars, linking constraints",
+      "template_code": "import gurobipy as gp\nfrom gurobipy import GRB\n\nm = gp.Model('FacilityLocation')\ny = m.addVars(facilities, vtype=GRB.BINARY, name='y')\nx = m.addVars(customers, facilities, vtype=GRB.BINARY, name='x')\nm.setObjective(\n    gp.quicksum(fixed_cost[j]*y[j] for j in facilities) +\n    gp.quicksum(service_cost[i,j]*x[i,j] for i in customers for j in facilities),\n    GRB.MINIMIZE\n)\nfor i in customers:\n    m.addConstr(gp.quicksum(x[i,j] for j in facilities) == 1)\nfor i in customers:\n    for j in facilities:\n        m.addConstr(x[i,j] <= y[j])\nm.optimize()\n"
+    }
+  ]
+}
