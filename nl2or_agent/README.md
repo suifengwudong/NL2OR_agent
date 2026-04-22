@@ -1,4 +1,184 @@
-#  NL2OR 
+# NL2OR Agent
+
+> 将自然语言运筹学问题转化为数学模型并自动求解的智能体，基于 [HAMLET](https://github.com/MINDS-THU/HAMLET) 框架构建，使用 [uv](https://github.com/astral-sh/uv) 管理依赖。
+
+---
+
+## 快速开始
+
+### 1. 安装依赖
+
+```bash
+# 安装 uv（若尚未安装）
+pip install uv
+
+# 在 nl2or_agent 目录下初始化环境并安装依赖
+cd nl2or_agent
+uv sync
+```
+
+### 2. 配置环境变量
+
+```bash
+cp .env.example .env
+# 编辑 .env，填入你的 LLM API Key
+```
+
+`.env` 示例：
+
+```dotenv
+HAMLET_MODEL_ID=deepseek/deepseek-chat   # 或 openai/gpt-4o
+DEEPSEEK_API_KEY=sk-xxx
+NL2OR_WORKSPACE_DIR=./data/workspace
+```
+
+### 3. 运行
+
+**命令行模式（默认）**
+
+```bash
+uv run python main.py
+# 或
+uv run python main.py --mode cli
+```
+
+**Gradio Web 界面**
+
+```bash
+uv run python main.py --mode web
+```
+
+---
+
+## 项目结构
+
+```
+nl2or_agent/
+├── pyproject.toml          # uv 项目配置，依赖声明
+├── .python-version         # Python 版本锁定（3.11）
+├── .env.example            # 环境变量模板（复制为 .env 后填写）
+├── main.py                 # 入口：--mode cli（默认）/ --mode web
+│
+├── agents/
+│   ├── __init__.py
+│   └── nl2or_agent.py      # build_nl2or_agent() — 组装 CodeAgent
+│
+├── tools/
+│   ├── __init__.py
+│   ├── model_library_tool.py   # QueryModelLibraryTool — 查询 OR 模型模板库
+│   └── solver_tool.py          # RunSolverTool — 执行生成的求解代码
+│
+├── data/
+│   ├── model_bank/
+│   │   └── models.json     # OR 模型模板库（LP、ILP、运输、指派、背包、选址）
+│   └── workspace/          # 生成的求解脚本存储目录
+│
+└── prompts/
+    └── system_prompt.md    # Agent 系统提示词
+```
+
+---
+
+## 架构说明
+
+### HAMLET 核心组件映射
+
+| 流程图模块 | HAMLET 组件 | 本项目实现 |
+|-----------|-------------|-----------|
+| 交互核心 | `CodeAgent` | `agents/nl2or_agent.py` 中的 `build_nl2or_agent()` |
+| LLM | `LiteLLMModel` | 通过 `HAMLET_MODEL_ID` 环境变量切换提供商 |
+| 模型库接口 | `Tool` 子类 | `tools/model_library_tool.py` — `QueryModelLibraryTool` |
+| 求解器接口 | `Tool` 子类 | `tools/solver_tool.py` — `RunSolverTool` |
+| 代码生成器 | `CodeAgent` 内置 | CodeAgent 自带 Python 代码生成与执行能力 |
+| 本地存储 | 文件系统 | `data/workspace/` 目录，求解脚本按 UUID 命名存储 |
+| 用户界面 | `GradioUI` | `main.py --mode web` 启动 Gradio 界面 |
+
+### Agent 工作流（对应 docs/flowchart.md 活动图）
+
+```
+用户输入自然语言问题
+        │
+        ▼
+  PARSING（CodeAgent 调用 LLM）
+   ├─ 提取：问题类型 / 决策变量 / 目标函数 / 约束 / 参数
+   └─ 追问用户确认
+        │
+        ▼
+  CONFIRMING（用户确认或修改）
+   ├─ 确认 ──► 进入 MODEL LOOKUP
+   └─ 修改 ──► 返回 PARSING
+        │
+        ▼
+  MODEL LOOKUP（QueryModelLibraryTool）
+   └─ 从 data/model_bank/models.json 检索匹配模板
+        │
+        ▼
+  CODE GENERATION（CodeAgent 生成 gurobipy 脚本）
+        │
+        ▼
+  SOLVING（RunSolverTool 执行代码，返回求解结果）
+        │
+        ▼
+  返回自然语言解释结果给用户
+```
+
+### 自定义 Tool 开发指南
+
+在 `hamlet.core.tools.Tool` 基础上继承即可：
+
+```python
+from hamlet.core.tools import Tool
+
+class MyTool(Tool):
+    name = "my_tool"
+    description = "工具的功能描述（LLM 依此决定何时调用）"
+    inputs = {
+        "param_name": {
+            "type": "string",
+            "description": "参数说明",
+        }
+    }
+    output_type = "string"
+
+    def forward(self, param_name: str) -> str:
+        # 实现工具逻辑
+        return "结果"
+```
+
+然后在 `build_nl2or_agent()` 的 `tools` 列表中添加即可。
+
+---
+
+## 扩展指南
+
+### 切换 LLM 提供商
+
+修改 `.env` 中的 `HAMLET_MODEL_ID`，支持的格式遵循 [litellm](https://docs.litellm.ai/docs/providers) 规范：
+
+| 提供商 | 示例 MODEL_ID |
+|--------|--------------|
+| OpenAI | `openai/gpt-4o` |
+| DeepSeek | `deepseek/deepseek-chat` |
+| 通义千问 | `openai/qwen-plus`（需配置 `OPENAI_BASE_URL`）|
+| 本地 Ollama | `ollama/llama3.2` |
+
+### 添加新的 OR 模型模板
+
+编辑 `data/model_bank/models.json`，按现有格式添加新条目。字段说明：
+
+- `id`: 唯一标识符
+- `keywords`: 检索关键词列表（中英文均可）
+- `template_code`: 可直接适配的 gurobipy 代码骨架
+
+### 使用 Gradio GUI
+
+```bash
+uv run python main.py --mode web
+```
+
+GUI 支持：聊天交互、工具调用追踪、文件上传（供 Agent 读取数据文件）。
+
+---
 
 ## 一、计划 TODOS
 
