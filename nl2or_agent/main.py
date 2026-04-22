@@ -35,6 +35,7 @@ def _run_cli() -> None:
     print()
 
     agent = build_nl2or_agent(verbosity_level=1)
+    state = None
 
     while True:
         try:
@@ -50,7 +51,8 @@ def _run_cli() -> None:
             break
 
         try:
-            result = agent.run(user_input)
+            # Pass the previous state to maintain conversation in CodeAgent
+            result = agent.run(user_input, reset=False)
             print(f"\nNL2OR > {result}\n")
         except Exception as exc:  # noqa: BLE001
             print(f"\n[错误] {exc}\n")
