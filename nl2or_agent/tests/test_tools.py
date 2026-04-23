@@ -218,7 +218,7 @@ class TestRunSolverTool:
     def test_forward_timeout(self, solver_tool: RunSolverTool):
         """Simulate a timeout scenario."""
         with patch("tools.solver_tool.subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.TimeoutExpired(cmd="python", timeout=60)
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd=["python"], timeout=60)
             result = solver_tool.forward("import time; time.sleep(999)")
         assert "[ERROR]" in result
         assert "timed out" in result

@@ -127,7 +127,7 @@ class TestRunCli:
         with (
             patch("agents.build_nl2or_agent", return_value=mock_agent),
             patch("builtins.input", side_effect=["question", "quit"]),
-            patch("builtins.print", side_effect=lambda *a, **kw: printed_messages.append(str(a))),
+            patch("builtins.print", side_effect=lambda *a, **kw: printed_messages.append(a[0] if a else "")),
         ):
             _run_cli()
         assert any("错误" in m or "agent failed" in m for m in printed_messages)
