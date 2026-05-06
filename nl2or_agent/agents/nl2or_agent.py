@@ -74,7 +74,10 @@ def build_nl2or_agent(
 
     # Load default hamlet prompt templates and override the system prompt
     default_prompts_file = importlib.resources.files("hamlet.core.prompts").joinpath("code_agent.yaml")
-    if default_prompts_file.exists():
+    #################
+    # NOTE: 此处原先是 file.exists():
+    #################
+    if default_prompts_file.is_file():
         with default_prompts_file.open("r", encoding="utf-8") as f:
             prompt_templates = yaml.safe_load(f)
     else:
