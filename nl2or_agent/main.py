@@ -24,7 +24,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 load_dotenv()
 
-
 def _run_cli() -> None:
     """Interactive CLI loop: read user input, run the agent, print the result."""
     from agents import build_nl2or_agent
@@ -35,7 +34,7 @@ def _run_cli() -> None:
     print()
 
     agent = build_nl2or_agent(verbosity_level=1)
-    state = None
+    # state = None
 
     while True:
         try:
@@ -51,8 +50,7 @@ def _run_cli() -> None:
             break
 
         try:
-            # Pass the previous state to maintain conversation in CodeAgent
-            result = agent.run(user_input, reset=False)
+            result = agent.run(user_input, reset=False) # reset=False: 保持现有的状态
             print(f"\nNL2OR > {result}\n")
         except Exception as exc:  # noqa: BLE001
             print(f"\n[错误] {exc}\n")
@@ -62,6 +60,7 @@ def _run_web() -> None:
     """Launch the Gradio GUI provided by HAMLET."""
     from agents import build_nl2or_agent
     from hamlet.serve import GradioUI
+    # TODO: 此处的 WebGUI 框架需要开发
 
     workspace_dir = os.getenv("NL2OR_WORKSPACE_DIR", "./data/workspace")
     readme_path = os.getenv(
