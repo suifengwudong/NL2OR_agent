@@ -62,7 +62,7 @@ def _run_web() -> None:
     from hamlet.serve import GradioUI
     # TODO: 此处的 WebGUI 框架需要开发
 
-    workspace_dir = os.getenv("NL2OR_WORKSPACE_DIR", "./data/workspace")
+    workspace_dir = os.getenv("NL2OR_WORKSPACE_DIR")
     readme_path = os.getenv(
         "NL2OR_AGENT_README",
         str(Path(__file__).parent / "README.md"),
