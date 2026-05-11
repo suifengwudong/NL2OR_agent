@@ -20,7 +20,7 @@ class TestLoadSystemPrompt:
     def test_returns_content_when_file_exists(self, tmp_path: Path):
         prompts_dir = tmp_path / "prompts"
         prompts_dir.mkdir()
-        prompt_file = prompts_dir / "system_prompt.md"
+        prompt_file = prompts_dir / "system.prompt.md"
         prompt_file.write_text("You are an OR agent.", encoding="utf-8")
 
         with patch("agents.nl2or_agent._PROMPTS_DIR", prompts_dir):
@@ -93,7 +93,7 @@ class TestBuildNl2orAgent:
         assert workspace.exists()
 
     def test_no_prompt_templates_when_prompt_file_missing(self, tmp_path: Path):
-        """When system_prompt.md is missing, agent still builds without error."""
+        """When system.prompt.md is missing, agent still builds without error."""
         empty_dir = tmp_path / "empty_prompts"
         empty_dir.mkdir()
         with patch("agents.nl2or_agent._PROMPTS_DIR", empty_dir):

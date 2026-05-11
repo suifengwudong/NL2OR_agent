@@ -25,7 +25,7 @@ _DEFAULT_WORKSPACE = Path(__file__).parent.parent / "data" / "workspace"
 
 def _load_system_prompt() -> str:
     """Load system prompt from markdown file."""
-    prompt_file = _PROMPTS_DIR / "system_prompt.md"
+    prompt_file = _PROMPTS_DIR / "system.prompt.md"
     if prompt_file.exists():
         return prompt_file.read_text(encoding="utf-8")
     return ""
@@ -58,9 +58,10 @@ def build_nl2or_agent(
     resolved_model_id = (
         model_id
         or os.getenv("HAMLET_MODEL_ID")
-        or "openrouter/deepseek/deepseek-chat"
+        # or "openrouter/deepseek/deepseek-chat"
     )
     resolved_workspace = Path(workspace_dir) if workspace_dir else _DEFAULT_WORKSPACE
+    # 在 .env 中会指定相同的路径
     resolved_workspace.mkdir(parents=True, exist_ok=True)
 
     model = LiteLLMModel(model_id=resolved_model_id)

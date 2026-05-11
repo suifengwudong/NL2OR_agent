@@ -93,7 +93,7 @@ nl2or_agent/
 │   └── workspace/          # 生成的求解脚本存储目录
 │
 └── prompts/
-    └── system_prompt.md    # Agent 系统提示词
+    └── system.prompt.md    # Agent 系统提示词
 ```
 
 ---
