@@ -9,5 +9,8 @@ env/
 # env
 **.env
 
+# generated solver scripts from run_solver
+data/workspace/solver_*.py
+
 # generated solver scripts
 data/workspace/solver_*.py
