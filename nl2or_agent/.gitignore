@@ -8,3 +8,6 @@ env/
 
 # env
 **.env
+
+# generated solver scripts
+data/workspace/solver_*.py

@@ -1,0 +1,90 @@
+{
+  "blocks": [
+    {
+      "id": "assign_each_demand_once",
+      "name": "需求点唯一分配",
+      "category": "assignment",
+      "aliases": ["assignment", "demand_assignment", "unique_assignment"],
+      "keywords": ["assignment", "分配", "唯一分配", "sum x = 1", "每个需求点"],
+      "description": "每个需求点 i 恰好分配给一个设施：∑_j x_ij = 1",
+      "math": "\\sum_j x_{ij} = 1",
+      "parameters": [],
+      "template_snippet": "for i in demand_points:\n    m.addConstr(gp.quicksum(x[i, j] for j in facilities) == 1, name=f'assign_{i}')",
+      "typical_models": ["p_median", "facility_location", "assignment"]
+    },
+    {
+      "id": "link_assignment_to_open",
+      "name": "分配-开设联动",
+      "category": "linking",
+      "aliases": ["linking", "capacity_link"],
+      "keywords": ["linking", "联动", "x <= y", "已开设"],
+      "description": "x_ij ≤ y_j",
+      "math": "x_{ij} \\leq y_j",
+      "parameters": [],
+      "template_snippet": "for i in demand_points:\n    for j in facilities:\n        m.addConstr(x[i, j] <= y[j], name=f'link_{i}_{j}')",
+      "typical_models": ["p_median", "facility_location"]
+    },
+    {
+      "id": "cardinality_open_p_facilities",
+      "name": "恰好开设 P 个设施",
+      "category": "cardinality",
+      "aliases": ["cardinality", "p_facility", "select_p"],
+      "keywords": ["p-median", "cardinality", "恰好 p", "sum y = p", "设施数量"],
+      "description": "∑_j y_j = p",
+      "math": "\\sum_j y_j = p",
+      "parameters": [{"name": "p", "type": "integer", "description": "开设设施数 P", "required": true}],
+      "template_snippet": "m.addConstr(gp.quicksum(y[j] for j in facilities) == p, name='select_p')",
+      "typical_models": ["p_median"]
+    },
+    {
+      "id": "force_facility_open",
+      "name": "强制开设设施",
+      "category": "forcing",
+      "aliases": ["forcing", "forcing_open", "must_open"],
+      "keywords": ["forcing open", "must open", "强制开设", "y = 1"],
+      "description": "y_j = 1 for j in forced_open",
+      "math": "y_j = 1",
+      "parameters": [{"name": "forced_open", "type": "set", "description": "必须开设的设施", "required": true}],
+      "template_snippet": "for j in forced_open:\n    m.addConstr(y[j] == 1, name=f'force_open_{j}')",
+      "typical_models": ["p_median", "facility_location"]
+    },
+    {
+      "id": "force_facility_closed",
+      "name": "强制不开设设施",
+      "category": "forcing",
+      "aliases": ["prohibiting", "forcing_closed", "must_close"],
+      "keywords": ["forcing closed", "禁止开设", "y = 0"],
+      "description": "y_j = 0 for j in forced_closed",
+      "math": "y_j = 0",
+      "parameters": [{"name": "forced_closed", "type": "set", "description": "禁止开设的设施", "required": true}],
+      "template_snippet": "for j in forced_closed:\n    m.addConstr(y[j] == 0, name=f'force_closed_{j}')",
+      "typical_models": ["p_median", "facility_location"]
+    },
+    {
+      "id": "weighted_service_distance_objective",
+      "name": "加权服务距离目标",
+      "category": "objective",
+      "aliases": ["weighted_distance", "minimize_weighted_distance"],
+      "keywords": ["weighted distance", "p-median", "加权距离", "服务距离"],
+      "description": "min ∑ w_i d_ij x_ij",
+      "math": "\\min \\sum_{i,j} w_i d_{ij} x_{ij}",
+      "parameters": [
+        {"name": "weight", "type": "dict", "required": false},
+        {"name": "distance", "type": "dict", "required": true}
+      ],
+      "template_snippet": "m.setObjective(gp.quicksum(weight[i]*distance[i,j]*x[i,j] for i in demand_points for j in facilities), GRB.MINIMIZE)",
+      "typical_models": ["p_median"]
+    },
+    {
+      "id": "knapsack_capacity",
+      "name": "背包容量约束",
+      "category": "capacity",
+      "keywords": ["knapsack", "capacity", "背包", "容量"],
+      "description": "∑ w_i x_i ≤ W",
+      "math": "\\sum_i w_i x_i \\leq W",
+      "parameters": [{"name": "capacity", "type": "number", "required": true}],
+      "template_snippet": "m.addConstr(gp.quicksum(weight[i]*x[i] for i in items) <= capacity)",
+      "typical_models": ["knapsack"]
+    }
+  ]
+}
