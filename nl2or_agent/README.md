@@ -160,7 +160,7 @@ class MyTool(Tool):
     output_type = "string"
 
     def forward(self, param_name: str) -> str:
-        # 实现工具逻辑
+        # 实现工具逻辑，这个必须重载！
         return "结果"
 ```
 
@@ -173,13 +173,6 @@ class MyTool(Tool):
 ### 切换 LLM 提供商
 
 修改 `.env` 中的 `HAMLET_MODEL_ID`，支持的格式遵循 [litellm](https://docs.litellm.ai/docs/providers) 规范：
-
-| 提供商 | 示例 MODEL_ID |
-|--------|--------------|
-| OpenAI | `openai/gpt-4o` |
-| DeepSeek | `deepseek/deepseek-chat` |
-| 通义千问 | `openai/qwen-plus`（需配置 `OPENAI_BASE_URL`）|
-| 本地 Ollama | `ollama/llama3.2` |
 
 ### 添加新的 OR 模型模板
 
@@ -195,7 +188,7 @@ class MyTool(Tool):
 uv run python main.py --mode web
 ```
 
-GUI 支持：聊天交互、工具调用追踪、文件上传（供 Agent 读取数据文件）。
+目前还未实现 Web 界面，后续会添加一个简洁的聊天界面，支持文件上传和结果展示。
 
 ---
 
