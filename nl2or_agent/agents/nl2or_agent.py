@@ -16,7 +16,13 @@ import importlib.resources
 
 from hamlet.core import CodeAgent, LiteLLMModel
 
-from tools import QueryModelLibraryTool, RunSolverTool
+from schema.problem_ir import catalog_markdown
+from tools import (
+    ListBlockCatalogTool,
+    QueryModelLibraryTool,
+    RunSolverTool,
+    ValidateProblemIrTool,
+)
 
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
@@ -24,11 +30,18 @@ _DEFAULT_WORKSPACE = Path(__file__).parent.parent / "data" / "workspace"
 
 
 def _load_system_prompt() -> str:
-    """Load system prompt from markdown file."""
+    """Load system prompt and compositional IR appendix."""
+    parts: list[str] = []
     prompt_file = _PROMPTS_DIR / "system.prompt.md"
     if prompt_file.exists():
-        return prompt_file.read_text(encoding="utf-8")
-    return ""
+        parts.append(prompt_file.read_text(encoding="utf-8"))
+    ir_file = _PROMPTS_DIR / "problem_ir_format.md"
+    if ir_file.exists():
+        parts.append("\n\n---\n\n## Appendix: problem_ir_format\n\n")
+        parts.append(ir_file.read_text(encoding="utf-8"))
+        parts.append("\n\n### Canonical block_id catalog\n\n")
+        parts.append(catalog_markdown())
+    return "\n".join(parts)
 
 
 def build_nl2or_agent(
@@ -55,10 +68,14 @@ def build_nl2or_agent(
     CodeAgent
         A fully configured agent ready to receive natural-language OR problems.
     """
+    _or_key = (os.getenv("OR_API_KEY") or "").strip()
+    if _or_key and not (os.getenv("OPENROUTER_API_KEY") or "").strip():
+        os.environ["OPENROUTER_API_KEY"] = _or_key
+
     resolved_model_id = (
         model_id
         or os.getenv("HAMLET_MODEL_ID")
-        # or "openrouter/deepseek/deepseek-chat"
+        or "openai/gpt-4o-mini"
     )
     resolved_workspace = Path(workspace_dir) if workspace_dir else _DEFAULT_WORKSPACE
     # 在 .env 中会指定相同的路径
@@ -67,6 +84,8 @@ def build_nl2or_agent(
     model = LiteLLMModel(model_id=resolved_model_id)
 
     tools = [
+        ListBlockCatalogTool(),
+        ValidateProblemIrTool(),
         QueryModelLibraryTool(),
         RunSolverTool(workspace_dir=resolved_workspace),
     ]

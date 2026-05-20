@@ -72,6 +72,12 @@
       "id": "facility_location",
       "name": "选址问题（Facility Location）",
       "type": "facility_location",
+      "building_blocks": [
+        "assign_each_demand_once",
+        "link_assignment_to_open",
+        "force_facility_open",
+        "force_facility_closed"
+      ],
       "keywords": ["选址", "facility location", "仓库选址", "开设", "固定成本", "服务"],
       "description": "决定开设哪些设施，使总固定成本和服务成本最小",
       "variables": [
@@ -86,6 +92,42 @@
       ],
       "solver_hint": "gurobipy two sets of binary vars, linking constraints",
       "template_code": "import gurobipy as gp\nfrom gurobipy import GRB\n\nm = gp.Model('FacilityLocation')\ny = m.addVars(facilities, vtype=GRB.BINARY, name='y')\nx = m.addVars(customers, facilities, vtype=GRB.BINARY, name='x')\nm.setObjective(\n    gp.quicksum(fixed_cost[j]*y[j] for j in facilities) +\n    gp.quicksum(service_cost[i,j]*x[i,j] for i in customers for j in facilities),\n    GRB.MINIMIZE\n)\nfor i in customers:\n    m.addConstr(gp.quicksum(x[i,j] for j in facilities) == 1)\nfor i in customers:\n    for j in facilities:\n        m.addConstr(x[i,j] <= y[j])\nm.optimize()\n"
+    },
+    {
+      "id": "p_median",
+      "name": "P-Median 选址问题（P-Median Location Problem）",
+      "type": "facility_location",
+      "parameters": [
+        {"name": "p", "type": "integer", "description": "开设设施数 P", "required": true},
+        {"name": "distance", "type": "dict", "description": "d_ij", "required": true},
+        {"name": "weight", "type": "dict", "description": "w_i，默认 1", "required": false}
+      ],
+      "building_blocks": [
+        "weighted_service_distance_objective",
+        "assign_each_demand_once",
+        "link_assignment_to_open",
+        "cardinality_open_p_facilities",
+        "force_facility_open",
+        "force_facility_closed"
+      ],
+      "keywords": [
+        "P-Median", "p-median", "p median", "p中位", "设施选址", "选址问题",
+        "加权距离最小", "选出p个设施", "固定数量设施选址"
+      ],
+      "description": "选择固定数量 p 个设施，使需求点到分配设施的加权距离之和最小。",
+      "variables": [
+        "y_j ∈ {0,1}: 是否在候选设施点 j 开设设施",
+        "x_ij ∈ {0,1}: 需求点 i 是否分配给设施点 j"
+      ],
+      "objective": "min sum_i sum_j w_i * d_ij * x_ij",
+      "constraints": [
+        "sum_j x_ij = 1 for all i",
+        "x_ij <= y_j for all i,j",
+        "sum_j y_j = p",
+        "x_ij, y_j ∈ {0,1}"
+      ],
+      "solver_hint": "gurobipy binary y[j], x[i,j]; assignment, linking, sum(y)==p",
+      "template_code": "import gurobipy as gp\nfrom gurobipy import GRB\n\nm = gp.Model('P_Median')\ny = m.addVars(facilities, vtype=GRB.BINARY, name='y')\nx = m.addVars(demand_points, facilities, vtype=GRB.BINARY, name='x')\nm.setObjective(gp.quicksum(weight[i]*distance[i,j]*x[i,j] for i in demand_points for j in facilities), GRB.MINIMIZE)\nfor i in demand_points:\n    m.addConstr(gp.quicksum(x[i,j] for j in facilities) == 1)\nfor i in demand_points:\n    for j in facilities:\n        m.addConstr(x[i,j] <= y[j])\nm.addConstr(gp.quicksum(y[j] for j in facilities) == p)\nm.optimize()\n"
     }
   ]
 }
