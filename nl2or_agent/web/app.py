@@ -20,12 +20,8 @@ def _extract_final_answer(raw: str) -> str:
     return "\n".join(clean[-20:]) or raw[-500:]
 
 
-def create_ui(agent, workspace_dir: str | Path | None = None):
+def create_ui(agent):
     """Build and return a Gradio Blocks UI for the NL2OR agent."""
-
-    workspace = Path(workspace_dir) if workspace_dir else (
-        Path(__file__).parent.parent / "data" / "workspace"
-    )
 
     def run_agent(message: str, history: list) -> tuple[list, str]:
         if not message or not message.strip():
@@ -43,9 +39,15 @@ def create_ui(agent, workspace_dir: str | Path | None = None):
             return history, ""
 
     def get_workspace_files() -> str:
-        if not workspace.exists():
-            return "(workspace not found)"
-        files = sorted(workspace.glob("solver_*.py"))
+        from utils.session import Session
+        sessions = Session.list_all()
+        if not sessions:
+            return "(no sessions yet)"
+        # Show files from the most recent session
+        latest = Session.load(sessions[-1])
+        if latest is None:
+            return "(session not found)"
+        files = latest.list_code_files()
         if not files:
             return "(no solver files yet)"
         return "\n".join(f.name for f in files)
