@@ -18,13 +18,15 @@ def create_ui(agent, workspace_dir: str | Path | None = None):
         if not message or not message.strip():
             return history, ""
         try:
-            result = agent.run(message.strip())
+            result = agent.run(message.strip(), reset=False)
+            # Extract only final_answer content, skip intermediate IR traces
+            answer = _extract_final_answer(result)
             history.append({"role": "user", "content": message})
-            history.append({"role": "assistant", "content": str(result)})
+            history.append({"role": "assistant", "content": answer})
             return history, ""
         except Exception as exc:
             history.append({"role": "user", "content": message})
-            history.append({"role": "assistant", "content": f"[Error] {exc}"})
+            history.append({"role": "assistant", "content": f"❌ Error: {exc}"})
             return history, ""
 
     def get_workspace_files() -> str:
