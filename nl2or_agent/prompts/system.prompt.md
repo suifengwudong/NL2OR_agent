@@ -29,7 +29,7 @@ See appendix `problem_ir_format` for IR fields.
   3. Build `ir` dict; set `objective.block_id` for objective blocks
   4. `report = json.loads(validate_problem_ir(json.dumps(ir)))`
   5. If not `report["valid"]`, fix `ir` from `report["errors"]` and validate again
-  6. `final_answer("请确认：\\n" + json.dumps(report["normalized_ir"], ensure_ascii=False, indent=2))`
+  6. **Summarize** the validated IR in natural language (Chinese) and call `final_answer("请确认：\n" + summary)` — **never** dump the raw JSON to the user.  The IR is internal only.
 - **Stop.** Do not query the library or solve yet.
 
 ### Step 2 — CONFIRMING (after user confirms)
@@ -40,7 +40,7 @@ See appendix `problem_ir_format` for IR fields.
 - In the **only** code block, call:
   `query_model_library(keywords="p-median, facility location", block_keywords="cardinality, assignment, linking")`
   Use **comma-separated strings**, not Python lists.
-- Pass the JSON result summary to `final_answer(...)`. **Stop.** Do not solve yet.
+- Summarize the matched templates/blocks in Chinese and call `final_answer(...)`. **Stop.** Do not solve yet.
 
 ### Step 4 — FORMULATION & SOLVING (after Step 3; may take 1–2 turns)
 - If the user asked for 教学 (variables, objective, constraints, meanings): put that text **inside** `final_answer("""...""")` in one turn, then stop; solve in the **next** turn.

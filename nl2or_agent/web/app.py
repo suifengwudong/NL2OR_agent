@@ -3,28 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-import re
 
 import gradio as gr
-
-
-def _extract_final_answer(raw: str) -> str:
-    """Extract the content of the last ``final_answer(...)`` call from HAMLET output.
-
-    HAMLET returns the full execution trace (Thought → Code → Observation).
-    For the web UI we only want the user-facing answer text.
-    """
-    # Try to find final_answer("...") or final_answer("""...""")
-    # Match the last occurrence
-    pattern = r'final_answer\((["\']{1,3})(.*?)\1\s*\)'
-    matches = list(re.finditer(pattern, raw, re.DOTALL))
-    if matches:
-        return matches[-1].group(2).strip()
-    # Fallback: return last non-empty line after stripping thought traces
-    lines = [l.strip() for l in raw.split("\n") if l.strip()]
-    # Remove "Thought:", "Code:" prefixed lines and code blocks
-    clean = [l for l in lines if not l.startswith(("Thought:", "Code:", "```", "import", "╭", "╰", "━━"))]
-    return "\n".join(clean[-20:]) or raw[-500:]
 
 
 def create_ui(agent, workspace_dir: str | Path | None = None):
@@ -39,14 +19,12 @@ def create_ui(agent, workspace_dir: str | Path | None = None):
             return history, ""
         try:
             result = agent.run(message.strip())
-            # Extract only final_answer content, skip intermediate IR / Thought blocks
-            answer = _extract_final_answer(result)
             history.append({"role": "user", "content": message})
-            history.append({"role": "assistant", "content": answer})
+            history.append({"role": "assistant", "content": str(result)})
             return history, ""
         except Exception as exc:
             history.append({"role": "user", "content": message})
-            history.append({"role": "assistant", "content": f"❌ 出错了：{exc}"})
+            history.append({"role": "assistant", "content": f"[Error] {exc}"})
             return history, ""
 
     def get_workspace_files() -> str:
