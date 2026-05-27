@@ -23,7 +23,6 @@ from tools import (
     RunSolverTool,
     ValidateProblemIrTool,
 )
-from utils.session import get_session
 
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
