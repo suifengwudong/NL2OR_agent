@@ -3,8 +3,21 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 import gradio as gr
+
+
+def _extract_final_answer(raw: str) -> str:
+    """Extract the content of the last ``final_answer(...)`` call from HAMLET output."""
+    pattern = r'final_answer\((["\'])(.*?)\1\s*\)'
+    matches = list(re.finditer(pattern, raw, re.DOTALL))
+    if matches:
+        return matches[-1].group(2).strip()
+    # Fallback: strip HAMLET trace noise
+    lines = [l.strip() for l in raw.split("\n") if l.strip()]
+    clean = [l for l in lines if not l.startswith(("Thought:", "Code:", "```", "import", "╭", "╰", "━━"))]
+    return "\n".join(clean[-20:]) or raw[-500:]
 
 
 def create_ui(agent, workspace_dir: str | Path | None = None):
@@ -96,4 +109,4 @@ def create_ui(agent, workspace_dir: str | Path | None = None):
 def launch_web(agent, **kwargs):
     """Launch the NL2OR web GUI."""
     ui = create_ui(agent)
-    ui.launch(share=False, theme=gr.themes.Soft(), **kwargs)
+    ui.launch(share=False, **kwargs)
