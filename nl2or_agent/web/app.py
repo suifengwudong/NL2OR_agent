@@ -14,14 +14,18 @@ def create_ui(agent, workspace_dir: str | Path | None = None):
         Path(__file__).parent.parent / "data" / "workspace"
     )
 
-    def run_agent(message: str, history: list) -> str:
+    def run_agent(message: str, history: list) -> tuple[list, str]:
         if not message or not message.strip():
-            return ""
+            return history, ""
         try:
             result = agent.run(message.strip())
-            return str(result)
+            history.append({"role": "user", "content": message})
+            history.append({"role": "assistant", "content": str(result)})
+            return history, ""
         except Exception as exc:
-            return f"[Error] {exc}"
+            history.append({"role": "user", "content": message})
+            history.append({"role": "assistant", "content": f"[Error] {exc}"})
+            return history, ""
 
     def get_workspace_files() -> str:
         if not workspace.exists():
@@ -31,7 +35,7 @@ def create_ui(agent, workspace_dir: str | Path | None = None):
             return "(no solver files yet)"
         return "\n".join(f.name for f in files)
 
-    with gr.Blocks(title="NL2OR Agent", theme=gr.themes.Soft()) as ui:
+    with gr.Blocks(title="NL2OR Agent") as ui:
         gr.Markdown(
             """
             # NL2OR Agent
@@ -72,14 +76,14 @@ def create_ui(agent, workspace_dir: str | Path | None = None):
         submit_btn.click(
             fn=run_agent,
             inputs=[msg, chatbot],
-            outputs=[chatbot],
-        ).then(lambda: "", None, [msg])
+            outputs=[chatbot, msg],
+        )
 
         msg.submit(
             fn=run_agent,
             inputs=[msg, chatbot],
-            outputs=[chatbot],
-        ).then(lambda: "", None, [msg])
+            outputs=[chatbot, msg],
+        )
 
         clear_btn.click(lambda: ([], ""), None, [chatbot, msg])
         refresh_btn.click(get_workspace_files, None, [files_display])
@@ -90,4 +94,4 @@ def create_ui(agent, workspace_dir: str | Path | None = None):
 def launch_web(agent, **kwargs):
     """Launch the NL2OR web GUI."""
     ui = create_ui(agent)
-    ui.launch(share=False, **kwargs)
+    ui.launch(share=False, theme=gr.themes.Soft(), **kwargs)
