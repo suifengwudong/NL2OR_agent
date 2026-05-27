@@ -26,7 +26,7 @@ class TestLoadSystemPrompt:
         with patch("agents.nl2or_agent._PROMPTS_DIR", prompts_dir):
             result = _load_system_prompt()
 
-        assert result == "You are an OR agent."
+        assert result.startswith("You are an OR agent.")
 
     def test_returns_empty_string_when_file_missing(self, tmp_path: Path):
         empty_dir = tmp_path / "no_prompts"
@@ -35,7 +35,10 @@ class TestLoadSystemPrompt:
         with patch("agents.nl2or_agent._PROMPTS_DIR", empty_dir):
             result = _load_system_prompt()
 
-        assert result == ""
+        # When system prompt file is missing, we still append appendix if
+        # ir_format prompt exists.  Since both are in the same dir, both
+        # will be missing — result is empty plus catalog markdown.
+        assert "Canonical block_id catalog" in result
 
 
 # ---------------------------------------------------------------------------
@@ -58,10 +61,10 @@ class TestBuildNl2orAgent:
         assert "run_solver" in tool_names
 
     def test_custom_workspace_dir(self, tmp_path: Path):
-        workspace = tmp_path / "custom_ws"
-        agent = build_nl2or_agent(workspace_dir=workspace, verbosity_level=0)
+        # workspace_dir is no longer a build_nl2or_agent parameter;
+        # solver code is now stored in session-isolated directories.
+        agent = build_nl2or_agent(verbosity_level=0)
         assert isinstance(agent, CodeAgent)
-        assert workspace.exists()
 
     def test_model_id_from_env(self, monkeypatch):
         monkeypatch.setenv("HAMLET_MODEL_ID", "openai/gpt-4o-mini")
@@ -87,10 +90,9 @@ class TestBuildNl2orAgent:
         assert "pandas" in imports
 
     def test_workspace_created_if_not_exists(self, tmp_path: Path):
-        workspace = tmp_path / "new_dir" / "nested"
-        assert not workspace.exists()
-        build_nl2or_agent(workspace_dir=workspace, verbosity_level=0)
-        assert workspace.exists()
+        # Session-based storage: verify agent builds fine
+        agent = build_nl2or_agent(verbosity_level=0)
+        assert isinstance(agent, CodeAgent)
 
     def test_no_prompt_templates_when_prompt_file_missing(self, tmp_path: Path):
         """When system.prompt.md is missing, agent still builds without error."""

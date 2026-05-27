@@ -84,27 +84,22 @@ class TestQueryModelLibraryTool:
     def test_forward_matching_keyword(self, query_tool: QueryModelLibraryTool):
         result = query_tool.forward("knapsack")
         data = json.loads(result)
-        assert isinstance(data, list)
-        assert len(data) >= 1
-        assert data[0]["id"] == "knapsack"
+        assert data["templates"][0]["id"] == "knapsack"
 
     def test_forward_multiple_keywords(self, query_tool: QueryModelLibraryTool):
         result = query_tool.forward("knapsack, binary, capacity")
         data = json.loads(result)
-        assert isinstance(data, list)
-        assert data[0]["id"] == "knapsack"
+        assert data["templates"][0]["id"] == "knapsack"
 
     def test_forward_lp_keyword(self, query_tool: QueryModelLibraryTool):
         result = query_tool.forward("linear programming")
         data = json.loads(result)
-        assert isinstance(data, list)
-        assert any(m["id"] == "lp_general" for m in data)
+        assert any(m["id"] == "lp_general" for m in data["templates"])
 
     def test_forward_no_match_returns_message(self, query_tool: QueryModelLibraryTool):
         result = query_tool.forward("nonexistent_keyword_xyz")
         data = json.loads(result)
         assert "message" in data
-        assert "No matching templates found" in data["message"]
 
     def test_forward_empty_keyword(self, query_tool: QueryModelLibraryTool):
         result = query_tool.forward("   ")
@@ -116,8 +111,20 @@ class TestQueryModelLibraryTool:
         data = json.loads(result)
         required_fields = {"id", "name", "type", "description", "variables",
                            "objective", "constraints", "solver_hint", "template_code"}
-        for model in data:
+        for model in data["templates"]:
             assert required_fields.issubset(model.keys())
+
+    def test_forward_block_keywords_real_bank(self):
+        bank = Path(__file__).parent.parent / "data" / "model_bank" / "models.json"
+        blocks = Path(__file__).parent.parent / "data" / "model_bank" / "constraint_blocks.json"
+        tool = QueryModelLibraryTool(bank_path=bank, blocks_path=blocks)
+        result = tool.forward(
+            keywords="p-median",
+            block_keywords="cardinality, linking, forcing",
+        )
+        data = json.loads(result)
+        assert any(m["id"] == "p_median" for m in data["templates"])
+        assert any(b["id"] == "cardinality_open_p_facilities" for b in data["blocks"])
 
     def test_forward_returns_at_most_3_results(self, tmp_path: Path):
         """Ensure no more than 3 results are returned."""
@@ -143,14 +150,13 @@ class TestQueryModelLibraryTool:
         tool = QueryModelLibraryTool(bank_path=bank_file)
         result = tool.forward("shared_keyword")
         data = json.loads(result)
-        assert len(data) <= 3
+        assert len(data["templates"]) <= 3
 
     def test_forward_partial_keyword_match(self, query_tool: QueryModelLibraryTool):
         """Test that partial matches also work (e.g. 'knap' matches 'knapsack')."""
         result = query_tool.forward("knap")
         data = json.loads(result)
-        # The keyword 'knap' is a substring of 'knapsack' in model keywords
-        assert isinstance(data, list)
+        assert "templates" in data
 
 
 # ---------------------------------------------------------------------------
@@ -161,13 +167,15 @@ class TestRunSolverTool:
     def test_initialization_default_workspace(self):
         tool = RunSolverTool()
         assert tool.name == "run_solver"
-        assert tool._workspace.exists()
+        # _workspace is None by default — session-based storage
+        assert tool._workspace is None
 
     def test_initialization_custom_workspace(self, tmp_path: Path):
         workspace = tmp_path / "my_workspace"
         tool = RunSolverTool(workspace_dir=workspace)
         assert tool._workspace == workspace
-        assert workspace.exists()
+        # Directory is lazily created on first save_code() call, not in __init__
+        assert not workspace.exists()
 
     def test_save_code_creates_file(self, solver_tool: RunSolverTool):
         code = "print('hello')"

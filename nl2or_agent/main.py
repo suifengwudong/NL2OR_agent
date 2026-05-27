@@ -57,21 +57,12 @@ def _run_cli() -> None:
 
 
 def _run_web() -> None:
-    """Launch the Gradio GUI provided by HAMLET."""
+    """Launch the NL2OR web GUI."""
     from agents import build_nl2or_agent
-    from hamlet.serve import GradioUI
-    # TODO: 此处的 WebGUI 框架需要开发
+    from web import launch_web
 
-    workspace_dir = os.getenv("NL2OR_WORKSPACE_DIR")
-    readme_path = os.getenv(
-        "NL2OR_AGENT_README",
-        str(Path(__file__).parent / "README.md"),
-    )
-
-    agent = build_nl2or_agent(workspace_dir=workspace_dir, verbosity_level=2)
-    GradioUI(agent, file_upload_folder=workspace_dir, readme_md_path=readme_path).launch(
-        share=False
-    )
+    agent = build_nl2or_agent(verbosity_level=2)
+    launch_web(agent)
 
 
 def main() -> None:
