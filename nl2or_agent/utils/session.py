@@ -1,7 +1,8 @@
 """Session-scoped workspace management for solver artifacts.
 
-Each conversation gets a unique session directory under ``data/sessions/``.
-Solvers, logs, and intermediate results are isolated per session.
+Each conversation gets a unique session directory under
+``data/workspace/sessions/``.  Solvers, logs, and intermediate results are
+isolated per session.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-_SESSIONS_ROOT = Path(__file__).parent.parent / "data" / "sessions"
+_SESSIONS_ROOT = Path(__file__).parent.parent / "data" / "workspace" / "sessions"
 
 
 class Session:

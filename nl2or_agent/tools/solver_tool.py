@@ -19,8 +19,8 @@ class RunSolverTool(Tool):
     """Execute Python solver code (gurobipy / scipy / PuLP) and return the output.
 
     In production, solver code is written to a session-isolated directory
-    under ``data/sessions/{id}/code/``.  When *workspace_dir* is explicitly
-    provided (e.g. in tests), that directory is used instead of the session.
+    under ``data/workspace/sessions/{id}/code/``.  When *workspace_dir* is
+    explicitly provided (e.g. in tests), that directory is used instead.
     """
 
     name = "run_solver"
