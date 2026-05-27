@@ -4,6 +4,27 @@
 
 ---
 
+## 更新日志 (2026-05-27)
+
+### 架构重构 — Schema / Core / Web 三层分离
+
+- **`core/` 模块全面拆分**：
+  - `ir_processor.py` → `ir_processor.py`（归一化 + catalog） + `ir_validator.py`（校验）
+  - 新增 `prompt_loader.py`：从 `agents/nl2or_agent.py` 抽取 prompt 组装逻辑，`build_nl2or_agent()` 仅关注 agent 构建
+- **`schema/` 纯数据化**：
+  - `problem_ir.py` 清空所有处理函数，仅保留 `TypedDict` 数据定义 + 常量别名
+  - `schema/__init__.py` 新增 `ProblemIR`、`ConstraintBlock`、`ObjectiveBlock`、`ValidationReport` 等类型导出
+  - 通过 `__getattr__` 惰性代理维持 `from schema import normalize_problem_ir` 等旧式导入兼容
+- **`output_format.py` 归位**：从项目根目录移入 `core/output_format.py`
+- **`web/` 模块重构**：
+  - `web/__init__.py` 仅负责模块级导出，UI 逻辑集中于 `web/app.py`
+  - `web/app.py` 统一使用 `core.output_format.format_for_display()` 替代自有的 `_extract_final_answer`，消除功能重叠
+- **IR 数据结构正式化**：在 `schema/problem_ir.py` 中添加 `ProblemIR`、`ProblemFamily`、`ConstraintBlock`、`ObjectiveBlock`、`BlockCatalog`、`ValidationReport` 六个 TypedDict 定义
+- **Agent 构建精简**：`agents/nl2or_agent.py` 代码量从 ~140 行减至 ~80 行，移除内联的 prompt 加载函数
+- **测试更新**：更新 `test_agent.py`、`test_ir_schema.py`、`test_output_format.py`、`tools/ir_tools.py` 的 import 路径，所有 102 测试通过
+
+---
+
 ## 更新日志 (2026-04-22)
 
 - **完善 Agent 规划与求解能力**：基于 HAMLET 框架，更新了 `CodeAgent` 的运行机制。
@@ -82,18 +103,39 @@ nl2or_agent/
 │   ├── __init__.py
 │   └── nl2or_agent.py      # build_nl2or_agent() — 组装 CodeAgent
 │
+├── core/                   # NEW: 核心处理逻辑
+│   ├── __init__.py
+│   ├── ir_processor.py     # Problem IR 归一化、校验、catalog 生成
+│   └── output_format.py    # 结构化 final_answer 格式化与校验
+│
+├── schema/
+│   ├── __init__.py
+│   └── problem_ir.py       # IR 数据结构常量与别名定义
+│
 ├── tools/
 │   ├── __init__.py
+│   ├── ir_tools.py             # ListBlockCatalogTool / ValidateProblemIrTool
 │   ├── model_library_tool.py   # QueryModelLibraryTool — 查询 OR 模型模板库
 │   └── solver_tool.py          # RunSolverTool — 执行生成的求解代码
 │
 ├── data/
 │   ├── model_bank/
-│   │   └── models.json     # OR 模型模板库（LP、ILP、运输、指派、背包、选址）
+│   │   ├── models.json             # OR 模型模板库
+│   │   └── constraint_blocks.json  # 约束积木块目录
 │   └── workspace/          # 生成的求解脚本存储目录
 │
+├── utils/
+│   ├── __init__.py
+│   ├── search.py           # 关键词搜索工具
+│   └── session.py          # 会话管理
+│
+├── web/
+│   ├── __init__.py
+│   └── app.py              # Gradio Web 界面
+│
 └── prompts/
-    └── system.prompt.md    # Agent 系统提示词
+    ├── system.prompt.md            # Agent 系统提示词
+    └── problem_ir_format.prompt.md # Problem IR 格式说明
 ```
 
 ---
@@ -107,10 +149,65 @@ nl2or_agent/
 | 交互核心 | `CodeAgent` | `agents/nl2or_agent.py` 中的 `build_nl2or_agent()` |
 | LLM | `LiteLLMModel` | 通过 `HAMLET_MODEL_ID` 环境变量切换提供商 |
 | 模型库接口 | `Tool` 子类 | `tools/model_library_tool.py` — `QueryModelLibraryTool` |
+| IR 校验接口 | `Tool` 子类 | `tools/ir_tools.py` — `ListBlockCatalogTool` / `ValidateProblemIrTool` |
 | 求解器接口 | `Tool` 子类 | `tools/solver_tool.py` — `RunSolverTool` |
 | 代码生成器 | `CodeAgent` 内置 | CodeAgent 自带 Python 代码生成与执行能力 |
 | 本地存储 | 文件系统 | `data/workspace/` 目录，求解脚本按 UUID 命名存储 |
-| 用户界面 | `GradioUI` | `main.py --mode web` 启动 Gradio 界面 |
+| 用户界面 | Gradio | `web/app.py` — 自建 Gradio 聊天界面 + `main.py --mode web` |
+
+### 模块职责划分
+
+```mermaid
+graph TD
+    subgraph "agents/ (入口层)"
+        A[build_nl2or_agent]
+    end
+
+    subgraph "tools/ (Agent 接口层)"
+        T1[ListBlockCatalogTool]
+        T2[ValidateProblemIrTool]
+        T3[QueryModelLibraryTool]
+        T4[RunSolverTool]
+    end
+
+    subgraph "core/ (处理引擎层)"
+        C1["ir_processor.py<br/>归一化 + catalog"]
+        C2["ir_validator.py<br/>校验"]
+        C3["output_format.py<br/>结构化输出"]
+        C4["prompt_loader.py<br/>提示词加载"]
+    end
+
+    subgraph "schema/ (数据定义层)"
+        S1["problem_ir.py<br/>TypedDicts + 常量"]
+    end
+
+    subgraph "utils/ (基础设施层)"
+        U1["search.py"]
+        U2["session.py"]
+    end
+
+    subgraph "web/ (表现层)"
+        W1["app.py"]
+    end
+
+    A -->|组装 tools| T1 & T2 & T3 & T4
+    A -->|系统 prompt| C4
+    T1 & T2 -->|调用| C1 & C2
+    T3 -->|搜索| U1
+    T4 -->|存储| U2
+    C1 & C2 -->|引用常量| S1
+    C4 -->|catalog| C1
+    W1 -->|格式化输出| C3
+```
+
+| 模块 | 职责 | 内容 |
+|------|------|------|
+| `schema/` | 数据定义层 | TypedDict（`ProblemIR`, `ConstraintBlock` 等）+ 常量（`BLOCK_ID_ALIASES` 等） |
+| `core/` | 处理引擎层 | `ir_processor.py`（归一化）、`ir_validator.py`（校验）、`output_format.py`（格式化）、`prompt_loader.py`（提示词加载） |
+| `tools/` | Agent 接口层 | HAMLET Tool 子类，薄封装调用 `core/` 函数 |
+| `utils/` | 基础设施层 | `search.py`（关键词检索）、`session.py`（会话管理） |
+| `web/` | 表现层 | `app.py`（Gradio Web 界面） |
+| `agents/` | 入口层 | `nl2or_agent.py`（组装 CodeAgent） |
 
 ### Agent 工作流（对应 docs/flowchart.md 活动图）
 

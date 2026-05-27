@@ -10,59 +10,18 @@ result = agent.run("我有一个背包问题……")
 from __future__ import annotations
 
 import os
-from pathlib import Path
-import yaml
 import importlib.resources
 
+import yaml
 from hamlet.core import CodeAgent, LiteLLMModel
 
-from core.ir_processor import catalog_markdown
+from core.prompt_loader import load_system_prompt
 from tools import (
     ListBlockCatalogTool,
     QueryModelLibraryTool,
     RunSolverTool,
     ValidateProblemIrTool,
 )
-
-
-_PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
-
-
-# NOTE: 这里需要考量到未来可能会有多个 prompt 文件的情况，因此单独写一个函数来加载所有 prompt，并且在系统 prompt 中附加上 IR 格式说明和 catalog。之后可以试试分开成不同层级的 prompt。
-
-def _load_prompt(prompt_path: str | Path) -> str:
-    """Load a prompt template from a file."""
-    p = prompt_path if isinstance(prompt_path, Path) else Path(prompt_path)
-    if p.exists():
-        return p.read_text(encoding="utf-8")
-    return ""
-
-def _load_all_prompts() -> dict[str, str]:
-    """Load all prompt templates from the prompts directory."""
-    prompts = {}
-    system_prompt_path = _PROMPTS_DIR / "system.prompt.md"
-    problem_ir_prompt_path = _PROMPTS_DIR / "problem_ir_format.prompt.md"
-    if system_prompt_path.exists():
-        prompts["system_prompt"] = system_prompt_path.read_text(encoding="utf-8")
-    if problem_ir_prompt_path.exists():
-        prompts["problem_ir_format"] = problem_ir_prompt_path.read_text(encoding="utf-8")
-    return prompts
-
-
-def _load_system_prompt() -> str:
-    """Load system prompt and compositional IR appendix."""
-    parts: list[str] = []
-    # 首先加载系统 prompt 的主体内容
-    prompt_file = _PROMPTS_DIR / "system.prompt.md"
-    parts.append(_load_prompt(prompt_file))
-
-    # 然后附加上 IR 格式说明和 catalog
-    ir_file = _PROMPTS_DIR / "problem_ir_format.prompt.md"
-    parts.append("\n\n---\n\n## Appendix: problem_ir_format\n\n")
-    parts.append(_load_prompt(ir_file))
-    parts.append("\n\n### Canonical block_id catalog\n\n")
-    parts.append(catalog_markdown())
-    return "\n".join(parts)
 
 
 def build_nl2or_agent(
@@ -102,7 +61,7 @@ def build_nl2or_agent(
         RunSolverTool(),
     ]
 
-    system_prompt = _load_system_prompt()
+    system_prompt = load_system_prompt()
 
     # Load default hamlet prompt templates and override the system prompt
     default_prompts_file = importlib.resources.files("hamlet.core.prompts").joinpath("code_agent.yaml")

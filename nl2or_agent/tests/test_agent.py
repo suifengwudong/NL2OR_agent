@@ -5,12 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from agents.nl2or_agent import _load_system_prompt, build_nl2or_agent
+from agents.nl2or_agent import build_nl2or_agent
+from core.prompt_loader import load_system_prompt
 from hamlet.core import CodeAgent
 
 
 # ---------------------------------------------------------------------------
-# _load_system_prompt tests
+# load_system_prompt tests
 # ---------------------------------------------------------------------------
 
 class TestLoadSystemPrompt:
@@ -20,8 +21,8 @@ class TestLoadSystemPrompt:
         prompt_file = prompts_dir / "system.prompt.md"
         prompt_file.write_text("You are an OR agent.", encoding="utf-8")
 
-        with patch("agents.nl2or_agent._PROMPTS_DIR", prompts_dir):
-            result = _load_system_prompt()
+        with patch("core.prompt_loader._PROMPTS_DIR", prompts_dir):
+            result = load_system_prompt()
 
         assert result.startswith("You are an OR agent.")
 
@@ -29,8 +30,8 @@ class TestLoadSystemPrompt:
         empty_dir = tmp_path / "no_prompts"
         empty_dir.mkdir()
 
-        with patch("agents.nl2or_agent._PROMPTS_DIR", empty_dir):
-            result = _load_system_prompt()
+        with patch("core.prompt_loader._PROMPTS_DIR", empty_dir):
+            result = load_system_prompt()
 
         # When system prompt file is missing, we still append appendix if
         # ir_format prompt exists.  Since both are in the same dir, both
@@ -95,6 +96,6 @@ class TestBuildNl2orAgent:
         """When system.prompt.md is missing, agent still builds without error."""
         empty_dir = tmp_path / "empty_prompts"
         empty_dir.mkdir()
-        with patch("agents.nl2or_agent._PROMPTS_DIR", empty_dir):
+        with patch("core.prompt_loader._PROMPTS_DIR", empty_dir):
             agent = build_nl2or_agent(verbosity_level=0)
         assert isinstance(agent, CodeAgent)
