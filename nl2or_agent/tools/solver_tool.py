@@ -5,26 +5,22 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-import tempfile
-import textwrap
 import uuid
 from pathlib import Path
 
 from hamlet.core.tools import Tool
+from utils.session import get_session
 
 
-_DEFAULT_WORKSPACE = Path(__file__).parent.parent / "data" / "workspace"
 _TIMEOUT_SECONDS = 60
 
 
 class RunSolverTool(Tool):
     """Execute Python solver code (gurobipy / scipy / PuLP) and return the output.
 
-    The code is written to a temporary file under the workspace directory and
-    executed in a subprocess so that any import or runtime errors are captured
-    cleanly without crashing the agent.
-
-    Returns a plain-text string with stdout + stderr from the solver run.
+    In production, solver code is written to a session-isolated directory
+    under ``data/sessions/{id}/code/``.  When *workspace_dir* is explicitly
+    provided (e.g. in tests), that directory is used instead of the session.
     """
 
     name = "run_solver"
@@ -47,19 +43,30 @@ class RunSolverTool(Tool):
 
     def __init__(self, workspace_dir: str | Path | None = None) -> None:
         super().__init__()
-        self._workspace = Path(workspace_dir) if workspace_dir else _DEFAULT_WORKSPACE
-        self._workspace.mkdir(parents=True, exist_ok=True)
+        # _workspace is only used when explicitly set (tests).  In production
+        # save_code() delegates to the session system.
+        self._workspace: Path | None = (
+            Path(workspace_dir) if workspace_dir else None
+        )
 
     # ------------------------------------------------------------------
     # Public helpers
     # ------------------------------------------------------------------
 
     def save_code(self, code: str, filename: str | None = None) -> Path:
-        """Persist *code* to the workspace and return the file path."""
-        fname = filename or f"solver_{uuid.uuid4().hex[:8]}.py"
-        path = self._workspace / fname
-        path.write_text(textwrap.dedent(code), encoding="utf-8")
-        return path
+        """Persist *code* and return the file path.
+
+        If a custom workspace was set at construction time, files go there
+        (test mode).  Otherwise they are stored under the current session.
+        """
+        if self._workspace is not None:
+            self._workspace.mkdir(parents=True, exist_ok=True)
+            fname = filename or f"solver_{uuid.uuid4().hex[:8]}.py"
+            path = self._workspace / fname
+            path.write_text(code, encoding="utf-8")
+            return path
+        session = get_session()
+        return session.save_code(code, filename)
 
     # ------------------------------------------------------------------
     # Tool entry point
@@ -70,7 +77,6 @@ class RunSolverTool(Tool):
         script_path = self.save_code(code)
 
         env = os.environ.copy()
-        # Make sure the virtual-env python is used if available
         python_exe = sys.executable
 
         try:
