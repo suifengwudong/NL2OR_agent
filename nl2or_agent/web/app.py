@@ -2,22 +2,20 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-import re
-
 import gradio as gr
 
+from core.output_format import format_for_display
 
-def _extract_final_answer(raw: str) -> str:
-    """Extract the content of the last ``final_answer(...)`` call from HAMLET output."""
-    pattern = r'final_answer\((["\'])(.*?)\1\s*\)'
-    matches = list(re.finditer(pattern, raw, re.DOTALL))
-    if matches:
-        return matches[-1].group(2).strip()
-    # Fallback: strip HAMLET trace noise
-    lines = [l.strip() for l in raw.split("\n") if l.strip()]
-    clean = [l for l in lines if not l.startswith(("Thought:", "Code:", "```", "import", "╭", "╰", "━━"))]
-    return "\n".join(clean[-20:]) or raw[-500:]
+
+def _display_answer(raw: str) -> str:
+    """Render agent output for web display — tries structured format, falls back to raw."""
+    try:
+        return format_for_display(str(raw))
+    except ValueError:
+        # Fallback: strip HAMLET trace noise
+        lines = [l.strip() for l in str(raw).split("\n") if l.strip()]
+        clean = [l for l in lines if not l.startswith(("Thought:", "Code:", "```", "import", "╭", "╰", "━━"))]
+        return "\n".join(clean[-20:]) or str(raw)[-500:]
 
 
 def create_ui(agent):
@@ -28,8 +26,7 @@ def create_ui(agent):
             return history, ""
         try:
             result = agent.run(message.strip(), reset=False)
-            # Extract only final_answer content, skip intermediate IR traces
-            answer = _extract_final_answer(result)
+            answer = _display_answer(result)
             history.append({"role": "user", "content": message})
             history.append({"role": "assistant", "content": answer})
             return history, ""

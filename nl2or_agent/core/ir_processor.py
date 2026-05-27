@@ -1,7 +1,7 @@
-"""IR processing: loading catalog, normalizing, validating, and formatting Problem IR.
+"""IR normalization: loading catalog, normalizing Problem IR.
 
 Pulled out of schema/problem_ir.py to separate the "processing engine" from the
-"data definition" layer.  All functions here were formerly in schema/problem_ir.py.
+"data definition" layer.  Validation logic moved to ir_validator.py.
 """
 
 from __future__ import annotations
@@ -48,7 +48,6 @@ def load_model_bank(models_path: Path | None = None) -> dict[str, Any]:
         if family_name and family_name in by_id:
             family = by_id[family_name]
             base = family.get("base_blocks") or []
-            # Insert base blocks at front (family-level blocks first)
             for b in reversed(base):
                 if b not in blocks:
                     blocks.insert(0, b)
@@ -60,6 +59,7 @@ def load_model_bank(models_path: Path | None = None) -> dict[str, Any]:
 
 
 def load_block_catalog(blocks_path: Path | None = None) -> dict[str, Any]:
+    """Load constraint_blocks.json and build lookup indices."""
     path = blocks_path or _BLOCKS_PATH
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
@@ -164,34 +164,6 @@ def normalize_problem_ir(
     out["missing_data"] = missing if isinstance(missing, list) else []
 
     return out, errors, warnings
-
-
-def validate_problem_ir(
-    ir: dict[str, Any],
-    *,
-    blocks_path: Path | None = None,
-) -> dict[str, Any]:
-    """Validate and normalize IR; return report dict for tools / tests."""
-    normalized, errors, warnings = normalize_problem_ir(ir, blocks_path=blocks_path)
-    catalog = load_block_catalog(blocks_path)
-    for bid, bdef in catalog["by_id"].items():
-        required_params = [p["name"] for p in bdef.get("parameters", []) if p.get("required")]
-        if not required_params:
-            continue
-        for entry in normalized.get("constraint_blocks", []):
-            if entry["block_id"] != bid:
-                continue
-            for pname in required_params:
-                if pname not in entry.get("parameters", {}):
-                    errors.append(f"块 {bid} 缺少必填参数 '{pname}'")
-
-    return {
-        "valid": len(errors) == 0,
-        "normalized_ir": normalized,
-        "errors": errors,
-        "warnings": warnings,
-        "catalog_block_ids": catalog["block_ids"],
-    }
 
 
 # ---------------------------------------------------------------------------

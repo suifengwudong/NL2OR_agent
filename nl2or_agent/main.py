@@ -27,7 +27,7 @@ load_dotenv()
 def _run_cli() -> None:
     """Interactive CLI loop: read user input, run the agent, print the result."""
     from agents import build_nl2or_agent
-    from output_format import format_for_display
+    from core.output_format import format_for_display
 
     print("=" * 60)
     print("  NL2OR Agent  (输入 'quit' 或 'exit' 退出)")

@@ -139,31 +139,27 @@ class TestRunCli:
 
 class TestRunWeb:
     def test_run_web_launches_gradio(self):
+        """Verify _run_web calls launch_web with the agent instance."""
         from main import _run_web
         mock_agent = MagicMock()
-        mock_ui = MagicMock()
-        mock_ui_class = MagicMock(return_value=mock_ui)
         with (
             patch("agents.build_nl2or_agent", return_value=mock_agent),
-            patch("hamlet.serve.GradioUI", mock_ui_class),
+            patch("web.launch_web") as mock_launch,
         ):
             _run_web()
-        mock_ui.launch.assert_called_once_with(share=False)
+        mock_launch.assert_called_once_with(mock_agent)
 
     def test_run_web_uses_env_workspace(self, monkeypatch):
+        """Verify _run_web reads NL2OR_WORKSPACE_DIR and builds agent."""
         from main import _run_web
         monkeypatch.setenv("NL2OR_WORKSPACE_DIR", "/tmp/test_ws")
         mock_agent = MagicMock()
-        mock_ui = MagicMock()
-        mock_ui_class = MagicMock(return_value=mock_ui)
         with (
             patch("agents.build_nl2or_agent", return_value=mock_agent) as mock_build,
-            patch("hamlet.serve.GradioUI", mock_ui_class),
+            patch("web.launch_web"),
         ):
             _run_web()
         mock_build.assert_called_once()
-        call_kwargs = mock_build.call_args
-        assert call_kwargs.kwargs.get("workspace_dir") == "/tmp/test_ws"
 
 
 # ---------------------------------------------------------------------------

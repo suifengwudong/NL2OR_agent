@@ -7,7 +7,8 @@ from typing import Any
 
 from hamlet.core.tools import Tool
 
-from schema.problem_ir import catalog_markdown, load_block_catalog, validate_problem_ir
+from core.ir_processor import catalog_markdown, load_block_catalog
+from core.ir_validator import validate_problem_ir
 
 
 class ListBlockCatalogTool(Tool):

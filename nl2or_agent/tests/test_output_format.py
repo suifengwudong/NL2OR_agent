@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from output_format import (
+from core.output_format import (
     extract_json_payload,
     format_for_display,
     validate_payload_dict,
