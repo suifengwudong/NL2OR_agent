@@ -33,7 +33,7 @@ def _run_cli() -> None:
     print("=" * 60)
     print()
 
-    agent = build_nl2or_agent(verbosity_level=1)
+    agent = build_nl2or_agent(verbosity_level=0)
     # state = None
 
     while True:
@@ -61,7 +61,7 @@ def _run_web() -> None:
     from agents import build_nl2or_agent
     from web import launch_web
 
-    agent = build_nl2or_agent(verbosity_level=2)
+    agent = build_nl2or_agent(verbosity_level=0)
     launch_web(agent)
 
 
