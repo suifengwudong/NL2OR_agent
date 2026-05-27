@@ -16,38 +16,59 @@ import importlib.resources
 
 from hamlet.core import CodeAgent, LiteLLMModel
 
-from schema.problem_ir import catalog_markdown
+from core.ir_processor import catalog_markdown
 from tools import (
     ListBlockCatalogTool,
     QueryModelLibraryTool,
     RunSolverTool,
     ValidateProblemIrTool,
 )
+from utils.session import get_session
 
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
-_DEFAULT_WORKSPACE = Path(__file__).parent.parent / "data" / "workspace"
+
+
+# NOTE: 这里需要考量到未来可能会有多个 prompt 文件的情况，因此单独写一个函数来加载所有 prompt，并且在系统 prompt 中附加上 IR 格式说明和 catalog。之后可以试试分开成不同层级的 prompt。
+
+def _load_prompt(prompt_path: str | Path) -> str:
+    """Load a prompt template from a file."""
+    p = prompt_path if isinstance(prompt_path, Path) else Path(prompt_path)
+    if p.exists():
+        return p.read_text(encoding="utf-8")
+    return ""
+
+def _load_all_prompts() -> dict[str, str]:
+    """Load all prompt templates from the prompts directory."""
+    prompts = {}
+    system_prompt_path = _PROMPTS_DIR / "system.prompt.md"
+    problem_ir_prompt_path = _PROMPTS_DIR / "problem_ir_format.prompt.md"
+    if system_prompt_path.exists():
+        prompts["system_prompt"] = system_prompt_path.read_text(encoding="utf-8")
+    if problem_ir_prompt_path.exists():
+        prompts["problem_ir_format"] = problem_ir_prompt_path.read_text(encoding="utf-8")
+    return prompts
 
 
 def _load_system_prompt() -> str:
     """Load system prompt and compositional IR appendix."""
     parts: list[str] = []
+    # 首先加载系统 prompt 的主体内容
     prompt_file = _PROMPTS_DIR / "system.prompt.md"
-    if prompt_file.exists():
-        parts.append(prompt_file.read_text(encoding="utf-8"))
-    ir_file = _PROMPTS_DIR / "problem_ir_format.md"
-    if ir_file.exists():
-        parts.append("\n\n---\n\n## Appendix: problem_ir_format\n\n")
-        parts.append(ir_file.read_text(encoding="utf-8"))
-        parts.append("\n\n### Canonical block_id catalog\n\n")
-        parts.append(catalog_markdown())
+    parts.append(_load_prompt(prompt_file))
+
+    # 然后附加上 IR 格式说明和 catalog
+    ir_file = _PROMPTS_DIR / "problem_ir_format.prompt.md"
+    parts.append("\n\n---\n\n## Appendix: problem_ir_format\n\n")
+    parts.append(_load_prompt(ir_file))
+    parts.append("\n\n### Canonical block_id catalog\n\n")
+    parts.append(catalog_markdown())
     return "\n".join(parts)
 
 
 def build_nl2or_agent(
     *,
     model_id: str | None = None,
-    workspace_dir: str | Path | None = None,
     verbosity_level: int = 1,
 ) -> CodeAgent:
     """Create and return a configured NL2OR CodeAgent.
@@ -55,11 +76,7 @@ def build_nl2or_agent(
     Parameters
     ----------
     model_id:
-        LiteLLM model identifier, e.g. ``"deepseek/deepseek-chat"`` or
-        ``"openai/gpt-4o"``. Defaults to the ``HAMLET_MODEL_ID`` env var,
-        falling back to ``"openai/gpt-4o-mini"``.
-    workspace_dir:
-        Directory where generated solver scripts are saved.
+        LiteLLM model identifier, defaults to the ``HAMLET_MODEL_ID``.
     verbosity_level:
         0 = silent, 1 = normal, 2 = verbose / debug.
 
@@ -68,26 +85,22 @@ def build_nl2or_agent(
     CodeAgent
         A fully configured agent ready to receive natural-language OR problems.
     """
-    _or_key = (os.getenv("OR_API_KEY") or "").strip()
-    if _or_key and not (os.getenv("OPENROUTER_API_KEY") or "").strip():
+    _or_key = (os.getenv("OPENROUTER_API_KEY") or "").strip()
+    if _or_key:
         os.environ["OPENROUTER_API_KEY"] = _or_key
 
     resolved_model_id = (
         model_id
         or os.getenv("HAMLET_MODEL_ID")
-        or "openai/gpt-4o-mini"
     )
-    resolved_workspace = Path(workspace_dir) if workspace_dir else _DEFAULT_WORKSPACE
-    # 在 .env 中会指定相同的路径
-    resolved_workspace.mkdir(parents=True, exist_ok=True)
 
-    model = LiteLLMModel(model_id=resolved_model_id)
+    model = LiteLLMModel(model_id=resolved_model_id, api_key=_or_key)
 
     tools = [
         ListBlockCatalogTool(),
         ValidateProblemIrTool(),
         QueryModelLibraryTool(),
-        RunSolverTool(workspace_dir=resolved_workspace),
+        RunSolverTool(),
     ]
 
     system_prompt = _load_system_prompt()
