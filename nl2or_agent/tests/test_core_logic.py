@@ -1,6 +1,5 @@
 import pytest
 import os
-from pathlib import Path
 from agents import build_nl2or_agent
 from hamlet.core import CodeAgent
 
@@ -18,10 +17,6 @@ def test_agent_initialization():
 def test_authorized_imports():
     """测试沙箱是否正确允许了必要的库导入。"""
     agent = build_nl2or_agent(verbosity_level=0)
-    # 尝试运行一个简单的导入代码
-    code = "import numpy as np; import scipy; import gurobipy; final_answer('success')"
-    # 注意：CodeAgent.run 内部会处理 Thought/Code 逻辑，我们这里模拟一次简单的调用
-    # 实际上我们检查 agent 实例的参数更直接
     assert "numpy" in agent.python_executor.authorized_imports
     assert "scipy.optimize" in agent.python_executor.authorized_imports
 

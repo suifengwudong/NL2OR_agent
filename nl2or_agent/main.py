@@ -35,8 +35,6 @@ def _run_cli() -> None:
     print()
 
     agent = build_nl2or_agent(verbosity_level=1)
-    state = None
-
     while True:
         try:
             user_input = input("用户 > ").strip()
