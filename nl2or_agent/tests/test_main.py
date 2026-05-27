@@ -2,23 +2,7 @@
 
 from __future__ import annotations
 
-import argparse
-import sys
-from io import StringIO
-from unittest.mock import MagicMock, call, patch
-
-import pytest
-
-
-# ---------------------------------------------------------------------------
-# Helper: import main module functions
-# ---------------------------------------------------------------------------
-
-def _import_main():
-    """Import main module with project root on sys.path."""
-    import importlib
-    import main as m
-    return m
+from unittest.mock import MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +93,10 @@ class TestRunCli:
     def test_cli_runs_agent_on_input(self):
         from main import _run_cli
         mock_agent = MagicMock()
-        mock_agent.run.return_value = "answer"
+        mock_agent.run.return_value = (
+            '{"conclusion":"ok","key_evidence":["x"],'
+            '"constraints_assumptions":["x"],"actionable_steps":["x"]}'
+        )
         with (
             patch("agents.build_nl2or_agent", return_value=mock_agent),
             patch("builtins.input", side_effect=["我有一个背包问题", "quit"]),
@@ -117,6 +104,19 @@ class TestRunCli:
         ):
             _run_cli()
         mock_agent.run.assert_called_once_with("我有一个背包问题", reset=False)
+
+    def test_cli_intercepts_invalid_final_answer_format(self):
+        from main import _run_cli
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = "not-json"
+        printed_messages = []
+        with (
+            patch("agents.build_nl2or_agent", return_value=mock_agent),
+            patch("builtins.input", side_effect=["question", "quit"]),
+            patch("builtins.print", side_effect=lambda *a, **kw: printed_messages.append(a[0] if a else "")),
+        ):
+            _run_cli()
+        assert any("FINAL_ANSWER_FORMAT_ERROR" in m for m in printed_messages)
 
     def test_cli_handles_agent_exception(self):
         """Agent raising an exception should print an error and continue."""
