@@ -9,8 +9,9 @@ env/
 # env
 **.env
 
+# generated session data
+data/sessions/
+
 # generated solver scripts from run_solver
 data/workspace/solver_*.py
-
-# generated solver scripts
-data/workspace/solver_*.py
+data/sessions/**/code/solver_*.py

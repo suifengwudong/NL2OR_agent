@@ -68,28 +68,57 @@ def _compact_model(m: dict[str, Any], blocks_bank: dict[str, Any]) -> dict[str, 
     out: dict[str, Any] = {
         "id": m["id"],
         "name": m["name"],
-        "type": m["type"],
-        "description": m["description"],
-        "variables": m.get("variables", []),
-        "objective": m.get("objective", ""),
-        "constraints": m.get("constraints", []),
-        "solver_hint": m.get("solver_hint", ""),
-        "template_code": m.get("template_code", ""),
+        "description": m.get("description", ""),
     }
+    # Preserve old-style fields if present (backward compat with tests)
+    if "type" in m:
+        out["type"] = m["type"]
+    if "variables" in m:
+        out["variables"] = m["variables"]
+    if "objective" in m:
+        out["objective"] = m["objective"]
+    if "constraints" in m:
+        out["constraints"] = m["constraints"]
+    if "solver_hint" in m:
+        out["solver_hint"] = m["solver_hint"]
+    if "template_code" in m:
+        out["template_code"] = m["template_code"]
+    # New-style family / blocks fields
+    if m.get("family"):
+        out["family"] = m["family"]
+    if m.get("is_family"):
+        out["is_family"] = True
+        out["base_blocks"] = m.get("base_blocks", [])
+    if m.get("objective_block"):
+        out["objective_block"] = m["objective_block"]
     if m.get("parameters"):
         out["parameters"] = m["parameters"]
-    if m.get("building_blocks"):
-        out["building_blocks"] = m["building_blocks"]
-        out["building_block_details"] = [
-            {
-                "id": b["id"],
-                "name": b["name"],
-                "category": b["category"],
-                "parameters": b.get("parameters", []),
-                "template_snippet": b.get("template_snippet", ""),
-            }
-            for b in _resolve_blocks(m, blocks_bank)
-        ]
+    # Resolve effective blocks via family inheritance
+    all_ids = list(m.get("blocks") or [])
+    if family_name := m.get("family"):
+        from core.ir_processor import load_model_bank
+        mb = load_model_bank()
+        family = mb["by_id"].get(family_name)
+        if family:
+            base = family.get("base_blocks") or []
+            for bid in reversed(base):
+                if bid not in all_ids:
+                    all_ids.insert(0, bid)
+    if all_ids:
+        out["blocks"] = all_ids
+        by_id = {b["id"]: b for b in blocks_bank.get("blocks", [])}
+        resolved = [by_id[bid] for bid in all_ids if bid in by_id]
+        if resolved:
+            out["block_details"] = [
+                {
+                    "id": b["id"],
+                    "name": b["name"],
+                    "category": b["category"],
+                    "parameters": b.get("parameters", []),
+                    "template_snippet": b.get("template_snippet", ""),
+                }
+                for b in resolved
+            ]
     return out
 
 

@@ -167,13 +167,15 @@ class TestRunSolverTool:
     def test_initialization_default_workspace(self):
         tool = RunSolverTool()
         assert tool.name == "run_solver"
-        assert tool._workspace.exists()
+        # _workspace is None by default — session-based storage
+        assert tool._workspace is None
 
     def test_initialization_custom_workspace(self, tmp_path: Path):
         workspace = tmp_path / "my_workspace"
         tool = RunSolverTool(workspace_dir=workspace)
         assert tool._workspace == workspace
-        assert workspace.exists()
+        # Directory is lazily created on first save_code() call, not in __init__
+        assert not workspace.exists()
 
     def test_save_code_creates_file(self, solver_tool: RunSolverTool):
         code = "print('hello')"
