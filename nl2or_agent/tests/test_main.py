@@ -2,23 +2,7 @@
 
 from __future__ import annotations
 
-import argparse
-import sys
-from io import StringIO
-from unittest.mock import MagicMock, call, patch
-
-import pytest
-
-
-# ---------------------------------------------------------------------------
-# Helper: import main module functions
-# ---------------------------------------------------------------------------
-
-def _import_main():
-    """Import main module with project root on sys.path."""
-    import importlib
-    import main as m
-    return m
+from unittest.mock import MagicMock, patch
 
 
 # ---------------------------------------------------------------------------

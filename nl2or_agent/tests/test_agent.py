@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from agents.nl2or_agent import _load_system_prompt, build_nl2or_agent
 from hamlet.core import CodeAgent
