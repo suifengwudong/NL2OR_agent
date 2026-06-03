@@ -26,7 +26,6 @@ from tools import (
 
 def build_nl2or_agent(
     *,
-    model_id: str | None = None,
     verbosity_level: int = 1,
 ) -> CodeAgent:
     """Create and return a configured NL2OR CodeAgent.
@@ -43,16 +42,16 @@ def build_nl2or_agent(
     CodeAgent
         A fully configured agent ready to receive natural-language OR problems.
     """
-    _or_key = (os.getenv("OPENROUTER_API_KEY") or "").strip()
-    if _or_key:
-        os.environ["OPENROUTER_API_KEY"] = _or_key
+    # _or_key = (os.getenv("OPENROUTER_API_KEY") or "").strip()
+    _or_key = os.getenv("OPENAI_API_KEY")
+    resolved_model_id = os.getenv("LLM_MODEL")
+    base_url = os.getenv("OPENAI_BASE_URL")
+    # if _or_key:
+    #     os.environ["OPENROUTER_API_KEY"] = _or_key
 
-    resolved_model_id = (
-        model_id
-        or os.getenv("HAMLET_MODEL_ID")
-    )
+    print(f"Using model: {resolved_model_id}, with base URL: {base_url}, with OPENAI_API_KEY: {'set' if _or_key else 'not set'}")
 
-    model = LiteLLMModel(model_id=resolved_model_id, api_key=_or_key)
+    model = LiteLLMModel(model_id=resolved_model_id, api_base=base_url, api_key=_or_key)
 
     tools = [
         ListBlockCatalogTool(),

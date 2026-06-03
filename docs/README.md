@@ -30,3 +30,82 @@
 2. 受限于项目范围与开发资源，**不实现全自动数据清洗功能**，但需以自然语言形式向学习者反馈数据异常原因与修正建议，辅助教学与问题排查。
 3. 数据校验模块定位为**增强性功能**，在项目开发中优先级低于核心端到端流程，可根据进度灵活安排实现。
 
+### 其他
+
+> 模型库写得太死板了，不好组装；
+>
+> constraint 模块和 objective 模块的设计过于细粒度，导致模型定义过于冗长，难以维护；
+> templates?
+> 识别目标函数和约束 -> templates 爬取 -> 生成  ------ pipeline
+
+```json
+{
+  "id": "p_median",
+  "family": "location_problem",
+  "name": "P-Median 选址",
+  "description": "正好开设 p 个设施，最小化所有需求点到其服务设施的总需求加权距离。",
+  "blocks": [
+    "cardinality_open_p_facilities"
+  ],
+  "objective_block": "weighted_service_distance_objective",
+  "variables": [
+    {
+      "symbol": "y_j",
+      "type": "binary",
+      "meaning": "若在候选点 j 开设设施则为 1，否则为 0"
+    },
+    {
+      "symbol": "x_ij",
+      "type": "binary",
+      "meaning": "若需求点 i 由候选设施 j 服务则为 1，否则为 0"
+    }
+  ],
+  "objective": "minimize sum_{i in I} sum_{j in J} h_i * d_ij * x_ij",
+  "constraints": [
+    "sum_{j in J} x_ij = 1, for all i in I",
+    "sum_{j in J} y_j = p",
+    "x_ij <= y_j, for all i in I, j in J",
+    "x_ij in {0,1}, for all i in I, j in J",
+    "y_j in {0,1}, for all j in J"
+  ],
+  "parameters": [
+    {
+      "name": "p",
+      "type": "integer",
+      "required": true,
+      "description": "需要开设的设施数量"
+    },
+    {
+      "name": "distance",
+      "type": "dict",
+      "required": true,
+      "description": "d_ij，需求点 i 到候选设施 j 的距离或服务成本"
+    },
+    {
+      "name": "demand",
+      "type": "dict",
+      "required": false,
+      "description": "h_i，需求点 i 的需求权重；若未给出可默认为 1"
+    },
+    {
+      "name": "weight",
+      "type": "dict",
+      "required": false,
+      "description": "兼容旧字段：需求权重，可与 demand 等价"
+    }
+  ],
+  "solver_hint": "0-1 integer programming; use Gurobi binary variables y[j], x[i,j].",
+  "keywords": [
+    "P-Median",
+    "p-median",
+    "p median",
+    "p中位",
+    "p中位数",
+    "中位选址",
+    "加权距离",
+    "总距离最小",
+    "average distance",
+    "minimize total demand-weighted distance"
+  ]
+},
+```

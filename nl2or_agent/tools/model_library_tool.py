@@ -8,63 +8,38 @@ from typing import Any
 
 from hamlet.core.tools import Tool
 
+from utils.search import parse_keywords, score_keywords, search_by_keywords
+
 _DEFAULT_BANK_PATH = Path(__file__).parent.parent / "data" / "model_bank" / "models.json"
 _DEFAULT_BLOCKS_PATH = Path(__file__).parent.parent / "data" / "model_bank" / "constraint_blocks.json"
 
 
-def _keyword_list(raw: str | list[str] | tuple[str, ...] | None) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, (list, tuple)):
-        return [str(kw).strip().lower() for kw in raw if str(kw).strip()]
-    text = str(raw).strip()
-    if not text:
-        return []
-    return [kw.strip().lower() for kw in text.split(",") if kw.strip()]
-
-
-def _score_keywords(keyword_list: list[str], haystack: list[str]) -> int:
-    haystack_lower = [h.lower() for h in haystack]
-    score = 0
-    for kw in keyword_list:
-        for h in haystack_lower:
-            if kw in h or h in kw:
-                score += 1
-                break
-    return score
-
-
 def _search_models(bank: dict[str, Any], keyword_list: list[str], limit: int = 3) -> list[dict[str, Any]]:
-    matches: list[dict[str, Any]] = []
-    for model in bank.get("models", []):
-        score = _score_keywords(keyword_list, model.get("keywords", []))
-        if score > 0:
-            matches.append({"score": score, "model": model})
-    matches.sort(key=lambda x: x["score"], reverse=True)
-    return [item["model"] for item in matches[:limit]]
+    """Search models by keywords, returning top matches ordered by score."""
+    return search_by_keywords(
+        bank.get("models", []),
+        keyword_list,
+        search_fields=["keywords"],
+        limit=limit,
+    )
 
 
 def _search_blocks(blocks_bank: dict[str, Any], keyword_list: list[str], limit: int = 8) -> list[dict[str, Any]]:
-    matches: list[dict[str, Any]] = []
-    for block in blocks_bank.get("blocks", []):
-        searchable = (
-            block.get("keywords", [])
-            + [block.get("id", ""), block.get("name", ""), block.get("category", "")]
-            + block.get("typical_models", [])
-        )
-        score = _score_keywords(keyword_list, searchable)
-        if score > 0:
-            matches.append({"score": score, "block": block})
-    matches.sort(key=lambda x: x["score"], reverse=True)
-    return [item["block"] for item in matches[:limit]]
+    """Search constraint blocks by keywords, returning top matches."""
+    return search_by_keywords(
+        blocks_bank.get("blocks", []),
+        keyword_list,
+        search_fields=["keywords", "id", "name", "category"],
+        limit=limit,
+    )
 
 
-def _resolve_blocks(model: dict[str, Any], blocks_bank: dict[str, Any]) -> list[dict[str, Any]]:
-    by_id = {b["id"]: b for b in blocks_bank.get("blocks", [])}
-    return [by_id[bid] for bid in (model.get("building_blocks") or []) if bid in by_id]
-
-
-def _compact_model(m: dict[str, Any], blocks_bank: dict[str, Any]) -> dict[str, Any]:
+def _compact_model(
+    m: dict[str, Any],
+    blocks_bank: dict[str, Any],
+    *,
+    mb: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     out: dict[str, Any] = {
         "id": m["id"],
         "name": m["name"],
@@ -96,9 +71,14 @@ def _compact_model(m: dict[str, Any], blocks_bank: dict[str, Any]) -> dict[str, 
     # Resolve effective blocks via family inheritance
     all_ids = list(m.get("blocks") or [])
     if family_name := m.get("family"):
-        from core.ir_processor import load_model_bank
-        mb = load_model_bank()
-        family = mb["by_id"].get(family_name)
+        # Prefer the already-loaded bank; fall back to disk read (legacy).
+        if mb is not None:
+            by_model_id = {mo["id"]: mo for mo in mb.get("models", [])}
+            family = by_model_id.get(family_name)
+        else:
+            from core.ir_catalog import load_model_bank  # pragma: no cover
+            mb = load_model_bank()
+            family = mb["by_id"].get(family_name)
         if family:
             base = family.get("base_blocks") or []
             for bid in reversed(base):
@@ -177,13 +157,15 @@ class QueryModelLibraryTool(Tool):
             with open(self._blocks_path, encoding="utf-8") as f:
                 blocks_bank = json.load(f)
 
-        template_kws = _keyword_list(keywords)
-        block_kws = _keyword_list(block_keywords)
+        template_kws = parse_keywords(keywords)
+        block_kws = parse_keywords(block_keywords)
         payload: dict[str, Any] = {}
 
         if template_kws:
             models = _search_models(bank, template_kws)
-            payload["templates"] = [_compact_model(m, blocks_bank) for m in models] if models else []
+            payload["templates"] = (
+                [_compact_model(m, blocks_bank, mb=bank) for m in models] if models else []
+            )
 
         if block_kws:
             blocks = _search_blocks(blocks_bank, block_kws)

@@ -8,7 +8,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .ir_processor import load_block_catalog, load_model_bank, normalize_problem_ir
+from .ir_catalog import load_block_catalog
+from .ir_normalizer import normalize_problem_ir
 
 
 def validate_problem_ir(

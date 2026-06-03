@@ -2,7 +2,7 @@
 
 **Labels:** `performance`, `low-priority`  
 **Priority:** 🟢 Low  
-**Status:** 📝 Open
+**Status:** ✅ Fixed — 2026-05-27 传入已加载 bank，消除重复 I/O
 
 ## 问题描述
 

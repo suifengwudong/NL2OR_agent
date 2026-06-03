@@ -2,7 +2,7 @@
 
 **Labels:** `ux`, `web`, `low-priority`  
 **Priority:** 🟢 Low  
-**Status:** 📝 Open
+**Status:** ✅ Fixed — 2026-05-27 展示所有会话并标记当前
 
 ## 问题描述
 

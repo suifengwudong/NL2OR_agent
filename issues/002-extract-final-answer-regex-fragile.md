@@ -2,7 +2,7 @@
 
 **Labels:** `bug`, `web`, `medium-priority`  
 **Priority:** 🟡 Medium  
-**Status:** 📝 Open
+**Status:** ✅ Fixed — 2026-05-27 `_display_answer` → `format_for_display` 替代正则解析
 
 ## 问题描述
 

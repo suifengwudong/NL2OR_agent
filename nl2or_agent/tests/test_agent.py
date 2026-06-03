@@ -81,7 +81,7 @@ class TestBuildNl2orAgent:
 
     def test_authorized_imports_include_required_libs(self):
         agent = build_nl2or_agent(verbosity_level=0)
-        imports = agent.python_executor.authorized_imports
+        imports = agent.additional_authorized_imports
         assert "numpy" in imports
         assert "scipy.optimize" in imports
         assert "pulp" in imports

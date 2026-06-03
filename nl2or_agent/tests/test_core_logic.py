@@ -17,15 +17,15 @@ def test_agent_initialization():
 def test_authorized_imports():
     """测试沙箱是否正确允许了必要的库导入。"""
     agent = build_nl2or_agent(verbosity_level=0)
-    assert "numpy" in agent.python_executor.authorized_imports
-    assert "scipy.optimize" in agent.python_executor.authorized_imports
+    assert "numpy" in agent.additional_authorized_imports
+    assert "scipy.optimize" in agent.additional_authorized_imports
 
 def test_parsing_step_one():
     """测试 Step 1：解析阶段。
     由于涉及真实的 LLM 调用，这里主要验证接口连通性和初步返回的格式。
     注意：这需要环境变量中有有效的 API Key。
     """
-    if not os.getenv("OPEN_ROUTER_API_KEY") and not os.getenv("OR_API_KEY"):
+    if not os.getenv("OPEN_ROUTER_API_KEY"):
         pytest.skip("跳过需要 API Key 的测试")
         
     agent = build_nl2or_agent(verbosity_level=1)

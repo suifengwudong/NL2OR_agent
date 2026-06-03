@@ -2,7 +2,7 @@
 
 **Labels:** `bug`, `concurrency`, `medium-priority`  
 **Priority:** 🟡 Medium  
-**Status:** 📝 Open
+**Status:** ✅ Fixed — 2026-05-27 改用 `threading.local`
 
 ## 问题描述
 

@@ -139,27 +139,36 @@ class TestRunCli:
 
 class TestRunWeb:
     def test_run_web_launches_gradio(self):
-        """Verify _run_web calls launch_web with the agent instance."""
+        """Verify _run_web calls launch_web with an agent factory function."""
         from main import _run_web
         mock_agent = MagicMock()
         with (
             patch("agents.build_nl2or_agent", return_value=mock_agent),
             patch("web.launch_web") as mock_launch,
+            patch("utils.session.prune_old_sessions", return_value=0),
         ):
             _run_web()
-        mock_launch.assert_called_once_with(mock_agent)
+        # launch_web is called with a callable (agent factory), not an agent
+        mock_launch.assert_called_once()
+        factory_arg = mock_launch.call_args[0][0]
+        assert callable(factory_arg)
+        # Invoke the factory to verify it delegates to build_nl2or_agent
+        agent = factory_arg()
+        assert agent is mock_agent
 
     def test_run_web_uses_env_workspace(self, monkeypatch):
-        """Verify _run_web reads NL2OR_WORKSPACE_DIR and builds agent."""
+        """Verify _run_web builds an agent factory (not a static agent)."""
         from main import _run_web
         monkeypatch.setenv("NL2OR_WORKSPACE_DIR", "/tmp/test_ws")
         mock_agent = MagicMock()
         with (
             patch("agents.build_nl2or_agent", return_value=mock_agent) as mock_build,
             patch("web.launch_web"),
+            patch("utils.session.prune_old_sessions", return_value=0),
         ):
             _run_web()
-        mock_build.assert_called_once()
+        # build_nl2or_agent is not called until the factory is invoked
+        mock_build.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
