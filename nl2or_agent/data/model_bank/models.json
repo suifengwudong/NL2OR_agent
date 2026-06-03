@@ -4,14 +4,19 @@
       "id": "location_problem",
       "is_family": true,
       "name": "选址问题族",
-      "description": "所有选址变体的公共骨架：决定开设哪些设施以服务需求点。",
+      "description": "所有选址变体的公共骨架：决定在候选点中开设哪些设施，并按具体问题选择分配、覆盖、容量或距离约束。",
       "base_blocks": [
         "assign_each_demand_once",
         "link_assignment_to_open"
       ],
       "optional_blocks": [
         "force_facility_open",
-        "force_facility_closed"
+        "force_facility_closed",
+        "cardinality_open_p_facilities",
+        "cardinality_open_at_most_p_facilities",
+        "cover_each_demand_at_least_once",
+        "demand_coverage_activation",
+        "max_service_distance_bound"
       ],
       "decision_variables": [
         {
@@ -22,71 +27,354 @@
         {
           "symbol": "x_ij",
           "type": "binary",
-          "meaning": "需求点 i 分配给设施 j"
+          "meaning": "需求点 i 是否分配给设施 j；用于 P-Median、P-Center、无容量设施选址等分配型选址模型"
+        },
+        {
+          "symbol": "z_i",
+          "type": "binary",
+          "meaning": "需求点 i 是否被覆盖；用于最大覆盖模型"
+        },
+        {
+          "symbol": "w",
+          "type": "continuous",
+          "meaning": "最大服务距离；用于 P-Center 模型"
         }
       ],
       "keywords": [
         "选址",
         "location",
         "facility",
-        "设施"
+        "设施",
+        "覆盖",
+        "服务距离"
       ]
     },
     {
       "id": "p_median",
       "family": "location_problem",
       "name": "P-Median 选址",
-      "description": "正好开设 p 个设施，最小化加权距离和。",
+      "description": "正好开设 p 个设施，最小化所有需求点到其服务设施的总需求加权距离。",
       "blocks": [
         "cardinality_open_p_facilities"
       ],
       "objective_block": "weighted_service_distance_objective",
+      "variables": [
+        {
+          "symbol": "y_j",
+          "type": "binary",
+          "meaning": "若在候选点 j 开设设施则为 1，否则为 0"
+        },
+        {
+          "symbol": "x_ij",
+          "type": "binary",
+          "meaning": "若需求点 i 由候选设施 j 服务则为 1，否则为 0"
+        }
+      ],
+      "objective": "minimize sum_{i in I} sum_{j in J} h_i * d_ij * x_ij",
+      "constraints": [
+        "sum_{j in J} x_ij = 1, for all i in I",
+        "sum_{j in J} y_j = p",
+        "x_ij <= y_j, for all i in I, j in J",
+        "x_ij in {0,1}, for all i in I, j in J",
+        "y_j in {0,1}, for all j in J"
+      ],
       "parameters": [
         {
           "name": "p",
           "type": "integer",
-          "required": true
+          "required": true,
+          "description": "需要开设的设施数量"
         },
         {
           "name": "distance",
           "type": "dict",
-          "required": true
+          "required": true,
+          "description": "d_ij，需求点 i 到候选设施 j 的距离或服务成本"
+        },
+        {
+          "name": "demand",
+          "type": "dict",
+          "required": false,
+          "description": "h_i，需求点 i 的需求权重；若未给出可默认为 1"
         },
         {
           "name": "weight",
           "type": "dict",
-          "required": false
+          "required": false,
+          "description": "兼容旧字段：需求权重，可与 demand 等价"
         }
       ],
+      "solver_hint": "0-1 integer programming; use Gurobi binary variables y[j], x[i,j].",
       "keywords": [
         "P-Median",
         "p-median",
+        "p median",
         "p中位",
-        "加权距离"
+        "p中位数",
+        "中位选址",
+        "加权距离",
+        "总距离最小",
+        "average distance",
+        "minimize total demand-weighted distance"
+      ]
+    },
+    {
+      "id": "set_covering",
+      "name": "集合覆盖选址",
+      "description": "在给定覆盖距离 C 下，选择成本最小的设施集合，使每个需求点至少被一个设施覆盖，即 100% 覆盖所有需求点。",
+      "blocks": [
+        "cover_each_demand_at_least_once"
+      ],
+      "objective_block": "facility_opening_cost_objective",
+      "variables": [
+        {
+          "symbol": "y_j",
+          "type": "binary",
+          "meaning": "若在候选点 j 开设设施则为 1，否则为 0"
+        }
+      ],
+      "objective": "minimize sum_{j in J} f_j * y_j",
+      "constraints": [
+        "sum_{j in J} a_ij * y_j >= 1, for all i in I",
+        "y_j in {0,1}, for all j in J",
+        "where a_ij = 1 if d_ij <= C, otherwise 0"
+      ],
+      "parameters": [
+        {
+          "name": "coverage_matrix",
+          "type": "dict",
+          "required": true,
+          "description": "a_ij，若候选设施 j 能覆盖需求点 i 则为 1，否则为 0"
+        },
+        {
+          "name": "fixed_cost",
+          "type": "dict",
+          "required": false,
+          "description": "f_j，在候选点 j 开设设施的固定成本；若未给出可默认为 1"
+        },
+        {
+          "name": "coverage_distance",
+          "type": "number",
+          "required": false,
+          "description": "C，覆盖距离阈值；若给定 distance，可由 d_ij <= C 生成 a_ij"
+        },
+        {
+          "name": "distance",
+          "type": "dict",
+          "required": false,
+          "description": "d_ij，需求点 i 到候选设施 j 的距离"
+        }
+      ],
+      "solver_hint": "0-1 integer programming; no assignment variable x_ij is required.",
+      "keywords": [
+        "Set Covering",
+        "set covering",
+        "集合覆盖",
+        "覆盖选址",
+        "全覆盖",
+        "100%覆盖",
+        "coverage distance",
+        "覆盖距离",
+        "覆盖半径",
+        "每个需求点至少覆盖",
+        "minimize facility cost"
+      ]
+    },
+    {
+      "id": "maximum_covering",
+      "name": "最大覆盖选址",
+      "description": "给定最多或正好 p 个设施，在覆盖距离 C 下最大化被覆盖的需求量。适合资源有限、无法保证 100% 覆盖时的选址问题。",
+      "blocks": [
+        "demand_coverage_activation",
+        "cardinality_open_p_facilities"
+      ],
+      "optional_blocks": [
+        "cardinality_open_at_most_p_facilities"
+      ],
+      "objective_block": "covered_demand_objective",
+      "variables": [
+        {
+          "symbol": "y_j",
+          "type": "binary",
+          "meaning": "若在候选点 j 开设设施则为 1，否则为 0"
+        },
+        {
+          "symbol": "z_i",
+          "type": "binary",
+          "meaning": "若需求点 i 被至少一个已开设设施覆盖则为 1，否则为 0"
+        }
+      ],
+      "objective": "maximize sum_{i in I} h_i * z_i",
+      "constraints": [
+        "z_i <= sum_{j in J} a_ij * y_j, for all i in I",
+        "sum_{j in J} y_j = p",
+        "y_j in {0,1}, for all j in J",
+        "z_i in {0,1}, for all i in I",
+        "where a_ij = 1 if d_ij <= C, otherwise 0"
+      ],
+      "parameters": [
+        {
+          "name": "p",
+          "type": "integer",
+          "required": true,
+          "description": "可开设的设施数量；若题目表述为“最多 p 个”，可使用 cardinality_open_at_most_p_facilities"
+        },
+        {
+          "name": "coverage_matrix",
+          "type": "dict",
+          "required": true,
+          "description": "a_ij，若候选设施 j 能覆盖需求点 i 则为 1，否则为 0"
+        },
+        {
+          "name": "demand",
+          "type": "dict",
+          "required": false,
+          "description": "h_i，需求点 i 的需求量或权重；若未给出可默认为 1"
+        },
+        {
+          "name": "coverage_distance",
+          "type": "number",
+          "required": false,
+          "description": "C，覆盖距离阈值；若给定 distance，可由 d_ij <= C 生成 a_ij"
+        },
+        {
+          "name": "distance",
+          "type": "dict",
+          "required": false,
+          "description": "d_ij，需求点 i 到候选设施 j 的距离"
+        }
+      ],
+      "solver_hint": "0-1 integer programming; use y[j] for opened facilities and z[i] for covered demand nodes.",
+      "keywords": [
+        "Maximum Covering",
+        "maximum covering",
+        "max covering",
+        "最大覆盖",
+        "最大覆盖选址",
+        "覆盖需求最大",
+        "有限设施",
+        "P个设施",
+        "maximize covered demand",
+        "covered demands"
+      ]
+    },
+    {
+      "id": "p_center",
+      "family": "location_problem",
+      "name": "P-Center 选址",
+      "description": "正好开设 p 个设施，最小化任一需求点到其最近服务设施的最大距离，强调最坏服务距离公平性。",
+      "blocks": [
+        "cardinality_open_p_facilities",
+        "max_service_distance_bound"
+      ],
+      "objective_block": "minimize_max_distance_objective",
+      "variables": [
+        {
+          "symbol": "y_j",
+          "type": "binary",
+          "meaning": "若在候选点 j 开设设施则为 1，否则为 0"
+        },
+        {
+          "symbol": "x_ij",
+          "type": "binary",
+          "meaning": "若需求点 i 由候选设施 j 服务则为 1，否则为 0"
+        },
+        {
+          "symbol": "w",
+          "type": "continuous",
+          "meaning": "所有需求点到其服务设施距离的最大值"
+        }
+      ],
+      "objective": "minimize w",
+      "constraints": [
+        "sum_{j in J} x_ij = 1, for all i in I",
+        "sum_{j in J} y_j = p",
+        "x_ij <= y_j, for all i in I, j in J",
+        "d_ij * x_ij <= w, for all i in I, j in J",
+        "x_ij in {0,1}, for all i in I, j in J",
+        "y_j in {0,1}, for all j in J",
+        "w >= 0"
+      ],
+      "parameters": [
+        {
+          "name": "p",
+          "type": "integer",
+          "required": true,
+          "description": "需要开设的设施数量"
+        },
+        {
+          "name": "distance",
+          "type": "dict",
+          "required": true,
+          "description": "d_ij，需求点 i 到候选设施 j 的距离"
+        }
+      ],
+      "solver_hint": "0-1 integer programming with an auxiliary continuous variable w for the maximum distance.",
+      "keywords": [
+        "P-Center",
+        "p-center",
+        "p center",
+        "p中心",
+        "中心选址",
+        "最大距离最小",
+        "最坏距离",
+        "最小化最大距离",
+        "minimize maximum distance",
+        "max distance",
+        "fairness"
       ]
     },
     {
       "id": "facility_location",
       "family": "location_problem",
       "name": "无容量设施选址",
-      "description": "固定成本+服务成本最小化。",
-      "objective": "min sum(f_j * y_j) + sum(c_ij * x_ij)",
+      "description": "在无容量限制下，同时考虑设施固定开设成本和需求点服务成本，最小化固定成本与服务成本之和。",
+      "blocks": [],
+      "objective_block": "fixed_plus_service_cost_objective",
+      "variables": [
+        {
+          "symbol": "y_j",
+          "type": "binary",
+          "meaning": "若在候选点 j 开设设施则为 1，否则为 0"
+        },
+        {
+          "symbol": "x_ij",
+          "type": "binary",
+          "meaning": "若需求点 i 分配给设施 j 服务则为 1，否则为 0"
+        }
+      ],
+      "objective": "minimize sum_{j in J} f_j * y_j + sum_{i in I} sum_{j in J} c_ij * x_ij",
+      "constraints": [
+        "sum_{j in J} x_ij = 1, for all i in I",
+        "x_ij <= y_j, for all i in I, j in J",
+        "x_ij in {0,1}, for all i in I, j in J",
+        "y_j in {0,1}, for all j in J"
+      ],
       "parameters": [
         {
           "name": "fixed_cost",
           "type": "dict",
-          "required": true
+          "required": true,
+          "description": "f_j，在候选点 j 开设设施的固定成本"
         },
         {
           "name": "service_cost",
           "type": "dict",
-          "required": true
+          "required": true,
+          "description": "c_ij，需求点 i 由设施 j 服务的单位服务成本"
         }
       ],
+      "solver_hint": "0-1 integer programming; use assignment-open linking x[i,j] <= y[j].",
       "keywords": [
         "选址",
         "facility location",
-        "固定成本"
+        "uncapacitated facility location",
+        "UFLP",
+        "无容量设施选址",
+        "固定成本",
+        "fixed charge",
+        "固定费用",
+        "服务成本"
       ]
     },
     {

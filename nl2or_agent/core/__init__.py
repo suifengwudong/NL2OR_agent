@@ -4,12 +4,8 @@ This module separates the "processing engine" from the "data definition" layer (
 Schema defines what the IR looks like; core implements how it is transformed and validated.
 """
 
-from .ir_processor import (
-    catalog_markdown,
-    load_block_catalog,
-    load_model_bank,
-    normalize_problem_ir,
-)
+from .ir_catalog import catalog_markdown, load_block_catalog, load_model_bank
+from .ir_normalizer import normalize_problem_ir
 from .ir_validator import validate_problem_ir
 from .output_format import (
     extract_json_payload,

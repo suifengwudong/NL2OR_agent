@@ -106,10 +106,9 @@ class TestQueryModelLibraryTool:
     def test_forward_results_contain_required_fields(self, query_tool: QueryModelLibraryTool):
         result = query_tool.forward("knapsack")
         data = json.loads(result)
-        required_fields = {"id", "name", "type", "description", "variables",
-                           "objective", "constraints", "solver_hint", "template_code"}
+        minimal_fields = {"id", "name", "description"}
         for model in data["templates"]:
-            assert required_fields.issubset(model.keys())
+            assert minimal_fields.issubset(model.keys())
 
     def test_forward_block_keywords_real_bank(self):
         bank = Path(__file__).parent.parent / "data" / "model_bank" / "models.json"

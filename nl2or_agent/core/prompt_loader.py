@@ -20,7 +20,7 @@ def _load_prompt(prompt_path: str | Path) -> str:
 
 def load_system_prompt() -> str:
     """Load system prompt with compositional IR appendix and block catalog."""
-    from .ir_processor import catalog_markdown
+    from .ir_catalog import catalog_markdown
 
     parts: list[str] = []
 

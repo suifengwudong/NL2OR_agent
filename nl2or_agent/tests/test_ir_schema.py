@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from core.ir_processor import normalize_problem_ir
+from core.ir_normalizer import normalize_problem_ir
 from core.ir_validator import validate_problem_ir
 from tools import ListBlockCatalogTool, ValidateProblemIrTool
 

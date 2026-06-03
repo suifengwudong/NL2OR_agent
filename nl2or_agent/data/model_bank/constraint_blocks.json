@@ -11,12 +11,19 @@
       ],
       "keywords": [
         "assignment",
-        "分配"
+        "分配",
+        "唯一分配",
+        "服务一次"
+      ],
+      "typical_models": [
+        "p_median",
+        "p_center",
+        "facility_location"
       ],
       "description": "每个需求点 i 恰好分配给一个设施",
-      "math": "\\\\sum_j x_{ij} = 1",
+      "math": "\\sum_{j \\in J} x_{ij} = 1, \\quad \\forall i \\in I",
       "parameters": [],
-      "template_snippet": "for i in demand_points:\n    m.addConstr(gp.quicksum(x[i, j] for j in facilities) == 1)"
+      "template_snippet": "for i in demand_points:\n    m.addConstr(gp.quicksum(x[i, j] for j in facilities) == 1, name=f'assign_{i}')"
     },
     {
       "id": "link_assignment_to_open",
@@ -24,16 +31,24 @@
       "category": "linking",
       "aliases": [
         "linking",
-        "capacity_link"
+        "capacity_link",
+        "assignment_open_link"
       ],
       "keywords": [
         "linking",
-        "联动"
+        "联动",
+        "开设后才能服务",
+        "facility opening"
+      ],
+      "typical_models": [
+        "p_median",
+        "p_center",
+        "facility_location"
       ],
       "description": "只有开设的设施才能接收分配",
-      "math": "x_{ij} \\\\leq y_j",
+      "math": "x_{ij} \\leq y_j, \\quad \\forall i \\in I, j \\in J",
       "parameters": [],
-      "template_snippet": "for i in demand_points:\n    for j in facilities:\n        m.addConstr(x[i, j] <= y[j])"
+      "template_snippet": "for i in demand_points:\n    for j in facilities:\n        m.addConstr(x[i, j] <= y[j], name=f'link_{i}_{j}')"
     },
     {
       "id": "cardinality_open_p_facilities",
@@ -42,14 +57,24 @@
       "aliases": [
         "cardinality",
         "p_facility",
-        "select_p"
+        "select_p",
+        "open_exactly_p"
       ],
       "keywords": [
         "p-median",
-        "cardinality"
+        "p-center",
+        "maximum covering",
+        "cardinality",
+        "恰好P个",
+        "开设P个"
+      ],
+      "typical_models": [
+        "p_median",
+        "p_center",
+        "maximum_covering"
       ],
       "description": "恰好开设 p 个设施",
-      "math": "\\\\sum_j y_j = p",
+      "math": "\\sum_{j \\in J} y_j = p",
       "parameters": [
         {
           "name": "p",
@@ -57,7 +82,37 @@
           "required": true
         }
       ],
-      "template_snippet": "m.addConstr(gp.quicksum(y[j] for j in facilities) == p)"
+      "template_snippet": "m.addConstr(gp.quicksum(y[j] for j in facilities) == p, name='open_exactly_p')"
+    },
+    {
+      "id": "cardinality_open_at_most_p_facilities",
+      "name": "最多开设 P 个设施",
+      "category": "cardinality",
+      "aliases": [
+        "open_at_most_p",
+        "at_most_p_facilities",
+        "maximum_number_of_facilities"
+      ],
+      "keywords": [
+        "最多P个",
+        "不超过P个",
+        "maximum number of facilities",
+        "at most p",
+        "maximum covering"
+      ],
+      "typical_models": [
+        "maximum_covering"
+      ],
+      "description": "最多开设 p 个设施；当题目说“maximum number of facilities”或“最多 p 个”时使用",
+      "math": "\\sum_{j \\in J} y_j \\leq p",
+      "parameters": [
+        {
+          "name": "p",
+          "type": "integer",
+          "required": true
+        }
+      ],
+      "template_snippet": "m.addConstr(gp.quicksum(y[j] for j in facilities) <= p, name='open_at_most_p')"
     },
     {
       "id": "force_facility_open",
@@ -70,10 +125,12 @@
       ],
       "keywords": [
         "forcing open",
-        "must open"
+        "must open",
+        "强制开设",
+        "必须开设"
       ],
       "description": "强制开设指定设施",
-      "math": "y_j = 1",
+      "math": "y_j = 1, \\quad \\forall j \\in J^{open}",
       "parameters": [
         {
           "name": "forced_open",
@@ -81,7 +138,7 @@
           "required": true
         }
       ],
-      "template_snippet": "for j in forced_open:\n    m.addConstr(y[j] == 1)"
+      "template_snippet": "for j in forced_open:\n    m.addConstr(y[j] == 1, name=f'force_open_{j}')"
     },
     {
       "id": "force_facility_closed",
@@ -90,14 +147,17 @@
       "aliases": [
         "prohibiting",
         "forcing_closed",
-        "must_close"
+        "must_close",
+        "force_closed"
       ],
       "keywords": [
         "forcing closed",
-        "禁止开设"
+        "禁止开设",
+        "不能开设",
+        "must close"
       ],
       "description": "禁止开设指定设施",
-      "math": "y_j = 0",
+      "math": "y_j = 0, \\quad \\forall j \\in J^{closed}",
       "parameters": [
         {
           "name": "forced_closed",
@@ -105,7 +165,7 @@
           "required": true
         }
       ],
-      "template_snippet": "for j in forced_closed:\n    m.addConstr(y[j] == 0)"
+      "template_snippet": "for j in forced_closed:\n    m.addConstr(y[j] == 0, name=f'force_closed_{j}')"
     },
     {
       "id": "weighted_service_distance_objective",
@@ -113,15 +173,28 @@
       "category": "objective",
       "aliases": [
         "weighted_distance",
-        "minimize_weighted_distance"
+        "minimize_weighted_distance",
+        "service_distance",
+        "p_median_objective"
       ],
       "keywords": [
         "weighted distance",
-        "p-median"
+        "p-median",
+        "加权距离",
+        "总距离最小",
+        "需求加权距离"
       ],
-      "description": "最小化加权总服务距离",
-      "math": "\\\\min \\\\sum_{i,j} w_i d_{ij} x_{ij}",
+      "typical_models": [
+        "p_median"
+      ],
+      "description": "最小化需求加权总服务距离",
+      "math": "\\min \\sum_{i \\in I}\\sum_{j \\in J} h_i d_{ij} x_{ij}",
       "parameters": [
+        {
+          "name": "demand",
+          "type": "dict",
+          "required": false
+        },
         {
           "name": "weight",
           "type": "dict",
@@ -133,7 +206,219 @@
           "required": true
         }
       ],
-      "template_snippet": "m.setObjective(gp.quicksum(weight[i]*distance[i,j]*x[i,j] for i in demand_points for j in facilities), GRB.MINIMIZE)"
+      "template_snippet": "m.setObjective(gp.quicksum(demand.get(i, 1) * distance[i, j] * x[i, j] for i in demand_points for j in facilities), GRB.MINIMIZE)"
+    },
+    {
+      "id": "facility_opening_cost_objective",
+      "name": "设施开设成本目标",
+      "category": "objective",
+      "aliases": [
+        "opening_cost",
+        "facility_cost",
+        "set_covering_objective",
+        "minimize_facility_cost"
+      ],
+      "keywords": [
+        "set covering",
+        "facility cost",
+        "opening cost",
+        "固定成本",
+        "设施成本",
+        "集合覆盖"
+      ],
+      "typical_models": [
+        "set_covering"
+      ],
+      "description": "最小化设施固定开设成本；若所有 f_j 相同，则等价于最小化设施数量",
+      "math": "\\min \\sum_{j \\in J} f_j y_j",
+      "parameters": [
+        {
+          "name": "fixed_cost",
+          "type": "dict",
+          "required": false
+        }
+      ],
+      "template_snippet": "m.setObjective(gp.quicksum(fixed_cost.get(j, 1) * y[j] for j in facilities), GRB.MINIMIZE)"
+    },
+    {
+      "id": "fixed_plus_service_cost_objective",
+      "name": "固定成本加服务成本目标",
+      "category": "objective",
+      "aliases": [
+        "fixed_plus_service",
+        "facility_location_objective",
+        "uflp_objective"
+      ],
+      "keywords": [
+        "facility location",
+        "fixed cost",
+        "service cost",
+        "固定成本",
+        "服务成本",
+        "无容量设施选址"
+      ],
+      "typical_models": [
+        "facility_location"
+      ],
+      "description": "最小化设施固定开设成本与需求服务成本之和",
+      "math": "\\min \\sum_{j \\in J} f_j y_j + \\sum_{i \\in I}\\sum_{j \\in J} c_{ij} x_{ij}",
+      "parameters": [
+        {
+          "name": "fixed_cost",
+          "type": "dict",
+          "required": true
+        },
+        {
+          "name": "service_cost",
+          "type": "dict",
+          "required": true
+        }
+      ],
+      "template_snippet": "m.setObjective(gp.quicksum(fixed_cost[j] * y[j] for j in facilities) + gp.quicksum(service_cost[i, j] * x[i, j] for i in demand_points for j in facilities), GRB.MINIMIZE)"
+    },
+    {
+      "id": "cover_each_demand_at_least_once",
+      "name": "需求点至少覆盖一次",
+      "category": "coverage",
+      "aliases": [
+        "set_covering_constraint",
+        "cover_all_demands",
+        "at_least_one_cover"
+      ],
+      "keywords": [
+        "set covering",
+        "cover all",
+        "覆盖所有需求",
+        "每个需求点至少覆盖",
+        "100%覆盖"
+      ],
+      "typical_models": [
+        "set_covering"
+      ],
+      "description": "每个需求点至少被一个可覆盖它的已开设设施覆盖",
+      "math": "\\sum_{j \\in J} a_{ij} y_j \\geq 1, \\quad \\forall i \\in I",
+      "parameters": [
+        {
+          "name": "coverage_matrix",
+          "type": "dict",
+          "required": true
+        }
+      ],
+      "template_snippet": "for i in demand_points:\n    m.addConstr(gp.quicksum(coverage_matrix[i, j] * y[j] for j in facilities) >= 1, name=f'cover_{i}')"
+    },
+    {
+      "id": "demand_coverage_activation",
+      "name": "需求覆盖状态联动",
+      "category": "coverage",
+      "aliases": [
+        "coverage_activation",
+        "max_covering_constraint",
+        "covered_if_open_nearby"
+      ],
+      "keywords": [
+        "maximum covering",
+        "coverage activation",
+        "最大覆盖",
+        "覆盖状态",
+        "被覆盖需求"
+      ],
+      "typical_models": [
+        "maximum_covering"
+      ],
+      "description": "只有当至少一个可覆盖需求点 i 的设施被开设时，需求点 i 才能被计为已覆盖",
+      "math": "z_i \\leq \\sum_{j \\in J} a_{ij} y_j, \\quad \\forall i \\in I",
+      "parameters": [
+        {
+          "name": "coverage_matrix",
+          "type": "dict",
+          "required": true
+        }
+      ],
+      "template_snippet": "for i in demand_points:\n    m.addConstr(z[i] <= gp.quicksum(coverage_matrix[i, j] * y[j] for j in facilities), name=f'coverage_activation_{i}')"
+    },
+    {
+      "id": "covered_demand_objective",
+      "name": "最大化覆盖需求目标",
+      "category": "objective",
+      "aliases": [
+        "max_covered_demand",
+        "maximum_covering_objective",
+        "covered_demand"
+      ],
+      "keywords": [
+        "maximum covering",
+        "maximize covered demand",
+        "最大覆盖",
+        "覆盖需求最大",
+        "covered demands"
+      ],
+      "typical_models": [
+        "maximum_covering"
+      ],
+      "description": "最大化被覆盖需求点的需求量或权重之和",
+      "math": "\\max \\sum_{i \\in I} h_i z_i",
+      "parameters": [
+        {
+          "name": "demand",
+          "type": "dict",
+          "required": false
+        }
+      ],
+      "template_snippet": "m.setObjective(gp.quicksum(demand.get(i, 1) * z[i] for i in demand_points), GRB.MAXIMIZE)"
+    },
+    {
+      "id": "minimize_max_distance_objective",
+      "name": "最小化最大服务距离目标",
+      "category": "objective",
+      "aliases": [
+        "p_center_objective",
+        "minimize_max_distance",
+        "minimax_distance"
+      ],
+      "keywords": [
+        "p-center",
+        "minimize maximum distance",
+        "最小化最大距离",
+        "最大距离最小",
+        "p中心"
+      ],
+      "typical_models": [
+        "p_center"
+      ],
+      "description": "最小化所有需求点到其服务设施距离中的最大值",
+      "math": "\\min w",
+      "parameters": [],
+      "template_snippet": "m.setObjective(w, GRB.MINIMIZE)"
+    },
+    {
+      "id": "max_service_distance_bound",
+      "name": "最大服务距离上界",
+      "category": "distance",
+      "aliases": [
+        "p_center_distance_bound",
+        "max_distance_bound",
+        "minimax_bound"
+      ],
+      "keywords": [
+        "p-center",
+        "max distance",
+        "maximum distance",
+        "最大距离",
+        "服务距离上界"
+      ],
+      "typical_models": [
+        "p_center"
+      ],
+      "description": "用辅助变量 w 约束所有实际分配的服务距离，确保 w 不小于任一被选择分配边的距离",
+      "math": "d_{ij} x_{ij} \\leq w, \\quad \\forall i \\in I, j \\in J",
+      "parameters": [
+        {
+          "name": "distance",
+          "type": "dict",
+          "required": true
+        }
+      ],
+      "template_snippet": "for i in demand_points:\n    for j in facilities:\n        m.addConstr(distance[i, j] * x[i, j] <= w, name=f'max_dist_{i}_{j}')"
     },
     {
       "id": "knapsack_capacity",
@@ -147,7 +432,7 @@
         "capacity"
       ],
       "description": "总重量不超过容量",
-      "math": "\\\\sum_i w_i x_i \\\\leq W",
+      "math": "\\sum_i w_i x_i \\leq W",
       "parameters": [
         {
           "name": "capacity",

@@ -65,12 +65,21 @@ def _run_cli() -> None:
 
 
 def _run_web() -> None:
-    """Launch the NL2OR web GUI."""
+    """Launch the NL2OR web GUI.
+
+    Each browser tab gets its own agent instance (via ``gr.State``) so
+    conversation history and solver artifacts are isolated per user.
+    """
     from agents import build_nl2or_agent
     from web import launch_web
+    from utils.session import prune_old_sessions
 
-    agent = build_nl2or_agent(verbosity_level=0)
-    launch_web(agent)
+    prune_old_sessions(max_age_days=30)
+
+    def agent_factory():
+        return build_nl2or_agent(verbosity_level=0)
+
+    launch_web(agent_factory)
 
 
 def main() -> None:

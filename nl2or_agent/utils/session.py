@@ -1,12 +1,15 @@
 """Session-scoped workspace management for solver artifacts.
 
 Each conversation gets a unique session directory under
-``data/workspace/sessions/``.  Solvers, logs, and intermediate results are
+``data/workspace/sessions/``.  Solvers, logs, and conversation history are
 isolated per session.
 """
 
 from __future__ import annotations
 
+import json
+import shutil
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +26,10 @@ class Session:
         self.workspace = _SESSIONS_ROOT / self.session_id
         self.workspace.mkdir(parents=True, exist_ok=True)
 
+    # ----------------------------------------------------------------
+    # Directory properties
+    # ----------------------------------------------------------------
+
     @property
     def code_dir(self) -> Path:
         """Directory for solver code files."""
@@ -37,6 +44,15 @@ class Session:
         d.mkdir(parents=True, exist_ok=True)
         return d
 
+    @property
+    def conversation_file(self) -> Path:
+        """Path to the conversation log (JSON Lines)."""
+        return self.workspace / "conversation.jsonl"
+
+    # ----------------------------------------------------------------
+    # Code / output persistence
+    # ----------------------------------------------------------------
+
     def save_code(self, code: str, filename: str | None = None) -> Path:
         """Write solver code to the session code directory."""
         fname = filename or f"solver_{uuid.uuid4().hex[:8]}.py"
@@ -50,6 +66,39 @@ class Session:
         path.write_text(content, encoding="utf-8")
         return path
 
+    # ----------------------------------------------------------------
+    # Conversation history persistence
+    # ----------------------------------------------------------------
+
+    def save_conversation_entry(
+        self, role: str, content: str
+    ) -> None:
+        """Append one conversation turn (user / assistant / system) to the
+        session's JSONL log file."""
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "role": role,
+            "content": content,
+        }
+        with open(self.conversation_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    def load_conversation(self) -> list[dict]:
+        """Load the full conversation history for this session."""
+        if not self.conversation_file.is_file():
+            return []
+        history: list[dict] = []
+        with open(self.conversation_file, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    history.append(json.loads(line))
+        return history
+
+    # ----------------------------------------------------------------
+    # File listing
+    # ----------------------------------------------------------------
+
     def list_code_files(self) -> list[Path]:
         """Return all solver files in this session."""
         return sorted(self.code_dir.glob("*.py")) if self.code_dir.exists() else []
@@ -58,9 +107,9 @@ class Session:
         """Return all output files in this session."""
         return sorted(self.output_dir.glob("*")) if self.output_dir.exists() else []
 
-    # ------------------------------------------------------------------
+    # ----------------------------------------------------------------
     # Class methods for session discovery
-    # ------------------------------------------------------------------
+    # ----------------------------------------------------------------
 
     @classmethod
     def list_all(cls) -> list[str]:
@@ -89,28 +138,35 @@ class Session:
         removed = 0
         for d in _SESSIONS_ROOT.iterdir():
             if d.is_dir() and d.stat().st_mtime < cutoff:
-                import shutil
                 shutil.rmtree(d)
                 removed += 1
         return removed
 
 
 # ---------------------------------------------------------------------------
-# Module-level singleton helpers
+# Thread-safe per-thread session storage (replaces module-level singleton)
 # ---------------------------------------------------------------------------
 
-_current_session: Session | None = None
+_tls = threading.local()
 
 
 def get_session(session_id: str | None = None) -> Session:
-    """Get or create the current session."""
-    global _current_session
-    if _current_session is None or (session_id and _current_session.session_id != session_id):
-        _current_session = Session(session_id=session_id)
-    return _current_session
+    """Get or create the **current thread's** session.
+
+    Thread-safe: each thread / Gradio request gets its own Session instance
+    via ``threading.local``, avoiding cross-user contamination.
+    """
+    current: Session | None = getattr(_tls, "session", None)
+    if current is None or (session_id and current.session_id != session_id):
+        _tls.session = Session(session_id=session_id)
+    return _tls.session
 
 
 def reset_session() -> None:
-    """Reset the current session (create a new one next call)."""
-    global _current_session
-    _current_session = None
+    """Reset the current thread's session (create a new one next call)."""
+    _tls.session = None
+
+
+def prune_old_sessions(max_age_days: int = 30) -> int:
+    """Convenience wrapper for periodic cleanup (called on app startup)."""
+    return Session.prune(max_age_days=max_age_days)

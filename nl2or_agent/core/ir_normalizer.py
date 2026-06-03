@@ -1,96 +1,27 @@
-"""IR normalization: loading catalog, normalizing Problem IR.
+"""IR normalization: normalize Problem IR against block catalog and model bank.
 
-Pulled out of schema/problem_ir.py to separate the "processing engine" from the
-"data definition" layer.  Validation logic moved to ir_validator.py.
+Separated from ir_catalog.py to keep data-loading and normalization logic
+in distinct modules.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 from schema.problem_ir import (
-    BLOCK_ID_ALIASES,
     FAMILY_ID_ALIASES,
     FORBIDDEN_AS_BLOCK,
     OBJECTIVE_BLOCK_ALIASES,
     VALID_STATUS,
 )
 
-# ---------------------------------------------------------------------------
-# Data file paths
-# ---------------------------------------------------------------------------
+from .ir_catalog import load_block_catalog, load_model_bank
 
-_BLOCKS_PATH = Path(__file__).parent.parent / "data" / "model_bank" / "constraint_blocks.json"
-_MODELS_PATH = Path(__file__).parent.parent / "data" / "model_bank" / "models.json"
 
 # ---------------------------------------------------------------------------
-# Public helpers
+# Public API
 # ---------------------------------------------------------------------------
-
-
-def load_model_bank(models_path: Path | None = None) -> dict[str, Any]:
-    """Load models.json and build a family-resolution index."""
-    path = models_path or _MODELS_PATH
-    with open(path, encoding="utf-8") as f:
-        bank = json.load(f)
-    models = bank.get("models", [])
-    by_id = {m["id"]: m for m in models}
-
-    # Resolve effective blocks for each concrete model (follow family chain)
-    effective_blocks: dict[str, list[str]] = {}
-    for m in models:
-        if m.get("is_family"):
-            continue
-        family_name = m.get("family")
-        blocks = list(m.get("blocks") or [])
-        if family_name and family_name in by_id:
-            family = by_id[family_name]
-            base = family.get("base_blocks") or []
-            for b in reversed(base):
-                if b not in blocks:
-                    blocks.insert(0, b)
-        effective_blocks[m["id"]] = blocks
-
-    bank["by_id"] = by_id
-    bank["effective_blocks"] = effective_blocks
-    return bank
-
-
-def load_block_catalog(blocks_path: Path | None = None) -> dict[str, Any]:
-    """Load constraint_blocks.json and build lookup indices."""
-    path = blocks_path or _BLOCKS_PATH
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
-    blocks = data.get("blocks", [])
-    by_id = {b["id"]: b for b in blocks}
-    alias_to_id: dict[str, str] = dict(BLOCK_ID_ALIASES)
-    for block in blocks:
-        for alias in block.get("aliases", []):
-            alias_to_id[str(alias).strip().lower()] = block["id"]
-    return {
-        "blocks": blocks,
-        "by_id": by_id,
-        "alias_to_id": alias_to_id,
-        "block_ids": sorted(by_id.keys()),
-        "objective_block_ids": sorted(
-            b["id"] for b in blocks if b.get("category") == "objective"
-        ),
-    }
-
-
-def catalog_markdown(blocks_path: Path | None = None) -> str:
-    """Compact block id list for prompts."""
-    catalog = load_block_catalog(blocks_path)
-    lines = ["| block_id | category | 必填参数 |", "|----------|----------|----------|"]
-    for bid in catalog["block_ids"]:
-        b = catalog["by_id"][bid]
-        req = ", ".join(
-            p["name"] for p in b.get("parameters", []) if p.get("required")
-        ) or "—"
-        lines.append(f"| `{bid}` | {b.get('category', '')} | {req} |")
-    return "\n".join(lines)
 
 
 def normalize_problem_ir(
@@ -145,7 +76,9 @@ def normalize_problem_ir(
                 continue
             seen.add(nb["block_id"])
             if nb["category"] == "objective":
-                warnings.append(f"目标块 {nb['block_id']} 应放在 objective，不应在 constraint_blocks")
+                warnings.append(
+                    f"目标块 {nb['block_id']} 应放在 objective，不应在 constraint_blocks"
+                )
                 continue
             normalized_blocks.append(nb)
     out["constraint_blocks"] = normalized_blocks
@@ -167,7 +100,7 @@ def normalize_problem_ir(
 
 
 # ---------------------------------------------------------------------------
-# Internal normalization helpers
+# Internal helpers
 # ---------------------------------------------------------------------------
 
 
@@ -199,20 +132,21 @@ def _normalize_confidence(val: Any) -> str:
     return "medium"
 
 
-def _normalize_family(fam: Any, catalog: dict[str, Any], model_ids: set[str]) -> dict[str, Any]:
+def _normalize_family(
+    fam: Any, catalog: dict[str, Any], model_ids: set[str]
+) -> dict[str, Any]:
     if not isinstance(fam, dict):
         return {"id": "unknown", "name": str(fam), "confidence": "medium", "notes": ""}
     raw_id = (fam.get("id") or fam.get("name") or "unknown").strip().lower()
     fam_id = FAMILY_ID_ALIASES.get(raw_id, raw_id.replace(" ", "_").replace("-", "_"))
     if fam_id not in model_ids and raw_id in model_ids:
         fam_id = raw_id
-    out = {
+    return {
         "id": fam_id,
         "name": fam.get("name") or fam_id,
         "confidence": _normalize_confidence(fam.get("confidence", "medium")),
         "notes": fam.get("notes") or "",
     }
-    return out
 
 
 def _normalize_objective(obj: Any, catalog: dict[str, Any]) -> dict[str, Any]:
@@ -224,7 +158,11 @@ def _normalize_objective(obj: Any, catalog: dict[str, Any]) -> dict[str, Any]:
             block_id = _canonical_block_id_fixed(block_id, catalog) or block_id
         return {
             "sense": "minimize",
-            "block_id": block_id if block_id in objective_ids else "weighted_service_distance_objective",
+            "block_id": (
+                block_id
+                if block_id in objective_ids
+                else "weighted_service_distance_objective"
+            ),
             "expression": obj,
             "natural_language": obj,
         }
@@ -238,7 +176,9 @@ def _normalize_objective(obj: Any, catalog: dict[str, Any]) -> dict[str, Any]:
                 block_id = OBJECTIVE_BLOCK_ALIASES[str(block_id).lower()]
         else:
             expr = str(obj.get("expression", "")).lower()
-            block_id = OBJECTIVE_BLOCK_ALIASES.get(expr, "weighted_service_distance_objective")
+            block_id = OBJECTIVE_BLOCK_ALIASES.get(
+                expr, "weighted_service_distance_objective"
+            )
         return {
             "sense": obj.get("sense", "minimize"),
             "block_id": block_id,
@@ -262,7 +202,9 @@ def _normalize_constraint_entry(
     warnings: list[str],
 ) -> dict[str, Any] | None:
     if not isinstance(entry, dict):
-        errors.append(f"constraint_blocks 项必须是对象，收到: {type(entry).__name__}")
+        errors.append(
+            f"constraint_blocks 项必须是对象，收到: {type(entry).__name__}"
+        )
         return None
     raw_id = str(entry.get("block_id") or entry.get("id") or "").strip()
     if not raw_id:
@@ -287,10 +229,20 @@ def _normalize_constraint_entry(
     if not isinstance(params, dict):
         errors.append(f"块 {canon} 的 parameters 必须是对象")
         params = {}
-    if canon == "force_facility_open" and "forced_open" not in params and "facility_ids" in params:
-        warnings.append("参数 facility_ids 已映射为 forced_open（请使用设施名如 'B' 或索引）")
+    if (
+        canon == "force_facility_open"
+        and "forced_open" not in params
+        and "facility_ids" in params
+    ):
+        warnings.append(
+            "参数 facility_ids 已映射为 forced_open（请使用设施名如 'B' 或索引）"
+        )
         params["forced_open"] = params.pop("facility_ids")
-    if canon == "force_facility_closed" and "forced_closed" not in params and "facility_ids" in params:
+    if (
+        canon == "force_facility_closed"
+        and "forced_closed" not in params
+        and "facility_ids" in params
+    ):
         warnings.append("参数 facility_ids 已映射为 forced_closed")
         params["forced_closed"] = params.pop("facility_ids")
     status = str(entry.get("status", "required")).lower()
@@ -303,5 +255,5 @@ def _normalize_constraint_entry(
         "name": block_def.get("name", ""),
         "parameters": params,
         "status": status,
-        "natural_language": entry.get("natural_language") or block_def.get("description", ""),
+        "natural_language": str(entry.get("natural_language", "")),
     }
