@@ -9,12 +9,11 @@
 ### 架构重构 — Schema / Core / Web 三层分离
 
 - **`core/` 模块全面拆分**：
-  - `ir_processor.py` → `ir_processor.py`（归一化 + catalog） + `ir_validator.py`（校验）
+  - `ir_processor.py` → `ir_catalog.py`（catalog 加载） + `ir_normalizer.py`（归一化） + `ir_validator.py`（校验）
   - 新增 `prompt_loader.py`：从 `agents/nl2or_agent.py` 抽取 prompt 组装逻辑，`build_nl2or_agent()` 仅关注 agent 构建
 - **`schema/` 纯数据化**：
   - `problem_ir.py` 清空所有处理函数，仅保留 `TypedDict` 数据定义 + 常量别名
   - `schema/__init__.py` 新增 `ProblemIR`、`ConstraintBlock`、`ObjectiveBlock`、`ValidationReport` 等类型导出
-  - 通过 `__getattr__` 惰性代理维持 `from schema import normalize_problem_ir` 等旧式导入兼容
 - **`output_format.py` 归位**：从项目根目录移入 `core/output_format.py`
 - **`web/` 模块重构**：
   - `web/__init__.py` 仅负责模块级导出，UI 逻辑集中于 `web/app.py`
@@ -103,14 +102,19 @@ nl2or_agent/
 │   ├── __init__.py
 │   └── nl2or_agent.py      # build_nl2or_agent() — 组装 CodeAgent
 │
-├── core/                   # NEW: 核心处理逻辑
+├── core/                   # 核心处理逻辑
 │   ├── __init__.py
-│   ├── ir_processor.py     # Problem IR 归一化、校验、catalog 生成
-│   └── output_format.py    # 结构化 final_answer 格式化与校验
+│   ├── _defaults.py        # 共享默认路径配置
+│   ├── ir_catalog.py       # 模型库/积木块目录加载
+│   ├── ir_normalizer.py    # Problem IR 归一化
+│   ├── ir_validator.py     # 校验
+│   ├── output_format.py    # 结构化 final_answer 格式化与校验
+│   └── prompt_loader.py    # 提示词加载
 │
 ├── schema/
 │   ├── __init__.py
-│   └── problem_ir.py       # IR 数据结构常量与别名定义
+│   ├── ir_types.py         # TypedDict 数据定义
+│   └── problem_ir.py       # 常量与别名定义
 │
 ├── tools/
 │   ├── __init__.py
@@ -171,14 +175,16 @@ graph TD
     end
 
     subgraph "core/ (处理引擎层)"
-        C1["ir_processor.py<br/>归一化 + catalog"]
-        C2["ir_validator.py<br/>校验"]
-        C3["output_format.py<br/>结构化输出"]
-        C4["prompt_loader.py<br/>提示词加载"]
+        C1["ir_catalog.py<br/>目录加载"]
+        C2["ir_normalizer.py<br/>归一化"]
+        C3["ir_validator.py<br/>校验"]
+        C4["output_format.py<br/>结构化输出"]
+        C5["prompt_loader.py<br/>提示词加载"]
     end
 
     subgraph "schema/ (数据定义层)"
-        S1["problem_ir.py<br/>TypedDicts + 常量"]
+        S1["ir_types.py<br/>TypedDicts"]
+        S2["problem_ir.py<br/>常量/别名"]
     end
 
     subgraph "utils/ (基础设施层)"
@@ -192,18 +198,18 @@ graph TD
 
     A -->|组装 tools| T1 & T2 & T3 & T4
     A -->|系统 prompt| C4
-    T1 & T2 -->|调用| C1 & C2
+    T1 & T2 -->|调用| C1 & C2 & C3
     T3 -->|搜索| U1
     T4 -->|存储| U2
-    C1 & C2 -->|引用常量| S1
-    C4 -->|catalog| C1
-    W1 -->|格式化输出| C3
+    C1 & C2 & C3 -->|引用常量| S1 & S2
+    C5 -->|catalog| C1
+    W1 -->|格式化输出| C4
 ```
 
 | 模块 | 职责 | 内容 |
 |------|------|------|
-| `schema/` | 数据定义层 | TypedDict（`ProblemIR`, `ConstraintBlock` 等）+ 常量（`BLOCK_ID_ALIASES` 等） |
-| `core/` | 处理引擎层 | `ir_processor.py`（归一化）、`ir_validator.py`（校验）、`output_format.py`（格式化）、`prompt_loader.py`（提示词加载） |
+| `schema/` | 数据定义层 | `ir_types.py`（TypedDict）+ `problem_ir.py`（常量别名） |
+| `core/` | 处理引擎层 | `ir_catalog.py`（目录加载）、`ir_normalizer.py`（归一化）、`ir_validator.py`（校验）、`output_format.py`（格式化）、`prompt_loader.py`（提示词加载） |
 | `tools/` | Agent 接口层 | HAMLET Tool 子类，薄封装调用 `core/` 函数 |
 | `utils/` | 基础设施层 | `search.py`（关键词检索）、`session.py`（会话管理） |
 | `web/` | 表现层 | `app.py`（Gradio Web 界面） |

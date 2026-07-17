@@ -13,6 +13,7 @@ from typing import Any
 # Keyword parsing
 # ---------------------------------------------------------------------------
 
+
 def parse_keywords(raw: str | list[str] | tuple[str, ...] | None) -> list[str]:
     """Normalize keyword input into a list of lower-case trimmed tokens."""
     if raw is None:
@@ -29,6 +30,7 @@ def parse_keywords(raw: str | list[str] | tuple[str, ...] | None) -> list[str]:
 # Scoring
 # ---------------------------------------------------------------------------
 
+
 def score_keywords(keywords: list[str], haystack: list[str]) -> int:
     """Return the number of *keywords* that appear (as substring) in *haystack*."""
     haystack_lower = [h.lower() for h in haystack]
@@ -44,6 +46,7 @@ def score_keywords(keywords: list[str], haystack: list[str]) -> int:
 # ---------------------------------------------------------------------------
 # Search over dictionaries / lists
 # ---------------------------------------------------------------------------
+
 
 def search_by_keywords(
     items: list[dict[str, Any]],
@@ -71,9 +74,7 @@ def search_by_keywords(
     scored: list[tuple[int, dict[str, Any]]] = []
     for item in items:
         if search_fields is not None:
-            haystack = [
-                str(item.get(f, "")) for f in search_fields if f in item
-            ]
+            haystack = [str(item.get(f, "")) for f in search_fields if f in item]
         else:
             haystack = [str(v) for v in item.values() if isinstance(v, (str, list))]
             # flatten lists of strings
@@ -82,6 +83,7 @@ def search_by_keywords(
                 if h.startswith("[") and h.endswith("]"):
                     try:
                         import ast
+
                         flat.extend(str(x) for x in ast.literal_eval(h))
                         continue
                     except (ValueError, SyntaxError):
@@ -95,11 +97,3 @@ def search_by_keywords(
 
     scored.sort(key=lambda x: x[0], reverse=True)
     return [item for _, item in scored[:limit]]
-
-
-def filter_by_predicate(
-    items: list[dict[str, Any]],
-    predicate: callable,
-) -> list[dict[str, Any]]:
-    """Keep items for which ``predicate(item)`` returns ``True``."""
-    return [it for it in items if predicate(it)]

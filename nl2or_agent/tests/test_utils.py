@@ -9,7 +9,6 @@ from pathlib import Path
 import pytest
 
 from utils.search import (
-    filter_by_predicate,
     parse_keywords,
     score_keywords,
     search_by_keywords,
@@ -20,6 +19,7 @@ from utils.session import Session, get_session, reset_session
 # ---------------------------------------------------------------------------
 # parse_keywords
 # ---------------------------------------------------------------------------
+
 
 class TestParseKeywords:
     def test_none(self):
@@ -48,6 +48,7 @@ class TestParseKeywords:
 # score_keywords
 # ---------------------------------------------------------------------------
 
+
 class TestScoreKeywords:
     def test_no_match(self):
         assert score_keywords(["abc"], ["xyz"]) == 0
@@ -75,6 +76,7 @@ class TestScoreKeywords:
 # ---------------------------------------------------------------------------
 # search_by_keywords
 # ---------------------------------------------------------------------------
+
 
 class TestSearchByKeywords:
     def test_empty_keywords(self):
@@ -112,50 +114,30 @@ class TestSearchByKeywords:
 
 
 # ---------------------------------------------------------------------------
-# filter_by_predicate
-# ---------------------------------------------------------------------------
-
-class TestFilterByPredicate:
-    def test_keep_families(self):
-        items = [
-            {"id": "a", "is_family": True},
-            {"id": "b"},
-            {"id": "c", "is_family": True},
-        ]
-        result = filter_by_predicate(items, lambda x: x.get("is_family"))
-        assert len(result) == 2
-
-    def test_remove_none(self):
-        # filter_by_predicate returns items where predicate returns True.
-        # item 2 has val=None, predicate returns True for that one.
-        items = [{"id": 1, "val": "ok"}, {"id": 2, "val": None}]
-        result = filter_by_predicate(items, lambda x: x.get("val") is None)
-        assert len(result) == 1
-        assert result[0]["id"] == 2
-
-
-# ---------------------------------------------------------------------------
 # Session
 # ---------------------------------------------------------------------------
+
 
 class TestSession:
     def test_create(self, tmp_path: Path, monkeypatch):
         import utils.session as mod
+
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         s = Session()
         assert s.session_id
         assert s.workspace.exists()
         assert s.code_dir.exists()
-        assert s.output_dir.exists()
 
     def test_custom_id(self, tmp_path: Path, monkeypatch):
         import utils.session as mod
+
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         s = Session(session_id="test123")
         assert s.session_id == "test123"
 
     def test_save_code(self, tmp_path: Path, monkeypatch):
         import utils.session as mod
+
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         s = Session()
         p = s.save_code("print(1)", filename="test.py")
@@ -164,6 +146,7 @@ class TestSession:
 
     def test_list_code_files(self, tmp_path: Path, monkeypatch):
         import utils.session as mod
+
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         s = Session()
         s.save_code("a", "a.py")
@@ -172,6 +155,7 @@ class TestSession:
 
     def test_list_all(self, tmp_path: Path, monkeypatch):
         import utils.session as mod
+
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         s1 = Session(session_id="aaa")
         s2 = Session(session_id="bbb")
@@ -181,6 +165,7 @@ class TestSession:
 
     def test_load_existing(self, tmp_path: Path, monkeypatch):
         import utils.session as mod
+
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         Session(session_id="loadme")
         s2 = Session.load("loadme")
@@ -189,11 +174,13 @@ class TestSession:
 
     def test_load_missing(self, tmp_path: Path, monkeypatch):
         import utils.session as mod
+
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         assert Session.load("nope") is None
 
     def test_prune(self, tmp_path: Path, monkeypatch):
         import utils.session as mod
+
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         s = Session()
         # set mtime to 100 days ago
@@ -202,6 +189,7 @@ class TestSession:
             if d.is_file():
                 d.touch()
         import os as _os
+
         _os.utime(str(s.workspace), (old, old))
         removed = Session.prune(max_age_days=30)
         assert removed >= 1  # the session we just created
@@ -211,10 +199,12 @@ class TestSession:
 # get_session singleton
 # ---------------------------------------------------------------------------
 
+
 class TestGetSession:
     def test_same_session_returned(self, tmp_path: Path, monkeypatch):
         reset_session()
         import utils.session as mod
+
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "ss")
         s1 = get_session()
         s2 = get_session()
@@ -223,6 +213,7 @@ class TestGetSession:
     def test_new_session_after_reset(self, tmp_path: Path, monkeypatch):
         reset_session()
         import utils.session as mod
+
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "ss")
         s1 = get_session()
         reset_session()

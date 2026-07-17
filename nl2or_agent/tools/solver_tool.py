@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-import textwrap
 import uuid
 from pathlib import Path
 
@@ -46,9 +45,7 @@ class RunSolverTool(Tool):
         super().__init__()
         # _workspace is only used when explicitly set (tests).  In production
         # save_code() delegates to the session system.
-        self._workspace: Path | None = (
-            Path(workspace_dir) if workspace_dir else None
-        )
+        self._workspace: Path | None = Path(workspace_dir) if workspace_dir else None
 
     # ------------------------------------------------------------------
     # Public helpers
