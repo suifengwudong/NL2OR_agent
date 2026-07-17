@@ -42,16 +42,12 @@ def build_nl2or_agent(
     CodeAgent
         A fully configured agent ready to receive natural-language OR problems.
     """
-    # resolved_model_id = os.getenv("LLM_MODEL")
-    # _or_key = os.getenv("OPENAI_API_KEY")
-    # base_url = os.getenv("OPENAI_BASE_URL")
-    
     resolved_model_id = os.getenv("HAMLET_MODEL_ID")
     _or_key = os.getenv("OPENROUTER_API_KEY")
-    # if _or_key:
-    #     os.environ["OPENROUTER_API_KEY"] = _or_key
 
-    print(f"Using model: {resolved_model_id}, with OPENROUTER_API_KEY: {'set' if _or_key else 'not set'}")
+    print(
+        f"Using model: {resolved_model_id}, with OPENROUTER_API_KEY: {'set' if _or_key else 'not set'}"
+    )
 
     model = LiteLLMModel(model_id=resolved_model_id, api_key=_or_key)
 
@@ -64,11 +60,9 @@ def build_nl2or_agent(
 
     system_prompt = load_system_prompt()
 
-    # Load default hamlet prompt templates and override the system prompt
-    default_prompts_file = importlib.resources.files("hamlet.core.prompts").joinpath("code_agent.yaml")
-    #################
-    # NOTE: 此处原先是 file.exists():
-    #################
+    default_prompts_file = importlib.resources.files("hamlet.core.prompts").joinpath(
+        "code_agent.yaml"
+    )
     if default_prompts_file.is_file():
         with default_prompts_file.open("r", encoding="utf-8") as f:
             prompt_templates = yaml.safe_load(f)
@@ -89,8 +83,15 @@ def build_nl2or_agent(
         prompt_templates=prompt_templates,
         verbosity_level=verbosity_level,
         additional_authorized_imports=[
-            "scipy.optimize", "scipy", "gurobipy", "pulp", 
-            "numpy", "pandas", "json", "math", "os"
+            "scipy.optimize",
+            "scipy",
+            "gurobipy",
+            "pulp",
+            "numpy",
+            "pandas",
+            "json",
+            "math",
+            "os",
         ],
     )
 

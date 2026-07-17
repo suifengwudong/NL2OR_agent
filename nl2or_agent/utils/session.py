@@ -38,13 +38,6 @@ class Session:
         return d
 
     @property
-    def output_dir(self) -> Path:
-        """Directory for solver output / logs."""
-        d = self.workspace / "output"
-        d.mkdir(parents=True, exist_ok=True)
-        return d
-
-    @property
     def conversation_file(self) -> Path:
         """Path to the conversation log (JSON Lines)."""
         return self.workspace / "conversation.jsonl"
@@ -60,21 +53,12 @@ class Session:
         path.write_text(code, encoding="utf-8")
         return path
 
-    def save_output(self, filename: str, content: str) -> Path:
-        """Write solver output to the session output directory."""
-        path = self.output_dir / filename
-        path.write_text(content, encoding="utf-8")
-        return path
-
     # ----------------------------------------------------------------
     # Conversation history persistence
     # ----------------------------------------------------------------
 
-    def save_conversation_entry(
-        self, role: str, content: str
-    ) -> None:
-        """Append one conversation turn (user / assistant / system) to the
-        session's JSONL log file."""
+    def save_conversation_entry(self, role: str, content: str) -> None:
+        """Append one conversation turn to the session's JSONL log file."""
         entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "role": role,
@@ -83,18 +67,6 @@ class Session:
         with open(self.conversation_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
-    def load_conversation(self) -> list[dict]:
-        """Load the full conversation history for this session."""
-        if not self.conversation_file.is_file():
-            return []
-        history: list[dict] = []
-        with open(self.conversation_file, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    history.append(json.loads(line))
-        return history
-
     # ----------------------------------------------------------------
     # File listing
     # ----------------------------------------------------------------
@@ -102,10 +74,6 @@ class Session:
     def list_code_files(self) -> list[Path]:
         """Return all solver files in this session."""
         return sorted(self.code_dir.glob("*.py")) if self.code_dir.exists() else []
-
-    def list_output_files(self) -> list[Path]:
-        """Return all output files in this session."""
-        return sorted(self.output_dir.glob("*")) if self.output_dir.exists() else []
 
     # ----------------------------------------------------------------
     # Class methods for session discovery
@@ -116,9 +84,7 @@ class Session:
         """Return all session IDs on disk."""
         if not _SESSIONS_ROOT.exists():
             return []
-        return sorted(
-            d.name for d in _SESSIONS_ROOT.iterdir() if d.is_dir()
-        )
+        return sorted(d.name for d in _SESSIONS_ROOT.iterdir() if d.is_dir())
 
     @classmethod
     def load(cls, session_id: str) -> Session | None:

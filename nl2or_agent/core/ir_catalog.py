@@ -12,12 +12,8 @@ from typing import Any
 
 from schema.problem_ir import BLOCK_ID_ALIASES
 
-# ---------------------------------------------------------------------------
-# Data file paths
-# ---------------------------------------------------------------------------
-
-_BLOCKS_PATH = Path(__file__).parent.parent / "data" / "model_bank" / "constraint_blocks.json"
-_MODELS_PATH = Path(__file__).parent.parent / "data" / "model_bank" / "models.json"
+from ._defaults import BLOCKS_CATALOG_PATH as _BLOCKS_PATH
+from ._defaults import MODEL_BANK_PATH as _MODELS_PATH
 
 
 # ---------------------------------------------------------------------------
@@ -74,9 +70,7 @@ def load_block_catalog(blocks_path: Path | None = None) -> dict[str, Any]:
         "by_id": by_id,
         "alias_to_id": alias_to_id,
         "block_ids": sorted(by_id.keys()),
-        "objective_block_ids": sorted(
-            b["id"] for b in blocks if b.get("category") == "objective"
-        ),
+        "objective_block_ids": sorted(b["id"] for b in blocks if b.get("category") == "objective"),
     }
 
 
@@ -86,8 +80,6 @@ def catalog_markdown(blocks_path: Path | None = None) -> str:
     lines = ["| block_id | category | 必填参数 |", "|----------|----------|----------|"]
     for bid in catalog["block_ids"]:
         b = catalog["by_id"][bid]
-        req = ", ".join(
-            p["name"] for p in b.get("parameters", []) if p.get("required")
-        ) or "—"
+        req = ", ".join(p["name"] for p in b.get("parameters", []) if p.get("required")) or "—"
         lines.append(f"| `{bid}` | {b.get('category', '')} | {req} |")
     return "\n".join(lines)

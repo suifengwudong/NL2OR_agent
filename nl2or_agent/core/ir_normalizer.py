@@ -1,7 +1,6 @@
-"""IR normalization: normalize Problem IR against block catalog and model bank.
+"""IR normalization and validation.
 
-Separated from ir_catalog.py to keep data-loading and normalization logic
-in distinct modules.
+Normalizes and validates Problem IR against block catalog and model bank.
 """
 
 from __future__ import annotations
@@ -132,9 +131,7 @@ def _normalize_confidence(val: Any) -> str:
     return "medium"
 
 
-def _normalize_family(
-    fam: Any, catalog: dict[str, Any], model_ids: set[str]
-) -> dict[str, Any]:
+def _normalize_family(fam: Any, catalog: dict[str, Any], model_ids: set[str]) -> dict[str, Any]:
     if not isinstance(fam, dict):
         return {"id": "unknown", "name": str(fam), "confidence": "medium", "notes": ""}
     raw_id = (fam.get("id") or fam.get("name") or "unknown").strip().lower()
@@ -159,9 +156,7 @@ def _normalize_objective(obj: Any, catalog: dict[str, Any]) -> dict[str, Any]:
         return {
             "sense": "minimize",
             "block_id": (
-                block_id
-                if block_id in objective_ids
-                else "weighted_service_distance_objective"
+                block_id if block_id in objective_ids else "weighted_service_distance_objective"
             ),
             "expression": obj,
             "natural_language": obj,
@@ -176,9 +171,7 @@ def _normalize_objective(obj: Any, catalog: dict[str, Any]) -> dict[str, Any]:
                 block_id = OBJECTIVE_BLOCK_ALIASES[str(block_id).lower()]
         else:
             expr = str(obj.get("expression", "")).lower()
-            block_id = OBJECTIVE_BLOCK_ALIASES.get(
-                expr, "weighted_service_distance_objective"
-            )
+            block_id = OBJECTIVE_BLOCK_ALIASES.get(expr, "weighted_service_distance_objective")
         return {
             "sense": obj.get("sense", "minimize"),
             "block_id": block_id,
@@ -195,6 +188,39 @@ def _normalize_objective(obj: Any, catalog: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def validate_problem_ir(
+    ir: dict[str, Any],
+    *,
+    blocks_path: Path | None = None,
+    models_path: Path | None = None,
+) -> dict[str, Any]:
+    """Validate and normalize IR; return report dict for tools / tests."""
+    normalized, errors, warnings = normalize_problem_ir(
+        ir,
+        blocks_path=blocks_path,
+        models_path=models_path,
+    )
+    catalog = load_block_catalog(blocks_path)
+    for bid, bdef in catalog["by_id"].items():
+        required_params = [p["name"] for p in bdef.get("parameters", []) if p.get("required")]
+        if not required_params:
+            continue
+        for entry in normalized.get("constraint_blocks", []):
+            if entry["block_id"] != bid:
+                continue
+            for pname in required_params:
+                if pname not in entry.get("parameters", {}):
+                    errors.append(f"块 {bid} 缺少必填参数 '{pname}'")
+
+    return {
+        "valid": len(errors) == 0,
+        "normalized_ir": normalized,
+        "errors": errors,
+        "warnings": warnings,
+        "catalog_block_ids": catalog["block_ids"],
+    }
+
+
 def _normalize_constraint_entry(
     entry: Any,
     catalog: dict[str, Any],
@@ -202,9 +228,7 @@ def _normalize_constraint_entry(
     warnings: list[str],
 ) -> dict[str, Any] | None:
     if not isinstance(entry, dict):
-        errors.append(
-            f"constraint_blocks 项必须是对象，收到: {type(entry).__name__}"
-        )
+        errors.append(f"constraint_blocks 项必须是对象，收到: {type(entry).__name__}")
         return None
     raw_id = str(entry.get("block_id") or entry.get("id") or "").strip()
     if not raw_id:
@@ -229,14 +253,8 @@ def _normalize_constraint_entry(
     if not isinstance(params, dict):
         errors.append(f"块 {canon} 的 parameters 必须是对象")
         params = {}
-    if (
-        canon == "force_facility_open"
-        and "forced_open" not in params
-        and "facility_ids" in params
-    ):
-        warnings.append(
-            "参数 facility_ids 已映射为 forced_open（请使用设施名如 'B' 或索引）"
-        )
+    if canon == "force_facility_open" and "forced_open" not in params and "facility_ids" in params:
+        warnings.append("参数 facility_ids 已映射为 forced_open（请使用设施名如 'B' 或索引）")
         params["forced_open"] = params.pop("facility_ids")
     if (
         canon == "force_facility_closed"

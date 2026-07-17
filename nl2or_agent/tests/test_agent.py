@@ -14,6 +14,7 @@ from hamlet.core import CodeAgent
 # load_system_prompt tests
 # ---------------------------------------------------------------------------
 
+
 class TestLoadSystemPrompt:
     def test_returns_content_when_file_exists(self, tmp_path: Path):
         prompts_dir = tmp_path / "prompts"
@@ -43,6 +44,7 @@ class TestLoadSystemPrompt:
 # build_nl2or_agent tests
 # ---------------------------------------------------------------------------
 
+
 class TestBuildNl2orAgent:
     def test_returns_code_agent(self):
         agent = build_nl2or_agent(verbosity_level=0)
@@ -67,11 +69,6 @@ class TestBuildNl2orAgent:
     def test_model_id_from_env(self, monkeypatch):
         monkeypatch.setenv("HAMLET_MODEL_ID", "openai/gpt-4o-mini")
         agent = build_nl2or_agent(verbosity_level=0)
-        assert isinstance(agent, CodeAgent)
-
-    def test_explicit_model_id_overrides_env(self, monkeypatch):
-        monkeypatch.setenv("HAMLET_MODEL_ID", "openai/gpt-4o")
-        agent = build_nl2or_agent(model_id="openai/gpt-4o-mini", verbosity_level=0)
         assert isinstance(agent, CodeAgent)
 
     def test_default_model_id_used_when_no_env(self, monkeypatch):

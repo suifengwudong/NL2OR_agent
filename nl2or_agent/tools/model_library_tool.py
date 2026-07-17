@@ -8,13 +8,16 @@ from typing import Any
 
 from hamlet.core.tools import Tool
 
+from core._defaults import BLOCKS_CATALOG_PATH, MODEL_BANK_PATH
 from utils.search import parse_keywords, score_keywords, search_by_keywords
 
-_DEFAULT_BANK_PATH = Path(__file__).parent.parent / "data" / "model_bank" / "models.json"
-_DEFAULT_BLOCKS_PATH = Path(__file__).parent.parent / "data" / "model_bank" / "constraint_blocks.json"
+_DEFAULT_BANK_PATH = MODEL_BANK_PATH
+_DEFAULT_BLOCKS_PATH = BLOCKS_CATALOG_PATH
 
 
-def _search_models(bank: dict[str, Any], keyword_list: list[str], limit: int = 3) -> list[dict[str, Any]]:
+def _search_models(
+    bank: dict[str, Any], keyword_list: list[str], limit: int = 3
+) -> list[dict[str, Any]]:
     """Search models by keywords, returning top matches ordered by score."""
     return search_by_keywords(
         bank.get("models", []),
@@ -24,7 +27,9 @@ def _search_models(bank: dict[str, Any], keyword_list: list[str], limit: int = 3
     )
 
 
-def _search_blocks(blocks_bank: dict[str, Any], keyword_list: list[str], limit: int = 8) -> list[dict[str, Any]]:
+def _search_blocks(
+    blocks_bank: dict[str, Any], keyword_list: list[str], limit: int = 8
+) -> list[dict[str, Any]]:
     """Search constraint blocks by keywords, returning top matches."""
     return search_by_keywords(
         blocks_bank.get("blocks", []),
@@ -77,6 +82,7 @@ def _compact_model(
             family = by_model_id.get(family_name)
         else:
             from core.ir_catalog import load_model_bank  # pragma: no cover
+
             mb = load_model_bank()
             family = mb["by_id"].get(family_name)
         if family:
@@ -172,7 +178,9 @@ class QueryModelLibraryTool(Tool):
             payload["blocks"] = [_compact_block(b) for b in blocks] if blocks else []
 
         if not template_kws and not block_kws:
-            return json.dumps({"message": "Provide keywords and/or block_keywords."}, ensure_ascii=False)
+            return json.dumps(
+                {"message": "Provide keywords and/or block_keywords."}, ensure_ascii=False
+            )
 
         if not payload.get("templates") and not payload.get("blocks"):
             return json.dumps(
