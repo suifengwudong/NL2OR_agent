@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "blocks": [
     {
       "id": "assign_each_demand_once",

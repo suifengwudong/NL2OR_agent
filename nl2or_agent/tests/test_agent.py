@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from agents.nl2or_agent import build_nl2or_agent
 from core.prompt_loader import load_system_prompt
 from hamlet.core import CodeAgent
@@ -46,6 +48,10 @@ class TestLoadSystemPrompt:
 
 
 class TestBuildNl2orAgent:
+    @pytest.fixture(autouse=True)
+    def _ensure_model_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("HAMLET_MODEL_ID", "openai/gpt-4o-mini")
+
     def test_returns_code_agent(self):
         agent = build_nl2or_agent(verbosity_level=0)
         assert isinstance(agent, CodeAgent)
@@ -60,39 +66,66 @@ class TestBuildNl2orAgent:
         assert "query_model_library" in tool_names
         assert "run_solver" in tool_names
 
-    def test_custom_workspace_dir(self, tmp_path: Path):
-        # workspace_dir is no longer a build_nl2or_agent parameter;
-        # solver code is now stored in session-isolated directories.
-        agent = build_nl2or_agent(verbosity_level=0)
-        assert isinstance(agent, CodeAgent)
-
     def test_model_id_from_env(self, monkeypatch):
         monkeypatch.setenv("HAMLET_MODEL_ID", "openai/gpt-4o-mini")
         agent = build_nl2or_agent(verbosity_level=0)
         assert isinstance(agent, CodeAgent)
 
-    def test_default_model_id_used_when_no_env(self, monkeypatch):
+    def test_raises_when_no_env(self, monkeypatch):
         monkeypatch.delenv("HAMLET_MODEL_ID", raising=False)
-        agent = build_nl2or_agent(verbosity_level=0)
-        assert isinstance(agent, CodeAgent)
+        with pytest.raises(ValueError, match="HAMLET_MODEL_ID"):
+            build_nl2or_agent(verbosity_level=0)
 
-    def test_authorized_imports_include_required_libs(self):
+    @pytest.mark.parametrize("lib", ["numpy", "scipy.optimize", "pulp", "pandas"])
+    def test_authorized_imports_include_required_libs(self, lib: str):
         agent = build_nl2or_agent(verbosity_level=0)
-        imports = agent.additional_authorized_imports
-        assert "numpy" in imports
-        assert "scipy.optimize" in imports
-        assert "pulp" in imports
-        assert "pandas" in imports
-
-    def test_workspace_created_if_not_exists(self, tmp_path: Path):
-        # Session-based storage: verify agent builds fine
-        agent = build_nl2or_agent(verbosity_level=0)
-        assert isinstance(agent, CodeAgent)
+        assert lib in agent.additional_authorized_imports
 
     def test_no_prompt_templates_when_prompt_file_missing(self, tmp_path: Path):
-        """When system.prompt.md is missing, agent still builds without error."""
         empty_dir = tmp_path / "empty_prompts"
         empty_dir.mkdir()
         with patch("core.prompt_loader._PROMPTS_DIR", empty_dir):
             agent = build_nl2or_agent(verbosity_level=0)
         assert isinstance(agent, CodeAgent)
+
+    def test_uses_markdown_code_block_tags(self):
+        """Agent must parse markdown ```python fences (deepseek-native), not
+        HAMLET's default ``<code>`` XML tags."""
+        agent = build_nl2or_agent(verbosity_level=0)
+        assert agent.code_block_tags == ("```python", "```")
+
+    def test_bare_code_fallback_parses(self):
+        """Regression: deepseek sometimes emits a bare ``final_answer(...)``
+        with no code fences; HAMLET appends the closing fence and fails to
+        parse.  Our patch must fall back to treating the bare code as valid."""
+        import ast
+
+        import hamlet.core.agents as hamlet_agents
+
+        build_nl2or_agent(verbosity_level=0)
+        parse_fn = hamlet_agents.parse_several_code_blobs
+
+        # Simulate the exact failure: model emits bare final_answer without
+        # opening fence, and HAMLET auto-appends the closing fence.
+        bare = 'final_answer("""请确认：\np-中位问题，p=2""")'
+        raw = bare + "```"
+        actions, strategy, _ = parse_fn(raw, ("```python", "```"))
+
+        assert strategy is None
+        assert len(actions) == 1
+        # Recovered code must be syntactically valid Python and call final_answer.
+        ast.parse(actions[0])
+        assert "final_answer" in actions[0]
+
+    def test_markdown_fenced_block_parses(self):
+        """A well-formed markdown code fence must still parse via the fallback
+        path (i.e. patch must not break normal HAMLET parsing)."""
+        import hamlet.core.agents as hamlet_agents
+
+        build_nl2or_agent(verbosity_level=0)
+        parse_fn = hamlet_agents.parse_several_code_blobs
+
+        raw = "```python\nprint(1 + 1)\n```"
+        actions, strategy, _ = parse_fn(raw, ("```python", "```"))
+        assert "print(1 + 1)" in actions[0]
+

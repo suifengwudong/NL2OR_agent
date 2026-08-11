@@ -6,6 +6,7 @@ files or paths.  Each tool loads its own data and hands it to these helpers.
 
 from __future__ import annotations
 
+import ast
 from typing import Any
 
 
@@ -82,8 +83,6 @@ def search_by_keywords(
             for h in haystack:
                 if h.startswith("[") and h.endswith("]"):
                     try:
-                        import ast
-
                         flat.extend(str(x) for x in ast.literal_eval(h))
                         continue
                     except (ValueError, SyntaxError):

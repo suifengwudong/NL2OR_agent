@@ -13,7 +13,6 @@ Web (Gradio GUI)
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -24,10 +23,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 load_dotenv()
 
+
 def _run_cli() -> None:
     """Interactive CLI loop: read user input, run the agent, print the result."""
     from agents import build_nl2or_agent
-    from core.output_format import format_for_display
+    from core.output_format import format_agent_output
 
     print("=" * 60)
     print("  NL2OR Agent  (输入 'quit' 或 'exit' 退出)")
@@ -51,14 +51,7 @@ def _run_cli() -> None:
         try:
             # Pass the previous state to maintain conversation in CodeAgent
             result = agent.run(user_input, reset=False)
-            try:
-                display_result = format_for_display(str(result))
-            except ValueError as exc:
-                display_result = (
-                    f"[FINAL_ANSWER_FORMAT_ERROR] {exc}\n"
-                    "原始输出如下，请修复 final_answer 的结构化格式后重试：\n"
-                    f"{result}"
-                )
+            display_result = format_agent_output(str(result))
             print(f"\nNL2OR > {display_result}\n")
         except Exception as exc:  # noqa: BLE001
             print(f"\n[错误] {exc}\n")

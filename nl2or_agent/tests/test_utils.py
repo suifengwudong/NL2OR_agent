@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import json
-import tempfile
+import os
 from pathlib import Path
 
 import pytest
@@ -124,7 +123,7 @@ class TestSession:
 
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         s = Session()
-        assert s.session_id
+        assert len(s.session_id) == 12
         assert s.workspace.exists()
         assert s.code_dir.exists()
 
@@ -153,15 +152,15 @@ class TestSession:
         s.save_code("b", "b.py")
         assert len(s.list_code_files()) == 2
 
-    def test_list_all(self, tmp_path: Path, monkeypatch):
+    @pytest.mark.parametrize("session_id", ["aaa", "bbb"])
+    def test_list_all(self, tmp_path: Path, monkeypatch, session_id: str):
         import utils.session as mod
 
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
-        s1 = Session(session_id="aaa")
-        s2 = Session(session_id="bbb")
+        Session(session_id="aaa")
+        Session(session_id="bbb")
         ids = Session.list_all()
-        assert "aaa" in ids
-        assert "bbb" in ids
+        assert session_id in ids
 
     def test_load_existing(self, tmp_path: Path, monkeypatch):
         import utils.session as mod
@@ -183,16 +182,11 @@ class TestSession:
 
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         s = Session()
-        # set mtime to 100 days ago
+        s.save_code("")
         old = s.workspace.stat().st_mtime - 100 * 86400
-        for d in s.workspace.rglob("*"):
-            if d.is_file():
-                d.touch()
-        import os as _os
-
-        _os.utime(str(s.workspace), (old, old))
+        os.utime(s.workspace, (old, old))
         removed = Session.prune(max_age_days=30)
-        assert removed >= 1  # the session we just created
+        assert removed >= 1
 
 
 # ---------------------------------------------------------------------------

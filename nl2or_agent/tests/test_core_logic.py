@@ -1,5 +1,7 @@
-import pytest
 import os
+
+import pytest
+from agents import build_nl2or_agent
 
 
 def test_parsing_step_one():
@@ -7,8 +9,8 @@ def test_parsing_step_one():
     由于涉及真实的 LLM 调用，这里主要验证接口连通性和初步返回的格式。
     注意：这需要环境变量中有有效的 API Key。
     """
-    if not os.getenv("OPEN_ROUTER_API_KEY"):
-        pytest.skip("跳过需要 API Key 的测试")
+    if not os.getenv("OPENROUTER_API_KEY") or not os.getenv("HAMLET_MODEL_ID"):
+        pytest.skip("跳过需要 API Key 或 Model ID 的测试")
 
     agent = build_nl2or_agent(verbosity_level=1)
     question = "我有100元，想买单价3元的橘子，最多买多少个？"

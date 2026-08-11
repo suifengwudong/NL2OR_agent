@@ -9,7 +9,8 @@ from typing import Any
 from hamlet.core.tools import Tool
 
 from core._defaults import BLOCKS_CATALOG_PATH, MODEL_BANK_PATH
-from utils.search import parse_keywords, score_keywords, search_by_keywords
+from core.ir_catalog import load_model_bank
+from utils.search import parse_keywords, search_by_keywords
 
 _DEFAULT_BANK_PATH = MODEL_BANK_PATH
 _DEFAULT_BLOCKS_PATH = BLOCKS_CATALOG_PATH
@@ -50,7 +51,6 @@ def _compact_model(
         "name": m["name"],
         "description": m.get("description", ""),
     }
-    # Preserve old-style fields if present (backward compat with tests)
     if "type" in m:
         out["type"] = m["type"]
     if "variables" in m:
@@ -63,7 +63,6 @@ def _compact_model(
         out["solver_hint"] = m["solver_hint"]
     if "template_code" in m:
         out["template_code"] = m["template_code"]
-    # New-style family / blocks fields
     if m.get("family"):
         out["family"] = m["family"]
     if m.get("is_family"):
@@ -73,23 +72,13 @@ def _compact_model(
         out["objective_block"] = m["objective_block"]
     if m.get("parameters"):
         out["parameters"] = m["parameters"]
-    # Resolve effective blocks via family inheritance
-    all_ids = list(m.get("blocks") or [])
-    if family_name := m.get("family"):
-        # Prefer the already-loaded bank; fall back to disk read (legacy).
-        if mb is not None:
-            by_model_id = {mo["id"]: mo for mo in mb.get("models", [])}
-            family = by_model_id.get(family_name)
-        else:
-            from core.ir_catalog import load_model_bank  # pragma: no cover
 
-            mb = load_model_bank()
-            family = mb["by_id"].get(family_name)
-        if family:
-            base = family.get("base_blocks") or []
-            for bid in reversed(base):
-                if bid not in all_ids:
-                    all_ids.insert(0, bid)
+    # Resolve effective blocks — prefer pre-computed index from load_model_bank
+    all_ids = None
+    if mb is not None:
+        all_ids = mb.get("effective_blocks", {}).get(m["id"])
+    if all_ids is None:
+        all_ids = list(m.get("blocks") or [])
     if all_ids:
         out["blocks"] = all_ids
         by_id = {b["id"]: b for b in blocks_bank.get("blocks", [])}
@@ -156,8 +145,7 @@ class QueryModelLibraryTool(Tool):
         keywords: str | list[str],
         block_keywords: str | list[str] | None = "",
     ) -> str:
-        with open(self._bank_path, encoding="utf-8") as f:
-            bank = json.load(f)
+        bank = load_model_bank(self._bank_path)
         blocks_bank: dict[str, Any] = {"blocks": []}
         if self._blocks_path.is_file():
             with open(self._blocks_path, encoding="utf-8") as f:

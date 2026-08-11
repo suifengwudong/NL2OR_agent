@@ -3,10 +3,74 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
+from core.ir_catalog import load_block_catalog, load_model_bank
 from core.ir_normalizer import normalize_problem_ir
 from core.ir_normalizer import validate_problem_ir
 from tools import ListBlockCatalogTool, ValidateProblemIrTool
+
+_BASE = Path(__file__).parent.parent
+
+
+# ---------------------------------------------------------------------------
+# Cross-file integrity
+# ---------------------------------------------------------------------------
+
+
+class TestDataIntegrity:
+    """Verify cross-references between models.json and constraint_blocks.json."""
+
+    def _load_both(self):
+        bank = load_model_bank()
+        catalog = load_block_catalog()
+        return bank, catalog
+
+    def test_all_model_blocks_exist_in_catalog(self):
+        bank, catalog = self._load_both()
+        block_ids = set(catalog["block_ids"])
+        for m in bank.get("models", []):
+            for bid in m.get("blocks") or []:
+                assert bid in block_ids, f"Model {m['id']} references unknown block '{bid}'"
+
+    def test_all_model_objective_blocks_exist(self):
+        bank, catalog = self._load_both()
+        obj_ids = set(catalog["objective_block_ids"])
+        for m in bank.get("models", []):
+            ob = m.get("objective_block")
+            if ob:
+                assert ob in obj_ids, f"Model {m['id']} references unknown objective_block '{ob}'"
+
+    def test_all_family_base_blocks_exist(self):
+        bank, catalog = self._load_both()
+        block_ids = set(catalog["block_ids"])
+        for m in bank.get("models", []):
+            if not m.get("is_family"):
+                continue
+            for bid in m.get("base_blocks") or []:
+                assert bid in block_ids, f"Family {m['id']} references unknown base_block '{bid}'"
+
+    def test_all_typical_models_exist(self):
+        _, catalog = self._load_both()
+        model_ids = {m["id"] for m in load_model_bank().get("models", [])}
+        for b in catalog.get("blocks", []):
+            for tm in b.get("typical_models") or []:
+                assert tm in model_ids, f"Block {b['id']} references unknown model '{tm}'"
+
+    def test_all_aliases_resolve(self):
+        _, catalog = self._load_both()
+        alias_to_id = catalog["alias_to_id"]
+        for alias, resolved in alias_to_id.items():
+            assert resolved in catalog["by_id"], (
+                f"Alias '{alias}' resolves to unknown block '{resolved}'"
+            )
+
+    def test_schema_version_present(self):
+        for name in ("models.json", "constraint_blocks.json"):
+            path = _BASE / "data" / "model_bank" / name
+            with open(path) as f:
+                data = json.load(f)
+            assert data.get("schema_version") == 1, f"{name} missing or incorrect schema_version"
 
 
 class TestNormalizeProblemIr:

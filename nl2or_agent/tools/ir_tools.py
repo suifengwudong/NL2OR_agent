@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from hamlet.core.tools import Tool
 
-from core.ir_catalog import catalog_markdown, load_block_catalog
+from core.ir_catalog import load_block_catalog
 from core.ir_normalizer import validate_problem_ir
 
 

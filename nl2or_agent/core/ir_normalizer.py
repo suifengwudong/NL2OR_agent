@@ -31,10 +31,19 @@ def normalize_problem_ir(
 ) -> tuple[dict[str, Any], list[str], list[str]]:
     """Return (normalized_ir, errors, warnings)."""
     catalog = load_block_catalog(blocks_path)
+    model_bank = load_model_bank(models_path)
+    return _normalize_with_context(ir, catalog, model_bank)
+
+
+def _normalize_with_context(
+    ir: dict[str, Any],
+    catalog: dict[str, Any],
+    model_bank: dict[str, Any],
+) -> tuple[dict[str, Any], list[str], list[str]]:
+    """Normalize IR using a pre-loaded catalog and model bank (shared loading)."""
     errors: list[str] = []
     warnings: list[str] = []
 
-    model_bank = load_model_bank(models_path)
     model_ids = set(model_bank["by_id"].keys())
 
     out: dict[str, Any] = {}
@@ -103,7 +112,7 @@ def normalize_problem_ir(
 # ---------------------------------------------------------------------------
 
 
-def _canonical_block_id_fixed(raw: str, catalog: dict[str, Any]) -> str | None:
+def _canonical_block_id(raw: str, catalog: dict[str, Any]) -> str | None:
     key = raw.strip().lower()
     by_id = catalog["by_id"]
     if key in by_id:
@@ -152,7 +161,7 @@ def _normalize_objective(obj: Any, catalog: dict[str, Any]) -> dict[str, Any]:
         key = obj.strip().lower()
         block_id = OBJECTIVE_BLOCK_ALIASES.get(key, key)
         if block_id not in objective_ids:
-            block_id = _canonical_block_id_fixed(block_id, catalog) or block_id
+            block_id = _canonical_block_id(block_id, catalog) or block_id
         return {
             "sense": "minimize",
             "block_id": (
@@ -164,7 +173,7 @@ def _normalize_objective(obj: Any, catalog: dict[str, Any]) -> dict[str, Any]:
     if isinstance(obj, dict):
         block_id = obj.get("block_id") or obj.get("id") or ""
         if block_id:
-            canon = _canonical_block_id_fixed(str(block_id), catalog)
+            canon = _canonical_block_id(str(block_id), catalog)
             if canon and canon in objective_ids:
                 block_id = canon
             elif str(block_id).lower() in OBJECTIVE_BLOCK_ALIASES:
@@ -195,12 +204,9 @@ def validate_problem_ir(
     models_path: Path | None = None,
 ) -> dict[str, Any]:
     """Validate and normalize IR; return report dict for tools / tests."""
-    normalized, errors, warnings = normalize_problem_ir(
-        ir,
-        blocks_path=blocks_path,
-        models_path=models_path,
-    )
     catalog = load_block_catalog(blocks_path)
+    model_bank = load_model_bank(models_path)
+    normalized, errors, warnings = _normalize_with_context(ir, catalog, model_bank)
     for bid, bdef in catalog["by_id"].items():
         required_params = [p["name"] for p in bdef.get("parameters", []) if p.get("required")]
         if not required_params:
@@ -240,7 +246,7 @@ def _normalize_constraint_entry(
             f"'{raw_id}' 不能放在 constraint_blocks 中；请写入顶层 custom_constraints 列表"
         )
         return None
-    canon = _canonical_block_id_fixed(raw_id, catalog)
+    canon = _canonical_block_id(raw_id, catalog)
     if not canon:
         errors.append(f"未知 block_id: '{raw_id}'；请使用库中标准 id")
         return None

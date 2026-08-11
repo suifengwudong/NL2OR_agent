@@ -1586,6 +1586,7 @@ name = "nl2or-agent"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "gradio" },
     { name = "gurobipy" },
     { name = "litellm" },
     { name = "minds-hamlet" },
@@ -1596,6 +1597,7 @@ dependencies = [
     { name = "pulp" },
     { name = "pydantic" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
@@ -1608,6 +1610,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "gradio", specifier = ">=4.0.0" },
     { name = "gurobipy", specifier = ">=12.0.0,<13.0.0" },
     { name = "litellm", specifier = ">=1.83.11" },
     { name = "minds-hamlet", specifier = ">=0.1.3" },
@@ -1616,9 +1619,9 @@ requires-dist = [
     { name = "pulp", specifier = ">=3.3.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "scipy", specifier = ">=1.15.3" },
 ]
-provides-extras = ["web"]
 
 [package.metadata.requires-dev]
 dev = [
