@@ -9,7 +9,7 @@
 ### 架构重构 — Schema / Core / Web 三层分离
 
 - **`core/` 模块全面拆分**：
-  - `ir_processor.py` → `ir_catalog.py`（catalog 加载） + `ir_normalizer.py`（归一化） + `ir_validator.py`（校验）
+  - `ir_processor.py` → `ir_catalog.py`（catalog 加载） + `ir_normalizer.py`（归一化 + 校验）
   - 新增 `prompt_loader.py`：从 `agents/nl2or_agent.py` 抽取 prompt 组装逻辑，`build_nl2or_agent()` 仅关注 agent 构建
 - **`schema/` 纯数据化**：
   - `problem_ir.py` 清空所有处理函数，仅保留 `TypedDict` 数据定义 + 常量别名
@@ -56,9 +56,8 @@ cp .env.example .env
 `.env` 示例：
 
 ```dotenv
-HAMLET_MODEL_ID=deepseek/deepseek-chat   # 或 openai/gpt-4o
-DEEPSEEK_API_KEY=sk-xxx
-NL2OR_WORKSPACE_DIR=./data/workspace
+HAMLET_MODEL_ID=openrouter/anthropic/claude-3.5-sonnet   # 或 deepseek/deepseek-chat
+OPENROUTER_API_KEY=sk-or-xxx
 ```
 
 ### 3. 运行
@@ -106,15 +105,13 @@ nl2or_agent/
 │   ├── __init__.py
 │   ├── _defaults.py        # 共享默认路径配置
 │   ├── ir_catalog.py       # 模型库/积木块目录加载
-│   ├── ir_normalizer.py    # Problem IR 归一化
-│   ├── ir_validator.py     # 校验
+│   ├── ir_normalizer.py    # Problem IR 归一化 + 校验
 │   ├── output_format.py    # 结构化 final_answer 格式化与校验
 │   └── prompt_loader.py    # 提示词加载
 │
 ├── schema/
 │   ├── __init__.py
-│   ├── ir_types.py         # TypedDict 数据定义
-│   └── problem_ir.py       # 常量与别名定义
+│   └── problem_ir.py       # TypedDict 数据定义 + 常量别名
 │
 ├── tools/
 │   ├── __init__.py
@@ -176,15 +173,13 @@ graph TD
 
     subgraph "core/ (处理引擎层)"
         C1["ir_catalog.py<br/>目录加载"]
-        C2["ir_normalizer.py<br/>归一化"]
-        C3["ir_validator.py<br/>校验"]
-        C4["output_format.py<br/>结构化输出"]
-        C5["prompt_loader.py<br/>提示词加载"]
+        C2["ir_normalizer.py<br/>归一化 + 校验"]
+        C3["output_format.py<br/>结构化输出"]
+        C4["prompt_loader.py<br/>提示词加载"]
     end
 
     subgraph "schema/ (数据定义层)"
-        S1["ir_types.py<br/>TypedDicts"]
-        S2["problem_ir.py<br/>常量/别名"]
+        S1["problem_ir.py<br/>TypedDicts + 常量"]
     end
 
     subgraph "utils/ (基础设施层)"
@@ -198,18 +193,18 @@ graph TD
 
     A -->|组装 tools| T1 & T2 & T3 & T4
     A -->|系统 prompt| C4
-    T1 & T2 -->|调用| C1 & C2 & C3
+    T1 & T2 -->|调用| C1 & C2
     T3 -->|搜索| U1
     T4 -->|存储| U2
-    C1 & C2 & C3 -->|引用常量| S1 & S2
-    C5 -->|catalog| C1
-    W1 -->|格式化输出| C4
+    C1 & C2 -->|引用常量| S1
+    C4 -->|catalog| C1
+    W1 -->|格式化输出| C3
 ```
 
 | 模块 | 职责 | 内容 |
 |------|------|------|
-| `schema/` | 数据定义层 | `ir_types.py`（TypedDict）+ `problem_ir.py`（常量别名） |
-| `core/` | 处理引擎层 | `ir_catalog.py`（目录加载）、`ir_normalizer.py`（归一化）、`ir_validator.py`（校验）、`output_format.py`（格式化）、`prompt_loader.py`（提示词加载） |
+| `schema/` | 数据定义层 | `problem_ir.py`（TypedDict + 常量别名） |
+| `core/` | 处理引擎层 | `ir_catalog.py`（目录加载）、`ir_normalizer.py`（归一化 + 校验）、`output_format.py`（格式化）、`prompt_loader.py`（提示词加载） |
 | `tools/` | Agent 接口层 | HAMLET Tool 子类，薄封装调用 `core/` 函数 |
 | `utils/` | 基础设施层 | `search.py`（关键词检索）、`session.py`（会话管理） |
 | `web/` | 表现层 | `app.py`（Gradio Web 界面） |
@@ -291,7 +286,7 @@ class MyTool(Tool):
 uv run python main.py --mode web
 ```
 
-目前还未实现 Web 界面，后续会添加一个简洁的聊天界面，支持文件上传和结果展示。
+Web 界面支持聊天交互、求解器文件列表查看与会话级隔离（每个浏览器标签页一个独立 agent 实例）。
 
 ---
 
@@ -299,10 +294,9 @@ uv run python main.py --mode web
 
 - [x] **主循环模块撰写**：进行试验性质 User - 交互核心 - LLM 模块初步开发，验证核心流程的可行性与效果；
 - [x] **验证核心求解闭环**：通过配置环境、修复沙箱与提示词格式，使得基础求解能力可用；
-- [ ] **前端开发**：设计并实现一个简洁的用户界面，内容包括：
-  - [ ] 聊天界面：支持用户输入自然语言问题，并展示模型生成的回答；
+- [ ] **前端增强**：在现有 Gradio 聊天界面上补充：
   - [ ] 模型输出展示：清晰展示生成的运筹学模型对照；
-  - [ ] 可能的代码展示：演算代码展示，一是为了提供方便修改的接口，二是为了让用户更好地理解模型构建过程；
+  - [ ] 代码展示：演算代码展示，一是为了提供方便修改的接口，二是为了让用户更好地理解模型构建过程；
 
 > 结构实现可以参考 `../docs/DESIGN.md` 中的设计方案（由于由大模型生成，不保证对），具体细节可根据实际开发进度进行调整与优化。
 >

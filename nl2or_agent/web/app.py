@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Any, Callable
 
 import gradio as gr
 
-from core.output_format import format_for_display
+from core.output_format import format_agent_output
 from utils.session import Session
 
 _MAX_AGENTS = 100
@@ -14,22 +15,30 @@ _MAX_AGENTS = 100
 
 def _display_answer(raw: str) -> str:
     """Render agent output for web display."""
-    try:
-        return format_for_display(str(raw))
-    except ValueError:
-        lines = [l.strip() for l in str(raw).split("\n") if l.strip()]
-        clean = [
-            l
-            for l in lines
-            if not l.startswith(("Thought:", "Code:", "```", "import", "╭", "╰", "━━"))
-        ]
-        return "\n".join(clean[-20:]) or str(raw)[-500:]
+    return format_agent_output(raw)
 
 
-# Per-session agent cache (sid → agent instance)
+# Per-session agent cache (sid → agent instance).
 # Evict oldest when exceeding _MAX_AGENTS to prevent memory leaks.
 _agents: dict[str, Any] = {}
 _agent_access_order: list[str] = []
+_agents_lock = threading.Lock()
+
+
+def _get_or_create_agent(sid: str, agent_factory: Callable[[], Any]) -> Any:
+    """Thread-safely get or create an agent instance for *sid*, evicting LRU."""
+    with _agents_lock:
+        if sid not in _agents:
+            if len(_agents) >= _MAX_AGENTS:
+                oldest = _agent_access_order.pop(0)
+                _agents.pop(oldest, None)
+            _agents[sid] = agent_factory()
+        if sid in _agent_access_order:
+            _agent_access_order.remove(sid)
+        _agent_access_order.append(sid)
+        if len(_agent_access_order) > _MAX_AGENTS * 2:
+            _agent_access_order[:] = _agent_access_order[-_MAX_AGENTS:]
+        return _agents[sid]
 
 
 def get_workspace_files(sid: str) -> str:
@@ -59,15 +68,7 @@ def create_ui(agent_factory: Callable[[], Any]):
         try:
             session = Session(session_id=sid) if sid and sid != "0" else Session()
             sid = session.session_id
-            if sid not in _agents:
-                if len(_agents) >= _MAX_AGENTS:
-                    oldest = _agent_access_order.pop(0)
-                    _agents.pop(oldest, None)
-                _agents[sid] = agent_factory()
-            _agent_access_order.append(sid)
-            if len(_agent_access_order) > _MAX_AGENTS * 2:
-                _agent_access_order[:] = _agent_access_order[-_MAX_AGENTS:]
-            agent = _agents[sid]
+            agent = _get_or_create_agent(sid, agent_factory)
             session.save_conversation_entry(role="user", content=message.strip())
             result = agent.run(message.strip(), reset=False)
             answer = _display_answer(result)

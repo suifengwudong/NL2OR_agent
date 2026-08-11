@@ -8,13 +8,18 @@ isolated per session.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-_SESSIONS_ROOT = Path(__file__).parent.parent / "data" / "workspace" / "sessions"
+_WORKSPACE_ROOT = Path(
+    os.getenv("NL2OR_WORKSPACE_DIR") or Path(__file__).parent.parent / "data" / "workspace"
+)
+_SESSIONS_ROOT = _WORKSPACE_ROOT / "sessions"
+_write_lock = threading.Lock()
 
 
 class Session:
@@ -50,7 +55,8 @@ class Session:
         """Write solver code to the session code directory."""
         fname = filename or f"solver_{uuid.uuid4().hex[:8]}.py"
         path = self.code_dir / fname
-        path.write_text(code, encoding="utf-8")
+        with _write_lock:
+            path.write_text(code, encoding="utf-8")
         return path
 
     # ----------------------------------------------------------------
@@ -64,8 +70,9 @@ class Session:
             "role": role,
             "content": content,
         }
-        with open(self.conversation_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        with _write_lock:
+            with open(self.conversation_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
     # ----------------------------------------------------------------
     # File listing
@@ -102,10 +109,11 @@ class Session:
             return 0
         cutoff = datetime.now(timezone.utc).timestamp() - max_age_days * 86400
         removed = 0
-        for d in _SESSIONS_ROOT.iterdir():
-            if d.is_dir() and d.stat().st_mtime < cutoff:
-                shutil.rmtree(d)
-                removed += 1
+        with _write_lock:
+            for d in _SESSIONS_ROOT.iterdir():
+                if d.is_dir() and d.stat().st_mtime < cutoff:
+                    shutil.rmtree(d)
+                    removed += 1
         return removed
 
 

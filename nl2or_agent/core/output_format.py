@@ -69,8 +69,7 @@ def validate_payload_dict(payload: dict[str, Any]) -> StructuredFinalAnswer:
     expected_keys = list(REQUIRED_FIELD_ORDER)
     if actual_keys != expected_keys:
         raise ValueError(
-            "Invalid field order or fields. Expected keys in order: "
-            + ", ".join(expected_keys)
+            "Invalid field order or fields. Expected keys in order: " + ", ".join(expected_keys)
         )
 
     try:
@@ -86,6 +85,26 @@ def format_for_display(raw: str) -> str:
     human_readable = _render_human_readable(payload)
     json_block = json.dumps(payload.model_dump(), ensure_ascii=False, indent=2)
     return f"{human_readable}\n\n```json\n{json_block}\n```"
+
+
+_NOISE_PREFIXES = ("Thought:", "Code:", "```", "import", "╭", "╰", "━━")
+
+
+def format_agent_output(raw: str) -> str:
+    """Render agent output for display.
+
+    Prefers the structured final-answer format; falls back to cleaned raw text
+    for natural-language replies (e.g. IR confirmation, model-lookup summary).
+    """
+    text = str(raw).strip()
+    try:
+        return format_for_display(text)
+    except ValueError:
+        pass
+
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    clean = [line for line in lines if not line.startswith(_NOISE_PREFIXES) and "```" not in line]
+    return "\n".join(clean[-20:]) or text[-500:]
 
 
 def _render_human_readable(payload: StructuredFinalAnswer) -> str:

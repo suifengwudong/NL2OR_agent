@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 # ---------------------------------------------------------------------------
 # _run_cli tests
@@ -11,50 +13,14 @@ from unittest.mock import MagicMock, patch
 
 
 class TestRunCli:
-    def test_cli_quit_exits_cleanly(self):
-        """Typing 'quit' should exit the loop without error."""
+    @pytest.mark.parametrize("exit_word", ["quit", "exit", "q", "退出"])
+    def test_exit_words_break_loop(self, exit_word: str):
         from main import _run_cli
 
         mock_agent = MagicMock()
         with (
             patch("agents.build_nl2or_agent", return_value=mock_agent),
-            patch("builtins.input", side_effect=["quit"]),
-            patch("builtins.print"),
-        ):
-            _run_cli()
-        mock_agent.run.assert_not_called()
-
-    def test_cli_exit_command_exits(self):
-        from main import _run_cli
-
-        mock_agent = MagicMock()
-        with (
-            patch("agents.build_nl2or_agent", return_value=mock_agent),
-            patch("builtins.input", side_effect=["exit"]),
-            patch("builtins.print"),
-        ):
-            _run_cli()
-        mock_agent.run.assert_not_called()
-
-    def test_cli_q_command_exits(self):
-        from main import _run_cli
-
-        mock_agent = MagicMock()
-        with (
-            patch("agents.build_nl2or_agent", return_value=mock_agent),
-            patch("builtins.input", side_effect=["q"]),
-            patch("builtins.print"),
-        ):
-            _run_cli()
-        mock_agent.run.assert_not_called()
-
-    def test_cli_chinese_quit_exits(self):
-        from main import _run_cli
-
-        mock_agent = MagicMock()
-        with (
-            patch("agents.build_nl2or_agent", return_value=mock_agent),
-            patch("builtins.input", side_effect=["退出"]),
+            patch("builtins.input", side_effect=[exit_word]),
             patch("builtins.print"),
         ):
             _run_cli()
@@ -129,7 +95,8 @@ class TestRunCli:
             ),
         ):
             _run_cli()
-        assert any("FINAL_ANSWER_FORMAT_ERROR" in m for m in printed_messages)
+        assert any("not-json" in m for m in printed_messages)
+        assert not any("FINAL_ANSWER_FORMAT_ERROR" in m for m in printed_messages)
 
     def test_cli_handles_agent_exception(self):
         """Agent raising an exception should print an error and continue."""
@@ -207,16 +174,10 @@ class TestDisplayAnswer:
 
 class TestGetWorkspaceFiles:
     def test_no_sessions_returns_message(self, tmp_path, monkeypatch):
-        import utils.session as session_mod
-
-        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "nosessions")
+        import utils.session as mod
         from web.app import get_workspace_files
 
-        # Need a minimal ui mock to extract the closure; use the actual module
-        import web.app as web_mod
-
-        # get_workspace_files is defined inside create_ui, so we test the logic
-        # by calling Session.list_all directly
+        monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "nosessions")
         from utils.session import Session
 
         assert Session.list_all() == []

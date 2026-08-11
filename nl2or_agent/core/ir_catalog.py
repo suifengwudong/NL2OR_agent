@@ -10,10 +10,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from schema.problem_ir import BLOCK_ID_ALIASES
-
 from ._defaults import BLOCKS_CATALOG_PATH as _BLOCKS_PATH
 from ._defaults import MODEL_BANK_PATH as _MODELS_PATH
+
+_SUPPORTED_SCHEMA_VERSION = 1
 
 
 # ---------------------------------------------------------------------------
@@ -26,10 +26,10 @@ def load_model_bank(models_path: Path | None = None) -> dict[str, Any]:
     path = models_path or _MODELS_PATH
     with open(path, encoding="utf-8") as f:
         bank = json.load(f)
+    _assert_schema_version(bank, path)
     models = bank.get("models", [])
     by_id = {m["id"]: m for m in models}
 
-    # Resolve effective blocks for each concrete model (follow family chain)
     effective_blocks: dict[str, list[str]] = {}
     for m in models:
         if m.get("is_family"):
@@ -59,9 +59,10 @@ def load_block_catalog(blocks_path: Path | None = None) -> dict[str, Any]:
     path = blocks_path or _BLOCKS_PATH
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
+    _assert_schema_version(data, path)
     blocks = data.get("blocks", [])
     by_id = {b["id"]: b for b in blocks}
-    alias_to_id: dict[str, str] = dict(BLOCK_ID_ALIASES)
+    alias_to_id: dict[str, str] = {}
     for block in blocks:
         for alias in block.get("aliases", []):
             alias_to_id[str(alias).strip().lower()] = block["id"]
@@ -72,6 +73,15 @@ def load_block_catalog(blocks_path: Path | None = None) -> dict[str, Any]:
         "block_ids": sorted(by_id.keys()),
         "objective_block_ids": sorted(b["id"] for b in blocks if b.get("category") == "objective"),
     }
+
+
+def _assert_schema_version(data: dict[str, Any], path: Path) -> None:
+    version = data.get("schema_version", 0)
+    if version != _SUPPORTED_SCHEMA_VERSION:
+        raise ValueError(
+            f"{path.name} schema_version={version}, expected {_SUPPORTED_SCHEMA_VERSION}. "
+            "Please update the data file or the loader."
+        )
 
 
 def catalog_markdown(blocks_path: Path | None = None) -> str:

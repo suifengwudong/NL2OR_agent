@@ -14,11 +14,9 @@ dependencies = [
     "pulp>=3.3.0",
     "numpy>=2.2.6",
     "pandas>=2.3.3",
+    "pyyaml>=6.0",
+    "gradio>=4.0.0",
 ]
-
-[project.optional-dependencies]
-# Web UI（基于 hamlet 内置的 GradioUI）
-web = []
 
 [project.scripts]
 nl2or = "main:main"
@@ -35,6 +33,9 @@ dev = [
     "pytest>=8.0.0",
     "ruff>=0.4.0",
 ]
+
+[tool.pyright]
+exclude = [".venv/**", "data/workspace/sessions/**"]
 
 [tool.ruff]
 line-length = 100

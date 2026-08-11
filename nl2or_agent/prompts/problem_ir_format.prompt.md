@@ -44,6 +44,6 @@
 2. 构建 Python `dict` 作为 `ir`  
 3. `report = json.loads(validate_problem_ir(json.dumps(ir)))`  
 4. 若 `report["valid"]` 为 false，根据 `errors` 修正后重新 validate  
-5. `final_answer("请确认：\n" + json.dumps(report["normalized_ir"], ensure_ascii=False, indent=2))`
+5. **用中文自然语言总结**校验后的 IR（参数、目标、约束块、缺失数据），并调用 `final_answer("请确认：\n" + summary)`。**禁止**把原始 IR JSON 直接丢给用户。
 
 写入代码时用 `False`/`True`，禁止 JSON 的 `false`/`true`。

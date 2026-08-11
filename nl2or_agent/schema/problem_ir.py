@@ -68,28 +68,6 @@ class BlockCatalog(TypedDict):
 # ---------------------------------------------------------------------------
 # Aliases and constants
 # ---------------------------------------------------------------------------
-BLOCK_ID_ALIASES: dict[str, str] = {
-    "assignment": "assign_each_demand_once",
-    "demand_assignment": "assign_each_demand_once",
-    "unique_assignment": "assign_each_demand_once",
-    "linking": "link_assignment_to_open",
-    "capacity_link": "link_assignment_to_open",
-    "cardinality": "cardinality_open_p_facilities",
-    "p_facility": "cardinality_open_p_facilities",
-    "select_p": "cardinality_open_p_facilities",
-    "forcing": "force_facility_open",
-    "forcing_open": "force_facility_open",
-    "must_open": "force_facility_open",
-    "prohibiting": "force_facility_closed",
-    "forcing_closed": "force_facility_closed",
-    "must_close": "force_facility_closed",
-    "force_closed": "force_facility_closed",
-    "weighted_distance": "weighted_service_distance_objective",
-    "minimize_weighted_distance": "weighted_service_distance_objective",
-    "service_distance": "weighted_service_distance_objective",
-    "knapsack": "knapsack_capacity",
-}
-
 OBJECTIVE_BLOCK_ALIASES: dict[str, str] = {
     "minimize_total_weighted_distance": "weighted_service_distance_objective",
     "weighted_distance": "weighted_service_distance_objective",

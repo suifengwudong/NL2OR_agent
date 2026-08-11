@@ -70,7 +70,7 @@ class RunSolverTool(Tool):
     # Tool entry point
     # ------------------------------------------------------------------
 
-    def forward(self, code: str) -> str:  # noqa: D102
+    def forward(self, code: str) -> str:
         """Write *code* to a temp file, run it, and return captured output."""
         script_path = self.save_code(code)
 

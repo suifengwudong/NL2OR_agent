@@ -8,6 +8,7 @@ import pytest
 
 from core.output_format import (
     extract_json_payload,
+    format_agent_output,
     format_for_display,
     validate_payload_dict,
 )
@@ -97,3 +98,26 @@ class TestExtractAndDisplay:
         assert "约束/假设" in result
         assert "可执行步骤" in result
         assert "```json" in result
+
+
+class TestFormatAgentOutput:
+    def test_structured_payload_uses_formatted_display(self):
+        payload = _build_payload()
+        result = format_agent_output(json.dumps(payload, ensure_ascii=False))
+        assert "结论" in result
+        assert "```json" in result
+
+    def test_natural_language_passthrough(self):
+        result = format_agent_output("请确认：\n已解析为 p-中位问题，p=2")
+        assert "请确认" in result
+        assert "p-中位问题" in result
+
+    def test_strips_code_noise(self):
+        raw = "Thought: let me think\nCode: import json\n```\nsnippet```\n最终结论是 1250。"
+        result = format_agent_output(raw)
+        assert "最终结论是 1250。" in result
+        assert "Thought:" not in result
+        assert "```" not in result
+
+    def test_empty_output_returns_string(self):
+        assert isinstance(format_agent_output(""), str)

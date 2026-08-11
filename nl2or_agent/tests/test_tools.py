@@ -16,10 +16,12 @@ from tools import QueryModelLibraryTool, RunSolverTool
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def tmp_model_bank(tmp_path: Path) -> Path:
     """Create a minimal model bank JSON for testing."""
     bank = {
+        "schema_version": 1,
         "models": [
             {
                 "id": "knapsack",
@@ -45,7 +47,7 @@ def tmp_model_bank(tmp_path: Path) -> Path:
                 "solver_hint": "gurobipy Model",
                 "template_code": "# LP template",
             },
-        ]
+        ],
     }
     bank_file = tmp_path / "models.json"
     bank_file.write_text(json.dumps(bank, ensure_ascii=False), encoding="utf-8")
@@ -67,6 +69,7 @@ def solver_tool(tmp_path: Path) -> RunSolverTool:
 # ---------------------------------------------------------------------------
 # QueryModelLibraryTool tests
 # ---------------------------------------------------------------------------
+
 
 class TestQueryModelLibraryTool:
     def test_initialization_default_path(self):
@@ -125,6 +128,7 @@ class TestQueryModelLibraryTool:
     def test_forward_returns_at_most_3_results(self, tmp_path: Path):
         """Ensure no more than 3 results are returned."""
         bank = {
+            "schema_version": 1,
             "models": [
                 {
                     "id": f"model_{i}",
@@ -139,7 +143,7 @@ class TestQueryModelLibraryTool:
                     "template_code": "",
                 }
                 for i in range(5)
-            ]
+            ],
         }
         bank_file = tmp_path / "big_bank.json"
         bank_file.write_text(json.dumps(bank), encoding="utf-8")
@@ -158,6 +162,7 @@ class TestQueryModelLibraryTool:
 # ---------------------------------------------------------------------------
 # RunSolverTool tests
 # ---------------------------------------------------------------------------
+
 
 class TestRunSolverTool:
     def test_initialization_default_workspace(self):
