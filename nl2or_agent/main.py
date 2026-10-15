@@ -1,13 +1,18 @@
 """NL2OR Agent — entry point.
 
-Modes
------
+Interfaces
+----------
 CLI (default)
     uv run python main.py
     uv run python main.py --mode cli
 
 Web (Gradio GUI)
     uv run python main.py --mode web
+
+Agent modes
+-----------
+`--agent-mode interactive` (default) advances one workflow step per user turn.
+`--agent-mode automatic` runs the whole pipeline in a single turn.
 """
 
 from __future__ import annotations
@@ -24,17 +29,17 @@ sys.path.insert(0, str(Path(__file__).parent))
 load_dotenv()
 
 
-def _run_cli() -> None:
+def _run_cli(agent_mode: str = "interactive") -> None:
     """Interactive CLI loop: read user input, run the agent, print the result."""
     from agents import build_nl2or_agent
     from core.output_format import format_agent_output
 
     print("=" * 60)
-    print("  NL2OR Agent  (输入 'quit' 或 'exit' 退出)")
+    print(f"  NL2OR Agent  [{agent_mode}]  (输入 'quit' 或 'exit' 退出)")
     print("=" * 60)
     print()
 
-    agent = build_nl2or_agent(verbosity_level=1)
+    agent = build_nl2or_agent(mode=agent_mode, verbosity_level=1)
     while True:
         try:
             user_input = input("用户 > ").strip()
@@ -57,11 +62,12 @@ def _run_cli() -> None:
             print(f"\n[错误] {exc}\n")
 
 
-def _run_web() -> None:
+def _run_web(agent_mode: str = "interactive") -> None:
     """Launch the NL2OR web GUI.
 
-    Each browser tab gets its own agent instance (via ``gr.State``) so
-    conversation history and solver artifacts are isolated per user.
+    Each browser tab gets its own agent instance (keyed by the hidden session
+    textbox) so conversation history and solver artifacts are isolated per user.
+    The mode selector in the UI starts on *agent_mode*.
     """
     from agents import build_nl2or_agent
     from web import launch_web
@@ -72,10 +78,12 @@ def _run_web() -> None:
     def agent_factory():
         return build_nl2or_agent(verbosity_level=0)
 
-    launch_web(agent_factory)
+    launch_web(agent_factory, default_mode=agent_mode)
 
 
 def main() -> None:
+    from core.prompt_loader import AGENT_MODES
+
     parser = argparse.ArgumentParser(
         description="NL2OR Agent — 将自然语言运筹学问题转化为数学模型并自动求解"
     )
@@ -83,14 +91,23 @@ def main() -> None:
         "--mode",
         choices=["cli", "web"],
         default="cli",
-        help="运行模式：cli（命令行，默认）或 web（Gradio 界面）",
+        help="运行界面：cli（命令行，默认）或 web（Gradio 界面）",
+    )
+    parser.add_argument(
+        "--agent-mode",
+        choices=list(AGENT_MODES),
+        default="interactive",
+        help=(
+            "Agent 工作模式：interactive（逐步确认，默认）或 "
+            "automatic（粘贴完整需求，一次运行完成建模与求解）"
+        ),
     )
     args = parser.parse_args()
 
     if args.mode == "web":
-        _run_web()
+        _run_web(args.agent_mode)
     else:
-        _run_cli()
+        _run_cli(args.agent_mode)
 
 
 if __name__ == "__main__":

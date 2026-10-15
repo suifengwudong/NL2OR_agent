@@ -219,10 +219,38 @@ class TestRunSolverTool:
         code = "import sys; sys.exit(1)"
         result = solver_tool.forward(code)
         assert "[EXIT CODE] 1" in result
+        assert "[RETRY REQUIRED]" in result
 
     def test_forward_script_path_appended(self, solver_tool: RunSolverTool):
         result = solver_tool.forward("print('hello')")
         assert "[Script saved to:" in result
+
+    def test_forward_can_reuse_a_filename(self, solver_tool: RunSolverTool):
+        first = solver_tool.run_file("print('Objective: 1')", "solver_fixed.py")
+        second = solver_tool.run_file("print('Objective: 2')", "solver_fixed.py")
+
+        assert "solver_fixed.py" in first and "solver_fixed.py" in second
+        assert "Objective: 2" in second
+        assert len(list(solver_tool._workspace.glob("*.py"))) == 1  # type: ignore[union-attr]
+
+    def test_forward_flags_missing_objective_contract(self, solver_tool: RunSolverTool):
+        result = solver_tool.forward("print('solved')")
+        assert "[CONTRACT]" in result
+        assert "Objective:" in result
+
+    def test_forward_accepts_objective_contract(self, solver_tool: RunSolverTool):
+        result = solver_tool.forward("print('Objective: 42')")
+        assert "[CONTRACT]" not in result
+        assert "Objective: 42" in result
+
+    def test_forward_echoes_result_line_last(self, solver_tool: RunSolverTool):
+        result = solver_tool.forward("print('Objective: 2210')")
+        assert "[RESULT] Objective: 2210" in result
+        assert result.strip().splitlines()[-1] == "[RESULT] Objective: 2210"
+
+    def test_forward_omits_result_line_without_objective(self, solver_tool: RunSolverTool):
+        result = solver_tool.forward("print('no objective here')")
+        assert "[RESULT]" not in result
 
     def test_forward_timeout(self, solver_tool: RunSolverTool):
         """Simulate a timeout scenario."""

@@ -51,8 +51,6 @@ def _compact_model(
         "name": m["name"],
         "description": m.get("description", ""),
     }
-    if "type" in m:
-        out["type"] = m["type"]
     if "variables" in m:
         out["variables"] = m["variables"]
     if "objective" in m:
@@ -61,13 +59,13 @@ def _compact_model(
         out["constraints"] = m["constraints"]
     if "solver_hint" in m:
         out["solver_hint"] = m["solver_hint"]
-    if "template_code" in m:
-        out["template_code"] = m["template_code"]
     if m.get("family"):
         out["family"] = m["family"]
     if m.get("is_family"):
         out["is_family"] = True
         out["base_blocks"] = m.get("base_blocks", [])
+    if m.get("optional_blocks"):
+        out["optional_blocks"] = m["optional_blocks"]
     if m.get("objective_block"):
         out["objective_block"] = m["objective_block"]
     if m.get("parameters"):
@@ -89,8 +87,10 @@ def _compact_model(
                     "id": b["id"],
                     "name": b["name"],
                     "category": b["category"],
+                    "description": b.get("description", ""),
+                    "math": b.get("math", ""),
                     "parameters": b.get("parameters", []),
-                    "template_snippet": b.get("template_snippet", ""),
+                    "template_snippet_optional": b.get("template_snippet", ""),
                 }
                 for b in resolved
             ]
@@ -98,15 +98,22 @@ def _compact_model(
 
 
 def _compact_block(b: dict[str, Any]) -> dict[str, Any]:
-    return {
+    out: dict[str, Any] = {
         "id": b["id"],
         "name": b["name"],
         "category": b["category"],
         "description": b["description"],
         "math": b.get("math", ""),
         "parameters": b.get("parameters", []),
-        "template_snippet": b.get("template_snippet", ""),
     }
+    if b.get("sense"):
+        out["sense"] = b["sense"]
+    if b.get("requires_one_of"):
+        out["requires_one_of"] = b["requires_one_of"]
+    # 代码片段只是一种可选写法，不是验收对象；约束内容以 math / description 为准
+    if b.get("template_snippet"):
+        out["template_snippet_optional"] = b["template_snippet"]
+    return out
 
 
 class QueryModelLibraryTool(Tool):
@@ -176,5 +183,10 @@ class QueryModelLibraryTool(Tool):
                 ensure_ascii=False,
             )
 
-        payload["usage_hint"] = "Compose model from blocks; templates are references only."
+        payload["usage_hint"] = (
+            "The acceptance target is the model skeleton: the constraint blocks and the "
+            "objective (sense included), not the code style. `math`/`description` are the "
+            "specification; `template_snippet_optional` is one possible encoding and may be "
+            "rewritten for another solver library."
+        )
         return json.dumps(payload, ensure_ascii=False, indent=2)

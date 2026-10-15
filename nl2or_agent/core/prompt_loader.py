@@ -1,6 +1,12 @@
 """Prompt loading: load and assemble prompt templates for the NL2OR agent.
 
 Pulled out of agents/nl2or_agent.py to separate prompt assembly from agent construction.
+
+The system prompt is assembled from three sources:
+
+- ``system.prompt.md`` — the mode-independent core (role, output rules, IR flow, solving).
+- ``workflow.<mode>.prompt.md`` — the workflow for the selected agent mode.
+- the ``problem_ir_format`` appendix and the canonical block_id catalog.
 """
 
 from __future__ import annotations
@@ -8,6 +14,9 @@ from __future__ import annotations
 from pathlib import Path
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+
+# Agent modes select the workflow prompt.
+AGENT_MODES: tuple[str, ...] = ("interactive", "automatic")
 
 
 def _load_prompt(prompt_path: str | Path) -> str:
@@ -18,15 +27,24 @@ def _load_prompt(prompt_path: str | Path) -> str:
     return ""
 
 
-def load_system_prompt() -> str:
-    """Load system prompt with compositional IR appendix and block catalog."""
+def load_system_prompt(mode: str = "interactive") -> str:
+    """Load the system prompt for *mode*, with the IR appendix and block catalog.
+
+    ``interactive`` advances one workflow step per user turn (parse → confirm → look up → solve);
+    ``automatic`` runs the whole pipeline within a single turn.
+    """
     from .ir_catalog import catalog_markdown
+
+    if mode not in AGENT_MODES:
+        raise ValueError(f"Unknown agent mode {mode!r}. Expected one of: {', '.join(AGENT_MODES)}.")
 
     parts: list[str] = []
 
-    # 主体：系统 prompt
-    prompt_file = _PROMPTS_DIR / "system.prompt.md"
-    parts.append(_load_prompt(prompt_file))
+    # 主体：与模式无关的核心 prompt
+    parts.append(_load_prompt(_PROMPTS_DIR / "system.prompt.md"))
+
+    # 工作流：按模式选择
+    parts.append(_load_prompt(_PROMPTS_DIR / f"workflow.{mode}.prompt.md"))
 
     # 附录：IR 格式说明
     ir_file = _PROMPTS_DIR / "problem_ir_format.prompt.md"

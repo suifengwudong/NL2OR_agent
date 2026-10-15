@@ -17,6 +17,17 @@ from schema.problem_ir import (
 
 from .ir_catalog import load_block_catalog, load_model_bank
 
+_SENSE_ALIASES: dict[str, str] = {
+    "min": "minimize",
+    "minimise": "minimize",
+    "minimize": "minimize",
+    "minimum": "minimize",
+    "max": "maximize",
+    "maximise": "maximize",
+    "maximize": "maximize",
+    "maximum": "maximize",
+}
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -61,6 +72,8 @@ def _normalize_with_context(
         "组合多个问题族或含自定义约束" if out["is_hybrid"] else ""
     )
 
+    out["entities"] = _normalize_entities(ir.get("entities"))
+
     params = ir.get("parameters")
     out["parameters"] = params if isinstance(params, dict) else {}
 
@@ -68,7 +81,7 @@ def _normalize_with_context(
         ir.get("decision_variables") if isinstance(ir.get("decision_variables"), list) else []
     )
 
-    out["objective"] = _normalize_objective(ir.get("objective"), catalog)
+    out["objective"] = _normalize_objective(ir.get("objective"), catalog, errors, warnings)
 
     raw_blocks = ir.get("constraint_blocks") or []
     if not isinstance(raw_blocks, list):
@@ -122,6 +135,26 @@ def _canonical_block_id(raw: str, catalog: dict[str, Any]) -> str | None:
     return None
 
 
+def _normalize_entities(value: Any) -> dict[str, Any]:
+    """Normalize ``entities`` into ``{"I": {"size": n, "ids": [...]}, ...}``."""
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for key, entry in value.items():
+        if isinstance(entry, int):
+            out[str(key)] = {"size": int(entry), "ids": []}
+            continue
+        if not isinstance(entry, dict):
+            continue
+        size = entry.get("size")
+        ids = entry.get("ids")
+        out[str(key)] = {
+            "size": int(size) if isinstance(size, (int, float)) else 0,
+            "ids": [str(x) for x in ids] if isinstance(ids, list) else [],
+        }
+    return out
+
+
 def _normalize_confidence(val: Any) -> str:
     if isinstance(val, (int, float)):
         if val >= 0.8:
@@ -155,46 +188,114 @@ def _normalize_family(fam: Any, catalog: dict[str, Any], model_ids: set[str]) ->
     }
 
 
-def _normalize_objective(obj: Any, catalog: dict[str, Any]) -> dict[str, Any]:
+def _normalize_objective(
+    obj: Any,
+    catalog: dict[str, Any],
+    errors: list[str],
+    warnings: list[str],
+) -> dict[str, Any]:
+    """Normalize ``objective`` into ``{sense, block_id, expression, ...}``.
+
+    目标块只做归一与核对，不做替换：库中找不到就按库外目标记录并给出提示，
+    未声明就留空，避免把未知目标静默改写成某个库内目标。
+    """
     objective_ids = set(catalog["objective_block_ids"])
+    sense_by_id: dict[str, str] = catalog.get("objective_sense", {})
+
+    def _empty() -> dict[str, Any]:
+        return {
+            "sense": "",
+            "block_id": "",
+            "expression": "",
+            "natural_language": "",
+            "parameters": {},
+        }
+
     if isinstance(obj, str):
-        key = obj.strip().lower()
-        block_id = OBJECTIVE_BLOCK_ALIASES.get(key, key)
+        text = obj.strip()
+        if not text:
+            warnings.append("未声明目标函数：objective.block_id 为空")
+            return _empty()
+        key = text.lower()
+        candidate = OBJECTIVE_BLOCK_ALIASES.get(key) or key
+        block_id = _canonical_block_id(candidate, catalog) or ""
         if block_id not in objective_ids:
-            block_id = _canonical_block_id(block_id, catalog) or block_id
+            warnings.append(f"目标 '{text}' 未匹配到库中目标块，按库外目标处理")
+            block_id = ""
         return {
-            "sense": "minimize",
-            "block_id": (
-                block_id if block_id in objective_ids else "weighted_service_distance_objective"
-            ),
-            "expression": obj,
-            "natural_language": obj,
-        }
-    if isinstance(obj, dict):
-        block_id = obj.get("block_id") or obj.get("id") or ""
-        if block_id:
-            canon = _canonical_block_id(str(block_id), catalog)
-            if canon and canon in objective_ids:
-                block_id = canon
-            elif str(block_id).lower() in OBJECTIVE_BLOCK_ALIASES:
-                block_id = OBJECTIVE_BLOCK_ALIASES[str(block_id).lower()]
-        else:
-            expr = str(obj.get("expression", "")).lower()
-            block_id = OBJECTIVE_BLOCK_ALIASES.get(expr, "weighted_service_distance_objective")
-        return {
-            "sense": obj.get("sense", "minimize"),
+            "sense": _normalize_sense(None, sense_by_id.get(block_id), block_id, warnings),
             "block_id": block_id,
-            "expression": obj.get("expression", ""),
-            "natural_language": obj.get("natural_language", ""),
-            "parameters": obj.get("parameters") or {},
+            "expression": text,
+            "natural_language": text,
+            "parameters": {},
         }
-    return {
-        "sense": "minimize",
-        "block_id": "weighted_service_distance_objective",
-        "expression": "",
-        "natural_language": "",
-        "parameters": {},
-    }
+
+    if isinstance(obj, dict):
+        raw = str(obj.get("block_id") or obj.get("id") or "").strip()
+        block_id = ""
+        if raw:
+            canon = _canonical_block_id(raw, catalog)
+            if canon is None:
+                block_id = raw
+                warnings.append(f"目标块 '{raw}' 不在库中，按库外目标处理")
+            elif canon in objective_ids:
+                block_id = canon
+            else:
+                errors.append(
+                    f"'{raw}' 不是目标块（category={catalog['by_id'][canon].get('category', '')}），"
+                    "请放入 constraint_blocks"
+                )
+                block_id = canon
+        else:
+            expr = str(obj.get("expression", "")).strip()
+            if expr:
+                candidate = OBJECTIVE_BLOCK_ALIASES.get(expr.lower()) or _canonical_block_id(
+                    expr, catalog
+                )
+                if candidate in objective_ids:
+                    block_id = candidate or ""
+
+        catalog_sense = sense_by_id.get(block_id)
+        sense = _normalize_sense(obj.get("sense"), catalog_sense, block_id, warnings)
+        if sense and catalog_sense and sense != catalog_sense:
+            errors.append(f"目标块 {block_id} 的优化方向为 {catalog_sense}，IR 声明为 {sense}")
+
+        params = obj.get("parameters") or {}
+        if not isinstance(params, dict):
+            warnings.append("objective.parameters 必须是对象，已忽略")
+            params = {}
+        return {
+            "sense": sense,
+            "block_id": block_id,
+            "expression": str(obj.get("expression", "")),
+            "natural_language": str(obj.get("natural_language", "")),
+            "parameters": params,
+        }
+
+    if obj is None:
+        warnings.append("未声明目标函数：objective 缺失")
+        return _empty()
+
+    errors.append(f"objective 必须是对象或字符串，收到 {type(obj).__name__}")
+    return _empty()
+
+
+def _normalize_sense(
+    value: Any,
+    catalog_sense: str | None,
+    block_id: str,
+    warnings: list[str],
+) -> str:
+    """Resolve the optimization direction, falling back to the catalog sense."""
+    if value is None or str(value).strip() == "":
+        if catalog_sense:
+            return catalog_sense
+        warnings.append(f"目标块 {block_id or '(未声明)'} 缺少优化方向 sense")
+        return ""
+    sense = _SENSE_ALIASES.get(str(value).strip().lower(), "")
+    if not sense:
+        warnings.append(f"无法识别的 sense '{value}'，已按未声明处理")
+    return sense
 
 
 def validate_problem_ir(
@@ -218,12 +319,216 @@ def validate_problem_ir(
                 if pname not in entry.get("parameters", {}):
                     errors.append(f"块 {bid} 缺少必填参数 '{pname}'")
 
+    skeleton = _check_skeleton(normalized, catalog, model_bank, errors, warnings)
+
     return {
         "valid": len(errors) == 0,
         "normalized_ir": normalized,
         "errors": errors,
         "warnings": warnings,
         "catalog_block_ids": catalog["block_ids"],
+        "catalog_objective_ids": catalog["objective_block_ids"],
+        "skeleton": skeleton,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Skeleton checks: 约束集与目标函数是否构成完整的运筹模型
+# ---------------------------------------------------------------------------
+
+
+def _required_and_optional_blocks(
+    model_bank: dict[str, Any], model_id: str
+) -> tuple[list[str], list[str]]:
+    """Return (必需块, 可替代块) for a declared family or concrete model."""
+    model = model_bank["by_id"][model_id]
+    if model.get("is_family"):
+        return (
+            list(model.get("base_blocks") or []),
+            list(model.get("optional_blocks") or []),
+        )
+    required = list(model_bank.get("effective_blocks", {}).get(model_id, []))
+    optional = list(model.get("optional_blocks") or [])
+    family_id = model.get("family")
+    if family_id and family_id in model_bank["by_id"]:
+        optional += list(model_bank["by_id"][family_id].get("optional_blocks") or [])
+    return required, optional
+
+
+def collect_parameters(ir: dict[str, Any]) -> dict[str, Any]:
+    """Merge the executable view of the IR's numeric data.
+
+    Data may sit in the top-level ``parameters`` or inside a block's own
+    ``parameters``; string values are treated as placeholders (e.g.
+    "由距离矩阵给定") and ignored. Top-level values win.
+    """
+    data = {k: v for k, v in (ir.get("parameters") or {}).items() if not isinstance(v, str)}
+    for entry in ir.get("constraint_blocks") or []:
+        for key, value in (entry.get("parameters") or {}).items():
+            if not isinstance(value, str):
+                data.setdefault(key, value)
+    for key, value in ((ir.get("objective") or {}).get("parameters") or {}).items():
+        if not isinstance(value, str):
+            data.setdefault(key, value)
+    return data
+
+
+def _check_entities(normalized_ir: dict[str, Any], errors: list[str]) -> dict[str, Any]:
+    """Check that the declared index sets agree with the declared data.
+
+    核对的是内容维度：p 与 |J|、各参数长度与 |I| / |J|、矩阵维度、强制设施是否落在 J 内。
+    """
+    entities = normalized_ir.get("entities") or {}
+    n_i = (entities.get("I") or {}).get("size") or None
+    n_j = (entities.get("J") or {}).get("size") or None
+    j_ids = [str(x) for x in (entities.get("J") or {}).get("ids") or []]
+    params = collect_parameters(normalized_ir)
+    problems: list[str] = []
+
+    def report(message: str) -> None:
+        errors.append(message)
+        problems.append(message)
+
+    if n_j is not None:
+        p = params.get("p")
+        if isinstance(p, int) and p > n_j:
+            report(f"p={p} 超过候选设施数 |J|={n_j}")
+
+    for key in ("demand", "value", "weight"):
+        values = params.get(key)
+        if n_i and isinstance(values, list) and len(values) != n_i:
+            report(f"参数 {key} 的长度 {len(values)} 与 |I|={n_i} 不符")
+    for key in ("fixed_cost", "facility_capacity"):
+        values = params.get(key)
+        if n_j and isinstance(values, list) and len(values) != n_j:
+            report(f"参数 {key} 的长度 {len(values)} 与 |J|={n_j} 不符")
+    for key in ("distance", "service_cost", "coverage_matrix"):
+        values = params.get(key)
+        if n_i and n_j and isinstance(values, list) and values and isinstance(values[0], list):
+            shape = (len(values), len(values[0]))
+            if shape != (n_i, n_j):
+                report(f"参数 {key} 的维度 {shape[0]}x{shape[1]} 与 |I|x|J|={n_i}x{n_j} 不符")
+
+    for key in ("forced_open", "forced_closed"):
+        for item in params.get(key) or []:
+            if j_ids:
+                if str(item) not in j_ids:
+                    report(f"参数 {key} 中的 {item!r} 不在设施集合 J 中")
+            elif isinstance(item, int) and n_j is not None and not 0 <= item < n_j:
+                report(f"参数 {key} 中的下标 {item} 超出 |J|={n_j}")
+
+    return {"n_i": n_i, "n_j": n_j, "problems": problems}
+
+
+def _check_skeleton(
+    normalized_ir: dict[str, Any],
+    catalog: dict[str, Any],
+    model_bank: dict[str, Any],
+    errors: list[str],
+    warnings: list[str],
+) -> dict[str, Any]:
+    """Check that the constraint set and objective form a complete OR model.
+
+    核对对象是模型的骨架（约束块与目标函数），与生成代码的写法无关。
+    """
+    by_block = catalog["by_id"]
+    objective_ids = set(catalog["objective_block_ids"])
+    present = [b["block_id"] for b in normalized_ir.get("constraint_blocks", [])]
+    present_set = set(present)
+
+    declared = [str(f.get("id")) for f in normalized_ir.get("problem_families", []) if f.get("id")]
+    known = [mid for mid in declared if mid in model_bank["by_id"]]
+    unknown = [mid for mid in declared if mid not in model_bank["by_id"]]
+
+    required: list[str] = []
+    optional: list[str] = []
+    for mid in known:
+        req, opt = _required_and_optional_blocks(model_bank, mid)
+        required += req
+        optional += opt
+    required = list(dict.fromkeys(required))
+    optional = list(dict.fromkeys(optional))
+
+    missing: list[str] = []
+    substituted: list[str] = []
+    for bid in required:
+        if bid in present_set:
+            continue
+        category = (by_block.get(bid) or {}).get("category")
+        alternatives = [
+            p
+            for p in present
+            if p in optional and (by_block.get(p) or {}).get("category") == category
+        ]
+        if alternatives:
+            substituted.append(bid)
+            warnings.append(f"模板要求 {bid}，实际使用了同类别可选块 {alternatives[0]}")
+        else:
+            missing.append(bid)
+    if missing:
+        errors.append(
+            f"骨架缺少模板要求的约束块 {', '.join(missing)}（来自族/模型 {', '.join(known)}）"
+        )
+
+    for bid in present:
+        one_of = list((by_block.get(bid) or {}).get("requires_one_of") or [])
+        if one_of and not (present_set & set(one_of)):
+            errors.append(f"块 {bid} 需要同时使用 {' 或 '.join(one_of)} 之一")
+
+    inconsistent: list[str] = []
+    for bid in present:
+        if bid in required:
+            # 模板要求的块必然与声明的族一致
+            continue
+        typical = list((by_block.get(bid) or {}).get("typical_models") or [])
+        if typical and known and not (set(typical) & set(known)):
+            inconsistent.append(bid)
+            warnings.append(f"块 {bid} 通常用于 {'、'.join(typical)}，与声明的族/模型不一致")
+
+    if unknown:
+        warnings.append(f"族/模型 {'、'.join(unknown)} 不在模型库中，无法核对约束块骨架")
+
+    objective = normalized_ir.get("objective") or {}
+    objective_block = str(objective.get("block_id") or "")
+    objective_sense = str(objective.get("sense") or "")
+    if objective_block and known:
+        expected = {
+            str(model_bank["by_id"][mid].get("objective_block"))
+            for mid in known
+            if model_bank["by_id"][mid].get("objective_block")
+        }
+        if expected and objective_block not in expected:
+            warnings.append(
+                f"目标块 {objective_block} 与声明的族/模型不一致，模板期望 {' 或 '.join(sorted(expected))}"
+            )
+
+    unbound: list[str] = []
+    if objective_block in by_block:
+        required_params = [
+            p["name"] for p in by_block[objective_block].get("parameters", []) if p.get("required")
+        ]
+        declared_data = set(objective.get("parameters") or {}) | set(
+            normalized_ir.get("parameters") or {}
+        )
+        unbound = [name for name in required_params if name not in declared_data]
+        if unbound:
+            warnings.append(
+                f"目标块 {objective_block} 的必填参数未在 objective.parameters 或顶层 parameters 中声明: "
+                f"{', '.join(unbound)}"
+            )
+
+    return {
+        "declared_models": known,
+        "unknown_models": unknown,
+        "required_blocks": required,
+        "missing_required_blocks": missing,
+        "substituted_blocks": substituted,
+        "inconsistent_blocks": inconsistent,
+        "objective_block": objective_block,
+        "objective_sense": objective_sense,
+        "objective_in_catalog": objective_block in objective_ids,
+        "unbound_objective_params": unbound,
+        "entities": _check_entities(normalized_ir, errors),
     }
 
 

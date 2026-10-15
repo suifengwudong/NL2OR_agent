@@ -6,12 +6,15 @@
 |------|------|------|
 | `problem_families` | list | `{id, name, confidence, notes}`；`id` 用 `p_median`、`facility_location` 等 |
 | `is_hybrid` | bool | 多族组合或含自定义约束时为 true |
-| `parameters` | object | 数值数据：p、distance、weight、forced_open 等 |
+| `entities` | object | 索引集合：`{"I": {"size": 6}, "J": {"size": 5, "ids": ["A","B","C","D","E"]}}`；`ids` 可省略 |
+| `parameters` | object | 数值数据：p、distance、demand、weight、fixed_cost、service_cost、coverage_matrix、facility_capacity、capacity、forced_open 等 |
 | `decision_variables` | list | `{symbol, type, meaning}` |
-| `objective` | object | 必须含 `block_id`（目标块），见下表 objective 类 |
+| `objective` | object | 必须含 `block_id`（库中目标块）与 `sense`，见下 |
 | `constraint_blocks` | list | 仅含库中**约束**块，每项见下 |
 | `custom_constraints` | list[str] | **仅**非库标准规则的自然语言/公式，不得作为 block_id |
 | `missing_data` | list[str] | 缺失数据说明 |
+
+`entities` 用来核对数据是否与索引集合一致，写出来就能被校验：`p <= |J|`、`demand`/`value`/`weight` 长度等于 `|I|`、`distance`/`service_cost`/`coverage_matrix` 维度等于 `|I| x |J|`、`fixed_cost`/`facility_capacity` 长度等于 `|J|`、`forced_open`/`forced_closed` 落在 `J` 内。数据可以放在顶层 `parameters`，也可以放在对应块的 `parameters` 里；字符串视为占位说明，不参与校验。
 
 ## constraint_blocks 每一项
 
@@ -25,6 +28,7 @@
 ```
 
 - `block_id`：必须是附录 catalog 表中的标准 id（禁止 `assignment`、`linking`、`forcing`、`custom_constraints`）。
+- `parameters`：该块 `required_parameters` 列出的参数必须出现（可用说明文字作为占位值）。
 - `status`：`required` | `optional` | `user_specified`
 
 ## objective 对象
@@ -38,12 +42,6 @@
 }
 ```
 
-## Step 1 代码流程（必须）
-
-1. 可选：`list_block_catalog()` 查看标准 id  
-2. 构建 Python `dict` 作为 `ir`  
-3. `report = json.loads(validate_problem_ir(json.dumps(ir)))`  
-4. 若 `report["valid"]` 为 false，根据 `errors` 修正后重新 validate  
-5. **用中文自然语言总结**校验后的 IR（参数、目标、约束块、缺失数据），并调用 `final_answer("请确认：\n" + summary)`。**禁止**把原始 IR JSON 直接丢给用户。
-
-写入代码时用 `False`/`True`，禁止 JSON 的 `false`/`true`。
+- `block_id`：取自 catalog 的 `objective_block_ids`；`sense` 与该块的 `sense` 一致（`covered_demand_objective` 与 `total_value_objective` 是 maximize，其余为 minimize）。
+- 目标块的 `required_parameters` 需在 `objective.parameters` 或顶层 `parameters` 中出现。
+- 库中没有对应目标块时，保留原有 `expression` 与 `sense` 并允许它留在 `block_id` 之外；校验会把该目标标为库外目标并给出提示，不会替换成别的目标。

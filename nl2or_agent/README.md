@@ -4,6 +4,53 @@
 
 ---
 
+## 更新日志 (2026-10-15)
+
+### 双模式：interactive 与 automatic
+
+- **`prompts/` 按模式拆分**：抽出与模式无关的核心 prompt，工作流改为按模式加载
+  - `system.prompt.md`：角色、输出约束、组合式建模、IR 构建与校验、求解（模式无关）
+  - `workflow.interactive.prompt.md`：每轮推进一个步骤（解析 → 确认 → 查库 → 求解）
+  - `workflow.automatic.prompt.md`：一轮内完成解析、查库、建模与求解
+  - `problem_ir_format.prompt.md`：仅保留 IR 字段规范
+- **`load_system_prompt(mode)`**：按模式组装系统提示词，未知模式直接抛 `ValueError`
+- **`agents`**：`build_nl2or_agent(mode=...)` 在构建时选定模式；新增 `apply_agent_mode()`，在 `run()` 前切换模式（HAMLET 每次 `run()` 重读系统提示词，因此切换模式不会丢失会话记忆）
+- **CLI**：新增 `--agent-mode {interactive,automatic}`，默认 `interactive`
+- **Web**：新增模式选择器与模式说明，`_run_web(agent_mode)` 决定界面初始模式
+
+### 模型骨架校验：约束集与目标函数
+
+验收对象定为运筹模型的骨架（约束块集合与目标函数），与生成代码的写法无关。
+
+- **目标函数不再被静默替换**（`core/ir_normalizer.py`）：库中不认识的目标块保留原值并按库外目标记入提示；未声明目标只报提示，不再默认成 `weighted_service_distance_objective`；`sense` 由库中该目标块补全，与库冲突时报错
+- **目标块有了优化方向**：`constraint_blocks.json` 的 5 个目标块补 `sense`，新增 `total_value_objective`（背包，maximize），`knapsack` 模型补 `objective_block`
+- **骨架校验**（`validate_problem_ir`）：声明的族/模型所要求的约束块必须齐全（可用模板 `optional_blocks` 中同类别的块替代，降为提示）；块的 `requires_one_of` 必须满足；目标块的必填参数需在 `objective.parameters` 或顶层 `parameters` 中声明；报告新增 `skeleton` 段与 `catalog_objective_ids`
+- **块依赖数据**：`demand_coverage_activation` 补 `requires_one_of`（两个基数块之一）
+- **删减**：移除 `StructuredFinalAnswer` 与配套的 JSON 提取、渲染、校验（`core/output_format.py` 只保留输出清洗），`pyproject.toml` 去掉 `pydantic`；`template_snippet` 在工具返回中改名为 `template_snippet_optional`，并在 `usage_hint` 里说明它只是一种可选写法，约束内容以 `math`/`description` 为准
+- **求解执行契约**：`run_solver` 的说明写明环境里只装了 `gurobipy`、`pulp`、`scipy.optimize`（未装 OR-Tools 等），脚本须按 `Objective: <目标值>` 打印结果；脚本跑通但没有该行时回传 `[CONTRACT]` 提示，退出码非零时回传 `[RETRY REQUIRED]`。提示词同步要求最终答复中的目标值取自这次成功运行，脚本报错必须在同一轮修好重跑，全部失败才允许报告错误
+
+### 库语义补全与 benchmark 扩展
+
+- **新增块**：`facility_capacity`（设施容量 `sum_i d_i x_ij <= Q_j y_j`，与单背包的 `knapsack_capacity` 语义区分开）、`total_service_distance_objective`（不加权的总服务距离）
+- **新增模型**：`capacitated_facility_location`、`capacitated_p_median`，`location_problem.optional_blocks` 加入 `facility_capacity`
+- **IR 增 `entities`**（索引集合 I / J）：据此校验 `p <= |J|`、参数长度与矩阵维度、强制设施是否落在 J 内；数据可以放在顶层 `parameters` 或块的 `parameters` 中，字符串视为占位值
+- **统一的可执行语义**：`benchmarks/references/block_model.py` 把归一化 IR 变成 PuLP 模型，导入器、参考脚本、紧约束分析、T2 变体对照共用这一份实现；`tests` 断言目录里每个块都有可执行语义
+- **benchmark 四层与统一 schema**：用例（含正例、提示类、负例三类）统一声明 `family`/`scale`/`tiers`，T1 增加骨架判定与负例断言，T2 增加紧约束变体对照，T3 收紧目标值提取（只认带标签的数字）并做答复与产物的双重校验（回放 agent 自己写出的脚本），新增 T4 紧约束分析
+- **结果回显**：`run_solver` 在返回文本最后一行给出 `[RESULT] Objective: <值>`，提示词要求最终答复引用该行，避免汇报阶段凭记忆或从求解器日志里取数字
+
+### 前端：模型对照与代码视图
+
+Gradio 界面从单一聊天页改为三个标签页，都挂在同一个会话上：
+
+- **对话**：原有聊天与模式选择，提交后自动刷新模型视图
+- **模型**：归一化 Problem IR 与模板要求的对照。逐块给出「命中 / 被同类别可选块替代 / 缺失 / 额外」，并列出目标块、方向、未绑定参数、库外规则、缺失数据与校验错误提示；右侧给出归一化 IR 的 JSON
+- **代码**：agent 写出的求解脚本，下拉选择、可编辑、可保存、可原地重跑（走真实的 `run_solver` 路径，因此同样返回 `[RESULT]`／`[CONTRACT]`／`[RETRY REQUIRED]`）
+
+模型产物的落盘路径统一在会话目录：`utils/session.py` 新增 `save_model()` / `load_model()`，`ValidateProblemIrTool` 每次校验后写入 `data/workspace/sessions/<sid>/model.json`（归一化 IR 加校验报告），前端与后续对照都以这一份为准。`RunSolverTool` 新增 `run_file()`，供编辑器原地重跑，agent 走的 `forward()` 签名不变。
+- **OR-Library 扩展**：接入 UFLP、有容量仓库选址、有容量 p-median，并把 p-median 的最优值与已发表值 `pmedopt.txt` 比对；pmed6/pmed10（n=200）只进 IR 层
+
+---
+
 ## 更新日志 (2026-05-27)
 
 ### 架构重构 — Schema / Core / Web 三层分离
@@ -69,7 +116,17 @@ cd nl2or_agent
 uv run python main.py
 # 或
 uv run python main.py --mode cli
+
+# 自动模式：粘贴完整需求，一轮内完成建模与求解
+uv run python main.py --agent-mode automatic
 ```
+
+**Agent 工作模式**
+
+| 模式 | 行为 | 适用场景 |
+|------|------|---------|
+| `interactive`（默认） | 每轮推进一个步骤：解析 → 用户确认 → 查库 → 求解，每步停下来等回复 | 需求含糊、需要逐步核对解析结果 |
+| `automatic` | 一轮内完成解析、查库、建模与求解，直接给出最终结论 | 需求完整、一次性提交 |
 
 **集成测试（CLI 多轮交互流程验证）**
 
@@ -88,6 +145,21 @@ uv run python main.py --mode web
 
 ---
 
+## Benchmark 评测
+
+`benchmarks/` 提供四层评测，T1、T2、T4 不依赖 LLM：
+
+| 层 | 命令 | 走 agent | 走求解 | 内容 |
+|----|------|---------|--------|------|
+| T1 IR 判定 | `uv run python benchmarks/run_benchmark.py` | 否 | 否 | 手工用例 + 负例 + OR-Library 用例的判定断言 |
+| T2 求解执行 | `uv run python benchmarks/run_benchmark.py --mode solver` | 否 | 是（`RunSolverTool`） | 参考脚本 + 紧约束变体对照 |
+| T3 端到端 | `uv run python benchmarks/run_benchmark.py --mode online` | 是 | 是 | 需 `OPENROUTER_API_KEY`；答复与产物双重校验，支持 `--repeats`、`--agent-mode` 与预算 |
+| T4 紧约束 | `uv run python benchmarks/run_benchmark.py --mode tightness --write` | 否 | 是 | 计算并写回紧/非紧块元数据与参考脚本 |
+
+块的语义只有一处实现（`benchmarks/references/block_model.py`）：导入真值、参考脚本、紧约束分析与变体对照都走它。最优值来自独立求解与 OR-Library 的已发表值。用例 schema、四层细节与外部 benchmark 调研见 `benchmarks/README.md`。
+
+---
+
 ## 项目结构
 
 ```
@@ -95,18 +167,18 @@ nl2or_agent/
 ├── pyproject.toml          # uv 项目配置，依赖声明
 ├── .python-version         # Python 版本锁定（3.11）
 ├── .env.example            # 环境变量模板（复制为 .env 后填写）
-├── main.py                 # 入口：--mode cli（默认）/ --mode web
+├── main.py                 # 入口：--mode cli（默认）/ --mode web；--agent-mode interactive（默认）/ automatic
 │
 ├── agents/
 │   ├── __init__.py
-│   └── nl2or_agent.py      # build_nl2or_agent() — 组装 CodeAgent
+│   └── nl2or_agent.py      # build_nl2or_agent() / apply_agent_mode() — 组装与切换 CodeAgent
 │
 ├── core/                   # 核心处理逻辑
 │   ├── __init__.py
 │   ├── _defaults.py        # 共享默认路径配置
 │   ├── ir_catalog.py       # 模型库/积木块目录加载
-│   ├── ir_normalizer.py    # Problem IR 归一化 + 校验
-│   ├── output_format.py    # 结构化 final_answer 格式化与校验
+│   ├── ir_normalizer.py    # Problem IR 归一化 + 骨架校验
+│   ├── output_format.py    # agent 输出清洗
 │   └── prompt_loader.py    # 提示词加载
 │
 ├── schema/
@@ -125,18 +197,22 @@ nl2or_agent/
 │   │   └── constraint_blocks.json  # 约束积木块目录
 │   └── workspace/          # 生成的求解脚本存储目录
 │
+├── benchmarks/             # 四层评测：IR 判定 / 求解执行 / 端到端 / 紧约束分析
+│
 ├── utils/
 │   ├── __init__.py
 │   ├── search.py           # 关键词搜索工具
-│   └── session.py          # 会话管理
+│   └── session.py          # 会话工作区、会话与模型产物（model.json）
 │
 ├── web/
 │   ├── __init__.py
-│   └── app.py              # Gradio Web 界面
+│   └── app.py              # Gradio Web 界面（对话 / 模型 / 代码 三个标签页）
 │
 └── prompts/
-    ├── system.prompt.md            # Agent 系统提示词
-    └── problem_ir_format.prompt.md # Problem IR 格式说明
+    ├── system.prompt.md                 # 模式无关的系统提示词
+    ├── workflow.interactive.prompt.md    # interactive 工作流
+    ├── workflow.automatic.prompt.md      # automatic 工作流
+    └── problem_ir_format.prompt.md       # Problem IR 格式说明
 ```
 
 ---
@@ -204,13 +280,16 @@ graph TD
 | 模块 | 职责 | 内容 |
 |------|------|------|
 | `schema/` | 数据定义层 | `problem_ir.py`（TypedDict + 常量别名） |
-| `core/` | 处理引擎层 | `ir_catalog.py`（目录加载）、`ir_normalizer.py`（归一化 + 校验）、`output_format.py`（格式化）、`prompt_loader.py`（提示词加载） |
+| `core/` | 处理引擎层 | `ir_catalog.py`（目录加载）、`ir_normalizer.py`（归一化 + 骨架校验）、`output_format.py`（输出清洗）、`prompt_loader.py`（按模式组装提示词） |
 | `tools/` | Agent 接口层 | HAMLET Tool 子类，薄封装调用 `core/` 函数 |
 | `utils/` | 基础设施层 | `search.py`（关键词检索）、`session.py`（会话管理） |
 | `web/` | 表现层 | `app.py`（Gradio Web 界面） |
 | `agents/` | 入口层 | `nl2or_agent.py`（组装 CodeAgent） |
 
 ### Agent 工作流（对应 docs/flowchart.md 活动图）
+
+下图是 `interactive` 模式：每个步骤占用一个用户轮次，PARSING 与 MODEL LOOKUP 之后都要等用户回复。
+`automatic` 模式把 PARSING、MODEL LOOKUP、CODE GENERATION、SOLVING 压缩在同一轮内连续执行，只在最后给出一个 `final_answer`。
 
 ```
 用户输入自然语言问题
@@ -287,6 +366,15 @@ uv run python main.py --mode web
 ```
 
 Web 界面支持聊天交互、求解器文件列表查看与会话级隔离（每个浏览器标签页一个独立 agent 实例）。
+界面顶部的「模式」选择器在 `interactive` 与 `automatic` 之间切换，切换只替换系统提示词中的工作流部分，会话记忆保持。`--agent-mode` 决定界面打开时选中的模式。
+
+三个标签页：
+
+| 标签页 | 内容 |
+|--------|------|
+| 对话 | 聊天、模式选择；提交后自动刷新模型视图 |
+| 模型 | 归一化 IR 与模板要求的逐块对照（命中 / 替代 / 缺失 / 额外）、目标块与方向、未绑定参数、库外规则、校验错误提示，以及归一化 IR 的 JSON |
+| 代码 | agent 写出的求解脚本：选择、编辑、保存、原地重跑，输出含 `[RESULT] Objective: <值>` |
 
 ---
 
@@ -294,9 +382,9 @@ Web 界面支持聊天交互、求解器文件列表查看与会话级隔离（�
 
 - [x] **主循环模块撰写**：进行试验性质 User - 交互核心 - LLM 模块初步开发，验证核心流程的可行性与效果；
 - [x] **验证核心求解闭环**：通过配置环境、修复沙箱与提示词格式，使得基础求解能力可用；
-- [ ] **前端增强**：在现有 Gradio 聊天界面上补充：
-  - [ ] 模型输出展示：清晰展示生成的运筹学模型对照；
-  - [ ] 代码展示：演算代码展示，一是为了提供方便修改的接口，二是为了让用户更好地理解模型构建过程；
+- [x] **前端增强**：在现有 Gradio 聊天界面上补充：
+  - [x] 模型输出展示：以「模板要求 与 IR 实际」的逐块对照展示生成的运筹学模型，含目标块、方向与校验结论（「模型」标签页）；
+  - [x] 代码展示：展示生成的求解脚本，可编辑后原地重跑，便于修改与观察模型构建过程（「代码」标签页）；
 
 > 结构实现可以参考 `../docs/DESIGN.md` 中的设计方案（由于由大模型生成，不保证对），具体细节可根据实际开发进度进行调整与优化。
 >
