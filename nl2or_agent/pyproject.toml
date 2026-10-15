@@ -20,6 +20,7 @@ dependencies = [
 
 [project.scripts]
 nl2or = "main:main"
+nl2or-bench = "benchmarks.run_benchmark:main"
 
 [build-system]
 requires = ["hatchling"]
