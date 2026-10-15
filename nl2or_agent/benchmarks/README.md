@@ -10,7 +10,7 @@
   "name": "P-Median 社区服务中心",
   "family": "p_median",            // 分组用，缺省取 expected.families[0]
   "scale": "s",                    // s / m / l，分组用
-  "tiers": ["ir", "solver", "online", "tightness"],
+  "tiers": ["ir", "solver", "online", "tightness", "what_if"],
   "problem": "自然语言题面（online 输入）",
   "input_ir": { },                 // 脏 IR：别名、占位值，并携带可执行数据与 entities
   "expected": {                    // T1 必须得到的判定；只断言写出来的键
@@ -24,7 +24,11 @@
   },
   "solver_objective": 2210.0,      // 参考最优值
   "tight_blocks": ["..."],         // 去掉即改变最优值的块
-  "nonbinding_blocks": ["..."]     // 去掉不改变最优值的块
+  "nonbinding_blocks": ["..."],    // 去掉不改变最优值的块
+  "scenarios": [                   // what_if 层：参数情景与各自应有的结果
+    {"id": "p=2", "overrides": {"p": 2}, "expected_objective": 2400},
+    {"id": "p=6", "overrides": {"p": 6}, "expected_status": "Infeasible"}
+  ]
 }
 ```
 
@@ -36,7 +40,7 @@
 | `warning` | `expected.valid` 为 true 且有 `warning_contains` | 判定通过且命中指定提示（例如库外目标不替换、缺目标只提示） |
 | `negative` | `expected.valid` 为 false | 命中指定错误 |
 
-`warning` 与 `negative` 用例不进求解层。`tiers` 声明该用例参与哪些层。`tight_blocks` 与 `nonbinding_blocks` 由 `--mode tightness --write` 计算并写回，该命令同时刷新由 IR 派生的参考脚本。
+`warning` 与 `negative` 用例不进求解层。`tiers` 声明该用例参与哪些层；声明 `what_if` 就必须给出 `scenarios`，反之亦然；每个情景需要且只需要 `expected_objective` 与 `expected_status` 之一。`tight_blocks` 与 `nonbinding_blocks` 由 `--mode tightness --write` 计算并写回，该命令同时刷新由 IR 派生的参考脚本。
 
 ## 可执行语义（单一实现）
 
@@ -96,6 +100,9 @@ uv run python benchmarks/import_orlib.py --family pmed --ids 1 5 6 10
 | T2 求解 | `solver` | 否 | 是（`RunSolverTool`） | 是 | CI — 锁求解链路与紧约束对照 |
 | T3 端到端 | `online` | 是 | 是 | 否 | 抽样 — 真实能力与效率 |
 | T4 紧约束 | `tightness` | 否 | 是 | 是 | 刷新用例元数据 |
+| T5 情景对比 | `what_if` | 否 | 是（块语义） | 是 | CI — 锁参数情景与差值方向 |
+
+标题里的 T1–T5 与 `--mode` 的取值对应：`offline`、`solver`、`online`、`tightness`、`what_if`。
 
 ### T1 — 判定
 
@@ -132,6 +139,17 @@ uv run python benchmarks/run_benchmark.py --mode online --budget-seconds 120 --b
 uv run python benchmarks/run_benchmark.py --mode tightness          # 只看结果
 uv run python benchmarks/run_benchmark.py --mode tightness --write   # 写回用例与参考脚本
 ```
+
+### T5 — 情景对比
+
+```bash
+uv run python benchmarks/run_benchmark.py --mode what_if
+uv run python benchmarks/run_benchmark.py --mode what_if --cases p_median_community
+```
+
+每个声明了 `scenarios` 的用例：先解基准（并与 `solver_objective` 核对），再逐个应用 `overrides` 求解，断言目标值等于 `expected_objective`，或状态等于 `expected_status`（用来锁住"不可行不被跳过"）。`overrides` 走的是与 `solve_ir` 工具同一套校验（`ProblemIR.parse_overrides`），所以不认识的键会直接失败，不会静默放过。
+
+目前 6 个用例共 19 个情景，覆盖：设施数量扫描（p=1/2/4/5）、越界不可行（p=6，|J|=5）、最大化方向的饱和（容量 60 起不再变化）、成本矩阵覆盖关系（改小成本但覆盖不到某需求点则不变）、强制开设（置空回到无约束最优、强制最优解本身不变、强制非最优解变差）。
 
 ## 报告
 

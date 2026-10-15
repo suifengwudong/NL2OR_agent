@@ -3,16 +3,18 @@
 Every tier consumes the same case schema (``cases.json`` + ``orlib_cases/*.json``):
 
     id, name, family, scale, tiers, problem, input_ir, expected, solver_objective,
-    tight_blocks, nonbinding_blocks
+    tight_blocks, nonbinding_blocks, scenarios
 
   ir         (default, no LLM):  dirty IR -> validate_problem_ir -> normalized verdict
   solver     (no LLM):           reference script + block-removal variants -> RunSolverTool
   online     (needs LLM):        real agent on `problem` -> objective extracted and compared
   tightness  (no LLM):           recompute which blocks change the optimum, `--write` to store
+  what_if    (no LLM):           baseline + declared parameter scenarios -> objective per scenario
 
 Usage:
   uv run python benchmarks/run_benchmark.py                       # ir, all cases
   uv run python benchmarks/run_benchmark.py --mode solver
+  uv run python benchmarks/run_benchmark.py --mode what_if
   uv run python benchmarks/run_benchmark.py --mode online --agent-mode automatic --repeats 3
   uv run python benchmarks/run_benchmark.py --mode tightness --write
   uv run python benchmarks/run_benchmark.py --cases p_median_community --json
@@ -40,7 +42,7 @@ CASES_PATH = Path(__file__).parent / "cases.json"
 ORLIB_DIR = Path(__file__).parent / "orlib_cases"
 SOLVERS_DIR = Path(__file__).parent / "references" / "solvers"
 
-TIERS = ("ir", "solver", "online", "tightness")
+TIERS = ("ir", "solver", "online", "tightness", "what_if")
 SCALES = ("s", "m", "l")
 
 _OBJECTIVE_LINE_RE = re.compile(r"Objective:\s*(-?\d+(?:\.\d+)?)")
@@ -95,6 +97,22 @@ def _normalize_case(raw: dict[str, Any], origin: str) -> dict[str, Any]:
         raise ValueError(f"{origin}: {kind} 用例 {case['id']} 不应进入求解层")
     case.setdefault("tight_blocks", [])
     case.setdefault("nonbinding_blocks", [])
+    scenarios = case.setdefault("scenarios", [])
+    if "what_if" in tiers and not scenarios:
+        raise ValueError(f"{origin}: case {case['id']} 声明了 what_if 层但没有 scenarios")
+    if scenarios and "what_if" not in tiers:
+        raise ValueError(f"{origin}: case {case['id']} 有 scenarios 但没有声明 what_if 层")
+    for scenario in scenarios:
+        for key in ("id", "overrides"):
+            if key not in scenario:
+                raise ValueError(f"{origin}: case {case['id']} 的情景缺少字段 {key!r}")
+        has_objective = "expected_objective" in scenario
+        has_status = "expected_status" in scenario
+        if has_objective == has_status:
+            raise ValueError(
+                f"{origin}: case {case['id']} 情景 {scenario['id']} 需要且只需要一个"
+                " expected_objective / expected_status"
+            )
     case["origin"] = origin
     return case
 
@@ -538,6 +556,76 @@ def run_tightness(cases: list[dict[str, Any]], *, write: bool = False) -> dict[s
     }
 
 
+def run_what_if(cases: list[dict[str, Any]]) -> dict[str, Any]:
+    """Solve the baseline plus every declared parameter scenario."""
+    from core.block_model import solve_ir
+    from core.problem_ir import ProblemIR
+
+    selected = _tier_cases(cases, "what_if")
+    results: list[dict[str, Any]] = []
+    for case in selected:
+        ir = ProblemIR(_normalized_ir(case))
+        baseline = solve_ir(ir.data)
+        declared_baseline = case.get("solver_objective")
+        baseline_ok = (
+            baseline.status == "Optimal"
+            and baseline.objective is not None
+            and (
+                declared_baseline is None
+                or abs(baseline.objective - float(declared_baseline))
+                <= 1e-6 * max(1.0, abs(float(declared_baseline)))
+            )
+        )
+
+        rows: list[dict[str, Any]] = []
+        for scenario in case["scenarios"]:
+            try:
+                overrides = ProblemIR.parse_overrides(scenario["overrides"])
+                result = solve_ir(ir.with_overrides(overrides).data)
+            except ValueError as exc:
+                rows.append({"id": scenario["id"], "passed": False, "detail": str(exc)})
+                continue
+            if "expected_status" in scenario:
+                ok = result.status == scenario["expected_status"]
+                detail = f"status={result.status} expected={scenario['expected_status']}"
+            else:
+                expected = float(scenario["expected_objective"])
+                ok = result.objective is not None and abs(
+                    result.objective - expected
+                ) <= 1e-6 * max(1.0, abs(expected))
+                detail = f"objective={result.objective} expected={expected}"
+            rows.append(
+                {
+                    "id": scenario["id"],
+                    "passed": ok,
+                    "status": result.status,
+                    "objective": result.objective,
+                    "overrides": scenario["overrides"],
+                    "detail": "" if ok else detail,
+                }
+            )
+
+        results.append(
+            {
+                "case_id": case["id"],
+                "family": case["family"],
+                "scale": case["scale"],
+                "passed": baseline_ok and all(r["passed"] for r in rows),
+                "checks": {"baseline": baseline_ok},
+                "baseline": baseline.objective,
+                "scenarios": rows,
+                "detail": "" if baseline_ok else f"baseline={baseline} 与 solver_objective 不符",
+            }
+        )
+    return {
+        "mode": "what_if",
+        "total": len(results),
+        "passed": sum(1 for r in results if r["passed"]),
+        "results": results,
+        "groups": _group_summary(results, ("family", "scale")),
+    }
+
+
 def _write_reference_script(case: dict[str, Any]) -> None:
     """Refresh the reference script derived from the case IR."""
     from core.block_model import render_script
@@ -592,6 +680,17 @@ def _format_report(report: dict[str, Any], json_out: bool) -> None:
     for result in report.get("results", []):
         status = "PASS" if result["passed"] else "FAIL"
         print(f"[{status}] {result['case_id']}")
+        if report["mode"] == "what_if":
+            print(f"        - 基准 {result.get('baseline')}")
+            for row in result.get("scenarios", []):
+                mark = "" if row["passed"] else "  ← 不符"
+                # 非最优场景 PuLP 会残留上一次的目标值，它不是该场景的解
+                objective = row.get("objective") if row.get("status") == "Optimal" else None
+                print(
+                    f"        - {row['id']}: {row.get('status')}"
+                    f" {objective if objective is not None else '—'}"
+                    f" | overrides {row.get('overrides')}{mark}"
+                )
         if not result["passed"]:
             for name, ok in result.get("checks", {}).items():
                 if not ok:
@@ -628,7 +727,9 @@ def _format_report(report: dict[str, Any], json_out: bool) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="NL2OR benchmark runner")
     parser.add_argument(
-        "--mode", choices=["offline", "solver", "online", "tightness"], default="offline"
+        "--mode",
+        choices=["offline", "solver", "online", "tightness", "what_if"],
+        default="offline",
     )
     parser.add_argument("--cases", help="comma-separated case ids to run")
     parser.add_argument("--json", action="store_true", help="emit JSON report")
@@ -656,6 +757,8 @@ def main() -> None:
         )
     elif args.mode == "tightness":
         report = run_tightness(cases, write=args.write)
+    elif args.mode == "what_if":
+        report = run_what_if(cases)
     else:
         report = run_offline(cases)
 
