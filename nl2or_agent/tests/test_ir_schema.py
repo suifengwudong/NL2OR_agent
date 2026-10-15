@@ -72,6 +72,22 @@ class TestDataIntegrity:
                 data = json.load(f)
             assert data.get("schema_version") == 1, f"{name} missing or incorrect schema_version"
 
+    def test_objective_blocks_declare_sense(self):
+        _, catalog = self._load_both()
+        for b in catalog.get("blocks", []):
+            if b.get("category") != "objective":
+                continue
+            assert b.get("sense") in {"minimize", "maximize"}, (
+                f"Objective block {b['id']} must declare sense"
+            )
+
+    def test_requires_one_of_references_existing_blocks(self):
+        _, catalog = self._load_both()
+        block_ids = set(catalog["block_ids"])
+        for b in catalog.get("blocks", []):
+            for ref in b.get("requires_one_of") or []:
+                assert ref in block_ids, f"Block {b['id']} requires unknown block '{ref}'"
+
 
 class TestNormalizeProblemIr:
     def test_alias_block_ids_normalized(self):
@@ -155,8 +171,243 @@ class TestIrTools:
         out = json.loads(tool.forward(json.dumps(ir)))
         assert out["valid"]
         assert "normalized_ir" in out
+        assert "skeleton" in out
 
     def test_list_block_catalog(self):
         tool = ListBlockCatalogTool()
         data = json.loads(tool.forward())
         assert "assign_each_demand_once" in data["block_ids"]
+        assert data["objective_sense"]["covered_demand_objective"] == "maximize"
+
+
+# ---------------------------------------------------------------------------
+# Objective handling: 目标函数是骨架的一部分，不做静默替换
+# ---------------------------------------------------------------------------
+
+
+class TestObjectiveSkeleton:
+    def test_unknown_objective_kept_and_warned(self):
+        report = validate_problem_ir({"objective": {"block_id": "weighted_sum_objective"}})
+        assert report["valid"]
+        assert report["normalized_ir"]["objective"]["block_id"] == "weighted_sum_objective"
+        assert report["skeleton"]["objective_in_catalog"] is False
+        assert any("不在库中" in w for w in report["warnings"])
+
+    def test_missing_objective_warns_instead_of_defaulting(self):
+        report = validate_problem_ir(
+            {
+                "constraint_blocks": [
+                    {"block_id": "knapsack_capacity", "parameters": {"capacity": 5}}
+                ]
+            }
+        )
+        assert report["valid"]
+        assert report["normalized_ir"]["objective"]["block_id"] == ""
+        assert report["normalized_ir"]["objective"]["sense"] == ""
+        assert any("未声明目标函数" in w for w in report["warnings"])
+
+    def test_sense_inherited_from_catalog(self):
+        report = validate_problem_ir({"objective": {"block_id": "knapsack_objective"}})
+        assert report["normalized_ir"]["objective"]["block_id"] == "total_value_objective"
+        assert report["normalized_ir"]["objective"]["sense"] == "maximize"
+
+    def test_sense_contradiction_is_error(self):
+        report = validate_problem_ir(
+            {"objective": {"block_id": "covered_demand_objective", "sense": "minimize"}}
+        )
+        assert not report["valid"]
+        assert any("优化方向" in e for e in report["errors"])
+
+    def test_sense_alias_normalized(self):
+        report = validate_problem_ir(
+            {"objective": {"block_id": "weighted_service_distance_objective", "sense": "MIN"}}
+        )
+        assert report["normalized_ir"]["objective"]["sense"] == "minimize"
+
+    def test_constraint_block_rejected_as_objective(self):
+        report = validate_problem_ir({"objective": {"block_id": "assignment"}})
+        assert not report["valid"]
+        assert any("不是目标块" in e for e in report["errors"])
+
+    def test_unbound_required_params_reported(self):
+        report = validate_problem_ir(
+            {"objective": {"block_id": "weighted_service_distance_objective"}}
+        )
+        assert report["skeleton"]["unbound_objective_params"] == ["distance"]
+
+    def test_objective_params_satisfy_binding(self):
+        report = validate_problem_ir(
+            {
+                "objective": {
+                    "block_id": "weighted_service_distance_objective",
+                    "parameters": {"distance": "由距离矩阵给定"},
+                }
+            }
+        )
+        assert report["skeleton"]["unbound_objective_params"] == []
+
+
+# ---------------------------------------------------------------------------
+# Skeleton checks: 约束集是否构成完整模型
+# ---------------------------------------------------------------------------
+
+
+class TestSkeletonChecks:
+    def _ir(
+        self, blocks: list[str], family: str = "p_median", objective: str = "weighted_distance"
+    ):
+        return {
+            "problem_families": [{"id": family}],
+            "constraint_blocks": [{"block_id": b, "parameters": {"p": 2}} for b in blocks],
+            "objective": {"block_id": objective, "parameters": {"distance": "给定"}},
+        }
+
+    def test_missing_template_block_is_error(self):
+        report = validate_problem_ir(self._ir(["assignment", "cardinality"]))
+        assert not report["valid"]
+        assert report["skeleton"]["missing_required_blocks"] == ["link_assignment_to_open"]
+        assert any("骨架缺少" in e for e in report["errors"])
+
+    def test_complete_template_passes(self):
+        report = validate_problem_ir(self._ir(["assignment", "linking", "cardinality"]))
+        assert report["valid"]
+        assert report["skeleton"]["missing_required_blocks"] == []
+
+    def test_same_category_optional_block_substitutes(self):
+        report = validate_problem_ir(
+            {
+                "problem_families": [{"id": "maximum_covering"}],
+                "constraint_blocks": [
+                    {
+                        "block_id": "demand_coverage_activation",
+                        "parameters": {"coverage_matrix": "给定"},
+                    },
+                    {"block_id": "cardinality_open_at_most_p_facilities", "parameters": {"p": 2}},
+                ],
+                "objective": {
+                    "block_id": "covered_demand_objective",
+                    "parameters": {"demand": "给定"},
+                },
+            }
+        )
+        assert report["valid"]
+        assert report["skeleton"]["substituted_blocks"] == ["cardinality_open_p_facilities"]
+        assert any("同类别可选块" in w for w in report["warnings"])
+
+    def test_requires_one_of_violation_is_error(self):
+        report = validate_problem_ir(
+            {
+                "constraint_blocks": [
+                    {
+                        "block_id": "demand_coverage_activation",
+                        "parameters": {"coverage_matrix": "给定"},
+                    }
+                ]
+            }
+        )
+        assert not report["valid"]
+        assert any("需要同时使用" in e for e in report["errors"])
+
+    def test_block_from_other_family_warns(self):
+        report = validate_problem_ir(self._ir(["assignment", "linking", "coverage_activation"]))
+        assert report["skeleton"]["inconsistent_blocks"] == ["demand_coverage_activation"]
+
+    def test_unknown_family_skips_template_check(self):
+        report = validate_problem_ir(
+            {
+                "problem_families": [{"id": "vehicle_routing"}],
+                "objective": {
+                    "block_id": "weighted_service_distance_objective",
+                    "parameters": {"distance": "给定"},
+                },
+            }
+        )
+        assert report["valid"]
+        assert report["skeleton"]["unknown_models"] == ["vehicle_routing"]
+        assert any("不在模型库中" in w for w in report["warnings"])
+
+    def test_objective_mismatch_with_family_warns(self):
+        report = validate_problem_ir(
+            self._ir(["assignment", "linking", "cardinality"], objective="covered_demand_objective")
+        )
+        assert any("与声明的族/模型不一致" in w for w in report["warnings"])
+
+
+# ---------------------------------------------------------------------------
+# Index-set / data-dimension checks
+# ---------------------------------------------------------------------------
+
+
+class TestEntityChecks:
+    _DISTANCE = [
+        [4, 6, 9, 7, 8],
+        [5, 3, 8, 6, 7],
+        [9, 7, 4, 5, 6],
+        [8, 6, 5, 3, 4],
+        [6, 5, 7, 4, 3],
+        [7, 8, 6, 5, 4],
+    ]
+
+    def _ir(self, entities, parameters):
+        return {
+            "entities": entities,
+            "parameters": parameters,
+            "objective": {
+                "block_id": "weighted_service_distance_objective",
+                "parameters": {"distance": "给定"},
+            },
+        }
+
+    def test_dimension_mismatch_is_error(self):
+        report = validate_problem_ir(
+            self._ir(
+                {"I": {"size": 6}, "J": {"size": 4}},
+                {"p": 2, "distance": self._DISTANCE},
+            )
+        )
+        assert not report["valid"]
+        assert any("维度" in e for e in report["errors"])
+
+    def test_p_exceeding_facility_count_is_error(self):
+        report = validate_problem_ir(
+            self._ir(
+                {"I": {"size": 6}, "J": {"size": 5}},
+                {"p": 6, "distance": self._DISTANCE},
+            )
+        )
+        assert not report["valid"]
+        assert any("超过候选设施数" in e for e in report["errors"])
+
+    def test_forced_facility_outside_j_is_error(self):
+        report = validate_problem_ir(
+            self._ir(
+                {"I": {"size": 6}, "J": {"size": 5, "ids": ["A", "B", "C", "D", "E"]}},
+                {"p": 2, "distance": self._DISTANCE, "forced_open": ["Z"]},
+            )
+        )
+        assert not report["valid"]
+        assert any("不在设施集合 J 中" in e for e in report["errors"])
+
+    def test_checks_skipped_without_entities(self):
+        report = validate_problem_ir(self._ir({}, {"p": 2, "distance": self._DISTANCE}))
+        assert report["valid"]
+        assert report["skeleton"]["entities"]["problems"] == []
+
+    def test_data_may_live_in_block_parameters(self):
+        ir = {
+            "entities": {"I": {"size": 6}, "J": {"size": 5}},
+            "constraint_blocks": [
+                {
+                    "block_id": "force_facility_open",
+                    "parameters": {"forced_open": ["A"]},
+                    "status": "required",
+                }
+            ],
+            "objective": {
+                "block_id": "weighted_service_distance_objective",
+                "parameters": {"distance": "给定"},
+            },
+        }
+        report = validate_problem_ir(ir)
+        assert report["valid"]
+        assert report["skeleton"]["entities"]["problems"] == []

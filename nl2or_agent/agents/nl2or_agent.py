@@ -12,6 +12,7 @@ from __future__ import annotations
 import ast
 import os
 import importlib.resources
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -72,18 +73,36 @@ def _patch_hamlet_code_parsing() -> None:
     setattr(hamlet_agents, _PATCHED_ATTR, True)
 
 
+def apply_agent_mode(agent: CodeAgent, mode: str) -> None:
+    """Switch *agent* to *mode* (``interactive`` or ``automatic``).
+
+    Only the workflow section of the system prompt changes.  HAMLET re-reads
+    ``prompt_templates["system_prompt"]`` at the start of every ``run()``, so the
+    accumulated conversation memory survives the switch.
+    """
+    system_prompt = load_system_prompt(mode)
+    if system_prompt:
+        agent.prompt_templates["system_prompt"] = system_prompt
+
+
 def build_nl2or_agent(
     *,
+    mode: str = "interactive",
     verbosity_level: int = 1,
+    workspace_dir: str | Path | None = None,
 ) -> CodeAgent:
     """Create and return a configured NL2OR CodeAgent.
 
     Parameters
     ----------
-    model_id:
-        LiteLLM model identifier, defaults to the ``HAMLET_MODEL_ID``.
+    mode:
+        ``interactive`` advances one workflow step per user turn (parse, confirm,
+        look up, solve); ``automatic`` runs the whole pipeline in a single turn.
     verbosity_level:
         0 = silent, 1 = normal, 2 = verbose / debug.
+    workspace_dir:
+        Where ``run_solver`` writes the generated scripts; defaults to the
+        session directory. Used by the benchmark to isolate each run.
 
     Returns
     -------
@@ -108,12 +127,12 @@ def build_nl2or_agent(
 
     tools = [
         ListBlockCatalogTool(),
-        ValidateProblemIrTool(),
+        ValidateProblemIrTool(workspace_dir=workspace_dir),
         QueryModelLibraryTool(),
-        RunSolverTool(),
+        RunSolverTool(workspace_dir=workspace_dir),
     ]
 
-    system_prompt = load_system_prompt()
+    system_prompt = load_system_prompt(mode)
 
     default_prompts_file = importlib.resources.files("hamlet.core.prompts").joinpath(
         "code_agent.yaml"

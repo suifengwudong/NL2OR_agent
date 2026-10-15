@@ -66,12 +66,15 @@ def load_block_catalog(blocks_path: Path | None = None) -> dict[str, Any]:
     for block in blocks:
         for alias in block.get("aliases", []):
             alias_to_id[str(alias).strip().lower()] = block["id"]
+    objective_blocks = [b for b in blocks if b.get("category") == "objective"]
     return {
         "blocks": blocks,
         "by_id": by_id,
         "alias_to_id": alias_to_id,
         "block_ids": sorted(by_id.keys()),
-        "objective_block_ids": sorted(b["id"] for b in blocks if b.get("category") == "objective"),
+        "objective_block_ids": sorted(b["id"] for b in objective_blocks),
+        # 目标块的优化方向（minimize / maximize）；缺失时按未声明处理
+        "objective_sense": {b["id"]: b["sense"] for b in objective_blocks if b.get("sense")},
     }
 
 

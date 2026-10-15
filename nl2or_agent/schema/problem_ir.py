@@ -37,10 +37,16 @@ class ObjectiveBlock(TypedDict, total=False):
     parameters: dict[str, object]
 
 
+class EntitySet(TypedDict, total=False):
+    size: int
+    ids: list[str]
+
+
 class ProblemIR(TypedDict, total=False):
     problem_families: list[ProblemFamily]
     is_hybrid: bool
     hybrid_notes: str
+    entities: dict[str, EntitySet]
     parameters: dict[str, object]
     decision_variables: list[object]
     objective: ObjectiveBlock
@@ -55,6 +61,8 @@ class ValidationReport(TypedDict):
     errors: list[str]
     warnings: list[str]
     catalog_block_ids: list[str]
+    catalog_objective_ids: list[str]
+    skeleton: dict[str, object]
 
 
 class BlockCatalog(TypedDict):

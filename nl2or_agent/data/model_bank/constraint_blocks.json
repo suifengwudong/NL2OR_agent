@@ -172,6 +172,7 @@
       "id": "weighted_service_distance_objective",
       "name": "加权服务距离目标",
       "category": "objective",
+      "sense": "minimize",
       "aliases": [
         "weighted_distance",
         "minimize_weighted_distance",
@@ -213,6 +214,7 @@
       "id": "facility_opening_cost_objective",
       "name": "设施开设成本目标",
       "category": "objective",
+      "sense": "minimize",
       "aliases": [
         "opening_cost",
         "facility_cost",
@@ -245,6 +247,7 @@
       "id": "fixed_plus_service_cost_objective",
       "name": "固定成本加服务成本目标",
       "category": "objective",
+      "sense": "minimize",
       "aliases": [
         "fixed_plus_service",
         "facility_location_objective",
@@ -328,6 +331,10 @@
       ],
       "description": "只有当至少一个可覆盖需求点 i 的设施被开设时，需求点 i 才能被计为已覆盖",
       "math": "z_i \\leq \\sum_{j \\in J} a_{ij} y_j, \\quad \\forall i \\in I",
+      "requires_one_of": [
+        "cardinality_open_p_facilities",
+        "cardinality_open_at_most_p_facilities"
+      ],
       "parameters": [
         {
           "name": "coverage_matrix",
@@ -341,6 +348,7 @@
       "id": "covered_demand_objective",
       "name": "最大化覆盖需求目标",
       "category": "objective",
+      "sense": "maximize",
       "aliases": [
         "max_covered_demand",
         "maximum_covering_objective",
@@ -371,6 +379,7 @@
       "id": "minimize_max_distance_objective",
       "name": "最小化最大服务距离目标",
       "category": "objective",
+      "sense": "minimize",
       "aliases": [
         "p_center_objective",
         "minimize_max_distance",
@@ -442,6 +451,106 @@
         }
       ],
       "template_snippet": "m.addConstr(gp.quicksum(weight[i]*x[i] for i in items) <= capacity)"
+    },
+    {
+      "id": "total_value_objective",
+      "name": "最大化选取价值目标",
+      "category": "objective",
+      "sense": "maximize",
+      "aliases": [
+        "knapsack_objective",
+        "maximize_value",
+        "maximize_total_value",
+        "total_value"
+      ],
+      "keywords": [
+        "knapsack",
+        "maximize value",
+        "价值最大",
+        "总价值最大",
+        "背包目标"
+      ],
+      "typical_models": [
+        "knapsack"
+      ],
+      "description": "最大化所选物品的价值之和",
+      "math": "\\max \\sum_{i \\in I} v_i x_i",
+      "parameters": [
+        {
+          "name": "value",
+          "type": "dict",
+          "required": true
+        }
+      ],
+      "template_snippet": "m.setObjective(gp.quicksum(value[i] * x[i] for i in items), GRB.MAXIMIZE)"
+    },
+    {
+      "id": "total_service_distance_objective",
+      "name": "总服务距离目标（不加权）",
+      "category": "objective",
+      "sense": "minimize",
+      "aliases": [
+        "total_distance",
+        "minimize_total_distance",
+        "sum_distance_objective"
+      ],
+      "keywords": [
+        "total distance",
+        "总距离",
+        "距离之和",
+        "不加权距离",
+        "capacitated clustering"
+      ],
+      "typical_models": [
+        "capacitated_p_median"
+      ],
+      "description": "最小化分配边上的服务距离之和，不使用需求权重；与加权服务距离目标不同",
+      "math": "\\min \\sum_{i \\in I}\\sum_{j \\in J} d_{ij} x_{ij}",
+      "parameters": [
+        {
+          "name": "distance",
+          "type": "dict",
+          "required": true
+        }
+      ],
+      "template_snippet": "m.setObjective(gp.quicksum(distance[i, j] * x[i, j] for i in demand_points for j in facilities), GRB.MINIMIZE)"
+    },
+    {
+      "id": "facility_capacity",
+      "name": "设施容量约束",
+      "category": "capacity",
+      "aliases": [
+        "facility_capacity_constraint",
+        "warehouse_capacity",
+        "capacity_limit"
+      ],
+      "keywords": [
+        "capacity",
+        "容量",
+        "设施容量",
+        "仓库容量",
+        "容量限制",
+        "需求不超过容量"
+      ],
+      "typical_models": [
+        "capacitated_facility_location",
+        "capacitated_p_median"
+      ],
+      "description": "分配给某设施的需求量之和不超过该设施容量，未开设的设施容量为 0；与 knapsack_capacity（单背包总重量不超过容量）语义不同",
+      "math": "\\sum_{i \\in I} d_i x_{ij} \\leq Q_j y_j, \\quad \\forall j \\in J",
+      "parameters": [
+        {
+          "name": "facility_capacity",
+          "type": "list",
+          "required": true
+        },
+        {
+          "name": "demand",
+          "type": "list",
+          "required": true
+        }
+      ],
+      "template_snippet": "for j in facilities:\n    m.addConstr(gp.quicksum(demand[i] * x[i, j] for i in demand_points) <= facility_capacity[j] * y[j], name=f'capacity_{j}')"
     }
   ]
 }

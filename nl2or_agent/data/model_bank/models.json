@@ -17,7 +17,8 @@
         "cardinality_open_at_most_p_facilities",
         "cover_each_demand_at_least_once",
         "demand_coverage_activation",
-        "max_service_distance_bound"
+        "max_service_distance_bound",
+        "facility_capacity"
       ],
       "decision_variables": [
         {
@@ -483,6 +484,7 @@
       "blocks": [
         "knapsack_capacity"
       ],
+      "objective_block": "total_value_objective",
       "parameters": [
         {
           "name": "value",
@@ -503,6 +505,85 @@
       "keywords": [
         "背包",
         "knapsack"
+      ]
+    },
+    {
+      "id": "capacitated_facility_location",
+      "name": "有容量设施选址",
+      "description": "容量限制下的仓库选址（CFLP）：固定开设成本加服务成本，需求单一来源分配到设施且不超过设施容量",
+      "family": "location_problem",
+      "blocks": [
+        "facility_capacity"
+      ],
+      "objective_block": "fixed_plus_service_cost_objective",
+      "parameters": [
+        {
+          "name": "fixed_cost",
+          "type": "list",
+          "required": true
+        },
+        {
+          "name": "service_cost",
+          "type": "matrix",
+          "required": true
+        },
+        {
+          "name": "facility_capacity",
+          "type": "list",
+          "required": true
+        },
+        {
+          "name": "demand",
+          "type": "list",
+          "required": true
+        }
+      ],
+      "keywords": [
+        "capacitated facility location",
+        "有容量设施选址",
+        "仓库容量",
+        "cflp",
+        "capacity location",
+        "容量约束选址"
+      ]
+    },
+    {
+      "id": "capacitated_p_median",
+      "name": "有容量 P-中位",
+      "description": "容量限制下的 P-中位：恰好开设 p 个设施，需求分配到设施且各设施的总需求不超过其容量",
+      "family": "location_problem",
+      "blocks": [
+        "cardinality_open_p_facilities",
+        "facility_capacity"
+      ],
+      "objective_block": "total_service_distance_objective",
+      "parameters": [
+        {
+          "name": "p",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "distance",
+          "type": "matrix",
+          "required": true
+        },
+        {
+          "name": "facility_capacity",
+          "type": "list",
+          "required": true
+        },
+        {
+          "name": "demand",
+          "type": "list",
+          "required": true
+        }
+      ],
+      "keywords": [
+        "capacitated p-median",
+        "有容量p中位",
+        "容量聚类",
+        "capacitated clustering"
       ]
     }
   ]

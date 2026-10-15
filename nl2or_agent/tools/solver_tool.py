@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import uuid
@@ -13,6 +14,9 @@ from utils.session import get_session
 
 
 _TIMEOUT_SECONDS = 60
+
+# 结果契约：脚本按此格式打印目标值，评测与答复都以它为准
+_OBJECTIVE_LINE_RE = re.compile(r"Objective:\s*(-?\d+(?:\.\d+)?)")
 
 
 class RunSolverTool(Tool):
@@ -25,17 +29,23 @@ class RunSolverTool(Tool):
 
     name = "run_solver"
     description = (
-        "Execute Python code that formulates and solves an Operations Research model "
-        "(using gurobipy, scipy.optimize, or PuLP). "
+        "Execute Python code that formulates and solves an Operations Research model. "
+        "The script runs in this project's Python environment, where the installed solver "
+        "libraries are gurobipy, pulp and scipy.optimize; OR-Tools and other libraries are not "
+        "available. The script should print its result as a line `Objective: <value>`; the "
+        "returned text repeats it on a `[RESULT]` line, and the final answer must quote that "
+        "value. "
         "Input: a complete, self-contained Python script as a string. "
-        "Output: the stdout/stderr produced by running the script, including the optimal solution."
+        "Output: the stdout/stderr produced by running the script, as plain text "
+        "(not an object with attributes); call the tool as a statement and read the returned text."
     )
     inputs = {
         "code": {
             "type": "string",
             "description": (
                 "A complete, self-contained Python script that solves the OR model "
-                "and prints the results. Must not require manual user input."
+                "and prints `Objective: <value>` plus the decision variables. "
+                "Must not require manual user input."
             ),
         }
     }
@@ -71,8 +81,20 @@ class RunSolverTool(Tool):
     # ------------------------------------------------------------------
 
     def forward(self, code: str) -> str:
-        """Write *code* to a temp file, run it, and return captured output."""
-        script_path = self.save_code(code)
+        """Tool entry point: write *code* to a new file, run it, return the output."""
+        return self._execute(code, None)
+
+    def run_file(self, code: str, filename: str) -> str:
+        """Run *code* in place under *filename*.
+
+        Used by the web code editor so an edited artifact is re-run instead of
+        piling up new files; the agent never takes this path.
+        """
+        return self._execute(code, filename)
+
+    def _execute(self, code: str, filename: str | None) -> str:
+        """Write *code* to a file, run it, and return captured output."""
+        script_path = self.save_code(code, filename)
 
         env = os.environ.copy()
         python_exe = sys.executable
@@ -91,15 +113,30 @@ class RunSolverTool(Tool):
             return f"[ERROR] Failed to run solver script: {exc}"
 
         output_parts: list[str] = []
+        objective_line = ""
         if result.stdout:
             output_parts.append(f"[STDOUT]\n{result.stdout.strip()}")
+            match = _OBJECTIVE_LINE_RE.search(result.stdout)
+            if match:
+                objective_line = match.group(0).strip()
         if result.stderr:
             output_parts.append(f"[STDERR]\n{result.stderr.strip()}")
         if result.returncode != 0:
             output_parts.append(f"[EXIT CODE] {result.returncode}")
+            output_parts.append(
+                "[RETRY REQUIRED] 脚本未跑通。请根据上面的 STDERR 修正脚本并再次调用 run_solver，"
+                "不要以这次输出作为最终结果。"
+            )
 
         if not output_parts:
-            return "[INFO] Script ran successfully with no output."
+            output_parts.append("[INFO] Script ran successfully with no output.")
+        elif result.returncode == 0 and not objective_line:
+            output_parts.append(
+                "[CONTRACT] 脚本已运行但没有输出目标值，请在脚本末尾打印 `Objective: <目标值>`。"
+            )
 
         output_parts.append(f"\n[Script saved to: {script_path}]")
+        if objective_line:
+            # 规范化结果放在最后一行：答复里的目标值必须与它一致
+            output_parts.append(f"[RESULT] {objective_line}")
         return "\n\n".join(output_parts)

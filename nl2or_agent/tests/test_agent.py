@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-from agents.nl2or_agent import build_nl2or_agent
-from core.prompt_loader import load_system_prompt
+from agents.nl2or_agent import apply_agent_mode, build_nl2or_agent
+from core.prompt_loader import AGENT_MODES, load_system_prompt
 from hamlet.core import CodeAgent
 
 
@@ -40,6 +40,27 @@ class TestLoadSystemPrompt:
         # ir_format prompt exists.  Since both are in the same dir, both
         # will be missing — result is empty plus catalog markdown.
         assert "Canonical block_id catalog" in result
+
+    def test_each_mode_selects_its_own_workflow(self):
+        interactive = load_system_prompt("interactive")
+        automatic = load_system_prompt("automatic")
+
+        assert "one step per user turn" in interactive
+        assert "complete the whole pipeline in one turn" in automatic
+        assert "one step per user turn" not in automatic
+        assert "complete the whole pipeline in one turn" not in interactive
+
+    def test_modes_share_core_appendix_and_catalog(self):
+        for mode in AGENT_MODES:
+            prompt = load_system_prompt(mode)
+            assert prompt.startswith("You are NL2OR")
+            assert "## Compositional modeling" in prompt
+            assert "Appendix: problem_ir_format" in prompt
+            assert "Canonical block_id catalog" in prompt
+
+    def test_unknown_mode_raises(self):
+        with pytest.raises(ValueError, match="interactive"):
+            load_system_prompt("nonsense")
 
 
 # ---------------------------------------------------------------------------
@@ -129,3 +150,23 @@ class TestBuildNl2orAgent:
         actions, strategy, _ = parse_fn(raw, ("```python", "```"))
         assert "print(1 + 1)" in actions[0]
 
+    def test_default_mode_is_interactive(self):
+        agent = build_nl2or_agent(verbosity_level=0)
+        assert "one step per user turn" in agent.prompt_templates["system_prompt"]
+
+    def test_automatic_mode_prompt(self):
+        agent = build_nl2or_agent(mode="automatic", verbosity_level=0)
+        assert "complete the whole pipeline in one turn" in agent.prompt_templates["system_prompt"]
+
+    def test_apply_agent_mode_switches_workflow(self):
+        agent = build_nl2or_agent(verbosity_level=0)
+
+        apply_agent_mode(agent, "automatic")
+        assert "complete the whole pipeline in one turn" in agent.prompt_templates["system_prompt"]
+
+        apply_agent_mode(agent, "interactive")
+        assert "one step per user turn" in agent.prompt_templates["system_prompt"]
+
+    def test_unknown_mode_raises(self):
+        with pytest.raises(ValueError, match="interactive"):
+            build_nl2or_agent(mode="nonsense", verbosity_level=0)
