@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 
 from core.ir_catalog import load_block_catalog, load_model_bank
-from core.ir_normalizer import normalize_problem_ir
-from core.ir_normalizer import validate_problem_ir
+from core.ir_normalize import normalize_problem_ir
+from core.ir_validate import validate_problem_ir
 from tools import ListBlockCatalogTool, ValidateProblemIrTool
 
 _BASE = Path(__file__).parent.parent

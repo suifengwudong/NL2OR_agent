@@ -1,7 +1,7 @@
 """Executable semantics of the block catalog: Problem IR -> PuLP model.
 
-Single interface shared by the reference solvers, the OR-Library importer, the
-tightness analysis and the T2 negative controls:
+Core module: the single interface shared by the reference solvers, the OR-Library
+importer, the tightness analysis, the T2 negative controls and ``solve_ir``:
 
     solve_ir(ir)                     -> SolveResult(objective, status, variables)
     solve_ir(ir, drop=[block_id])    -> the same model without one constraint block
@@ -17,14 +17,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable
 
 import pulp
 
-from core.ir_normalizer import collect_parameters
-
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from ._defaults import PROJECT_ROOT
+from .problem_ir import ProblemIR
 
 # ---------------------------------------------------------------------------
 # Which variables each block needs
@@ -54,23 +52,15 @@ _Z_BLOCKS = {"demand_coverage_activation", "covered_demand_objective"}
 _W_BLOCKS = {"max_service_distance_bound", "minimize_max_distance_objective"}
 _X1_BLOCKS = {"knapsack_capacity", "total_value_objective"}
 
-# block_model 实际会读取的数据键（情景覆盖只允许改这些键）
-READABLE_DATA_KEYS: frozenset[str] = frozenset(
-    {
-        "p",
-        "distance",
-        "demand",
-        "value",
-        "weight",
-        "capacity",
-        "facility_capacity",
-        "fixed_cost",
-        "service_cost",
-        "coverage_matrix",
-        "forced_open",
-        "forced_closed",
-    }
-)
+_STATUS_TEXT = {
+    "Optimal": "最优",
+    "Not Solved": "未求解",
+    "Infeasible": "不可行",
+    "Unbounded": "无界",
+    "Undefined": "未定义",
+}
+
+_VARIABLE_LABELS = {"y": "开设", "z": "覆盖需求", "x2": "分配", "x1": "选中"}
 
 
 @dataclass
@@ -270,6 +260,65 @@ class SolveResult:
     variables: dict[str, float] = field(default_factory=dict)
 
 
+def describe_model(ir: dict[str, Any]) -> str:
+    """One-line description of the model the IR describes."""
+    families = [str(f.get("id")) for f in ir.get("problem_families") or [] if f.get("id")]
+    blocks = constraint_block_ids(ir)
+    objective = objective_block_id(ir)
+    return (
+        f"模型：{'、'.join(families) or '未声明族'}；"
+        f"约束块 {len(blocks)} 个；目标块 {objective or '未声明'}"
+    )
+
+
+def format_number(value: float) -> str:
+    return str(int(value)) if float(value).is_integer() else f"{value:g}"
+
+
+def summarize_decisions(variables: dict[str, float]) -> str:
+    """Compact decision summary, grouped by variable name (no per-family branches)."""
+    scalars: list[str] = []
+    groups: dict[str, list[str]] = {}
+    for key, value in variables.items():
+        if "[" not in key:
+            scalars.append(f"{key}={format_number(value)}")
+            continue
+        name, rest = key.split("[", 1)
+        groups.setdefault(name, []).append(rest.rstrip("]"))
+
+    parts = list(scalars)
+    for name, entries in sorted(groups.items()):
+        label = _VARIABLE_LABELS.get(name, name)
+        points = [entry for entry in entries if "," not in entry]
+        edges = [entry for entry in entries if "," in entry]
+        if points:
+            parts.append(f"{label} [{', '.join(points)}]")
+        if edges:
+            parts.append(f"{label} {len(edges)} 条")
+    return "；".join(parts) if parts else "—"
+
+
+def format_solution(result: SolveResult, applied: dict[str, Any] | None = None) -> str:
+    """Render one solved scenario as plain text for the agent to read and tabulate."""
+    status = _STATUS_TEXT.get(result.status, result.status)
+    if applied:
+        shown = "、".join(
+            f"{key}={format_number(value) if isinstance(value, (int, float)) else value}"
+            for key, value in applied.items()
+        )
+    else:
+        shown = "无（基准）"
+
+    lines = [f"状态：{status}", f"应用的覆盖：{shown}"]
+    if result.status == "Optimal" and result.objective is not None:
+        # 与 run_solver 用同一行格式，最终答复里的目标值都取自它
+        lines.append(f"[RESULT] Objective: {format_number(result.objective)}")
+        lines.append(f"决策：{summarize_decisions(result.variables)}")
+    else:
+        lines.append(f"[NOTE] 该情景没有最优解（{status}），不要为它编造目标值。")
+    return "\n".join(lines)
+
+
 def constraint_block_ids(ir: dict[str, Any]) -> list[str]:
     return [str(b["block_id"]) for b in ir.get("constraint_blocks") or []]
 
@@ -325,7 +374,7 @@ def build_model(
     sense = str((ir.get("objective") or {}).get("sense") or "minimize")
     n_i, n_j = _sizes(ir)
     prob = pulp.LpProblem("nl2or", pulp.LpMinimize if sense == "minimize" else pulp.LpMaximize)
-    ctx = ModelContext(ir=ir, prob=prob, data=collect_parameters(ir), n_i=n_i, n_j=n_j)
+    ctx = ModelContext(ir=ir, prob=prob, data=ProblemIR(ir).parameters, n_i=n_i, n_j=n_j)
 
     if active & _X2_BLOCKS:
         ctx.var["x2"] = pulp.LpVariable.dicts("x", (range(n_i), range(n_j)), cat=pulp.LpBinary)
@@ -402,8 +451,9 @@ def analyze_tightness(ir: dict[str, Any], *, time_limit: int | None = None) -> d
 def render_script(ir: dict[str, Any], *, drop: tuple[str, ...] = ()) -> str:
     """Render a solver script that prints ``Objective: <value>``.
 
-    The script resolves the project root from its own location, so a committed
-    reference script stays portable inside the repository.
+    The script locates the repo by its ``core`` package instead of counting path
+    levels, so a committed reference script keeps working from any location inside
+    the repository; the baked absolute path only covers being copied outside it.
     """
     payload = json.dumps(ir, ensure_ascii=False)
     # 拆成多段相邻字符串字面量，避免生成超长行（切片按码点，不会截断转义或多字节字符）
@@ -414,13 +464,14 @@ def render_script(ir: dict[str, Any], *, drop: tuple[str, ...] = ()) -> str:
         "import json\n"
         "import sys\n"
         "from pathlib import Path\n\n"
-        "# <repo>/benchmarks/references/solvers/<case>.py -> <repo>\n"
-        "_ROOT = Path(__file__).resolve().parents[3]\n"
-        "if (_ROOT / 'benchmarks').is_dir():\n"
-        "    sys.path.insert(0, str(_ROOT))\n"
-        "else:\n"
-        f"    sys.path.insert(0, {str(_PROJECT_ROOT)!r})\n\n"
-        "from benchmarks.references.block_model import solve_ir  # noqa: E402\n\n"
+        "_REPO_MARKER = Path('core') / 'block_model.py'\n\n\n"
+        "def _repo_root() -> Path:\n"
+        "    for base in Path(__file__).resolve().parents:\n"
+        "        if (base / _REPO_MARKER).is_file():\n"
+        "            return base\n"
+        f"    return Path({str(PROJECT_ROOT)!r})\n\n"
+        "sys.path.insert(0, str(_repo_root()))\n\n"
+        "from core.block_model import solve_ir  # noqa: E402\n\n"
         "IR = json.loads(\n"
         f"{literal}\n"
         ")\n"

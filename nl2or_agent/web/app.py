@@ -1,9 +1,12 @@
 """Gradio web GUI for NL2OR Agent.
 
+Holds agent lifetime, the chat turn pipeline and the UI wiring; the session-backed
+views it feeds live in ``web/views.py``.
+
 Three views over one session:
 
 对话  聊天与模式选择（interactive / automatic）
-模型  归一化 Problem IR 与模板要求的对照，含校验结论（内容层，与代码写法无关）
+模型  归一化 Problem IR 与模板要求的对照（内容层，与代码写法无关）
 代码  agent 写出的求解脚本，可编辑后原地重跑
 """
 
@@ -16,7 +19,17 @@ import gradio as gr
 
 from agents import AGENT_MODES, apply_agent_mode
 from core.output_format import format_agent_output
-from utils.session import Session, get_session
+from utils.session import get_session, resolve_session
+
+from .views import (
+    get_model_state,
+    get_workspace_files,
+    list_code_choices,
+    load_code,
+    render_model_view,
+    run_code,
+    save_code,
+)
 
 _MAX_AGENTS = 100
 
@@ -54,33 +67,6 @@ def _get_or_create_agent(sid: str, agent_factory: Callable[[], Any]) -> Any:
         return _agents[sid]
 
 
-def _resolve_session(sid: str) -> Session:
-    """Return the session for *sid*, creating one when none is given."""
-    if sid and sid != "0":
-        existing = Session.load(sid)
-        if existing is not None:
-            return existing
-    return Session()
-
-
-def get_workspace_files(sid: str) -> str:
-    """List solver files from all sessions on disk."""
-    sessions = Session.list_all()
-    if not sessions:
-        return "(no sessions yet)"
-    lines: list[str] = []
-    for sid_iter in reversed(sessions):
-        s = Session.load(sid_iter)
-        if s is None:
-            continue
-        files = s.list_code_files()
-        if files:
-            marker = " ← 当前" if sid_iter == sid else ""
-            lines.append(f"   [{sid_iter[:8]}]{marker}")
-            lines.extend(f"      {f.name}" for f in files)
-    return "\n".join(lines) or "(no solver files yet)"
-
-
 def run_agent_turn(
     agent_factory: Callable[[], Any],
     message: str,
@@ -95,7 +81,7 @@ def run_agent_turn(
     if not message or not message.strip():
         return history, "", sid
     try:
-        session = _resolve_session(sid)
+        session = resolve_session(sid)
         sid = session.session_id
         # Tools persist model/code through the thread-local session when they
         # are created without an explicit workspace. Bind that session to the
@@ -114,178 +100,6 @@ def run_agent_turn(
         history.append({"role": "user", "content": message})
         history.append({"role": "assistant", "content": f"❌ Error: {exc}"})
         return history, "", sid
-
-
-# ---------------------------------------------------------------------------
-# Model view: 归一化 IR 与模板要求的对照
-# ---------------------------------------------------------------------------
-
-
-def _fmt_value(value: Any) -> str:
-    """Render a parameter value compactly."""
-    if isinstance(value, list):
-        if value and isinstance(value[0], list):
-            return f"{len(value)}x{len(value[0])} 矩阵"
-        return f"列表({len(value)})"
-    if isinstance(value, dict):
-        return f"对象({len(value)} 键)"
-    return str(value)
-
-
-def _fmt_params(params: dict) -> str:
-    if not params:
-        return "—"
-    return "、".join(f"{k}={_fmt_value(v)}" for k, v in params.items())
-
-
-def render_model_view(payload: dict | None) -> str:
-    """Markdown comparison between the validated IR and the template requirement."""
-    if not payload:
-        return "### 尚未解析\n提交问题后，这里显示归一化后的 Problem IR 与模板要求的对照。"
-
-    ir = payload.get("ir") or {}
-    report = payload.get("report") or {}
-    skeleton = report.get("skeleton") or {}
-    families = ir.get("problem_families") or []
-    entities = ir.get("entities") or {}
-    objective = ir.get("objective") or {}
-    present = {b["block_id"]: b for b in ir.get("constraint_blocks") or []}
-    required = list(skeleton.get("required_blocks") or [])
-    missing = set(skeleton.get("missing_required_blocks") or [])
-    substituted = set(skeleton.get("substituted_blocks") or [])
-    inconsistent = set(skeleton.get("inconsistent_blocks") or [])
-
-    lines: list[str] = []
-    verdict = "✅ 校验通过" if report.get("valid") else "❌ 校验未通过"
-    lines.append(f"### 模型对照（{verdict}）")
-    lines.append("")
-    lines.append(f"- 问题族：{', '.join(str(f.get('id')) for f in families) or '未声明'}")
-    size_i = (entities.get("I") or {}).get("size")
-    size_j = (entities.get("J") or {}).get("size")
-    lines.append(
-        f"- 索引集合：|I| = {size_i if size_i else '未声明'}，|J| = {size_j if size_j else '未声明'}"
-    )
-    lines.append("")
-
-    lines.append("**约束块：模板要求 与 IR 实际**")
-    lines.append("")
-    if required:
-        lines.append("| 约束块 | 状态 | 参数 |")
-        lines.append("|--------|------|------|")
-        for block_id in required:
-            if block_id in present:
-                status = "命中"
-            elif block_id in substituted:
-                status = "被同类别可选块替代"
-            elif block_id in missing:
-                status = "缺失"
-            else:
-                status = "未出现"
-            lines.append(
-                f"| `{block_id}` | {status} | {_fmt_params(present.get(block_id, {}).get('parameters') or {})} |"
-            )
-    else:
-        lines.append("（未声明问题族，无法与模板对照）")
-    for block_id, entry in present.items():
-        if block_id in required:
-            continue
-        note = "与声明的族不一致" if block_id in inconsistent else "模板未要求"
-        lines.append(
-            f"| `{block_id}` | 额外（{note}） | {_fmt_params(entry.get('parameters') or {})} |"
-        )
-    lines.append("")
-
-    lines.append("**目标函数**")
-    lines.append("")
-    lines.append(
-        f"- 目标块：`{objective.get('block_id') or '未声明'}`"
-        f"（方向 {objective.get('sense') or '未声明'}，"
-        f"{'在库中' if skeleton.get('objective_in_catalog') else '库外目标'}）"
-    )
-    unbound = skeleton.get("unbound_objective_params") or []
-    if unbound:
-        lines.append(f"- 未绑定参数：{', '.join(unbound)}")
-    lines.append("")
-
-    custom = ir.get("custom_constraints") or []
-    missing_data = ir.get("missing_data") or []
-    if custom or missing_data:
-        lines.append("**库外规则与缺失数据**")
-        lines.append("")
-        for item in custom:
-            lines.append(f"- 自定义约束：{item}")
-        for item in missing_data:
-            lines.append(f"- 缺失数据：{item}")
-        lines.append("")
-
-    errors = report.get("errors") or []
-    warnings = report.get("warnings") or []
-    if errors or warnings:
-        lines.append("**校验信息**")
-        lines.append("")
-        for message in errors:
-            lines.append(f"- 错误：{message}")
-        for message in warnings:
-            lines.append(f"- 提示：{message}")
-    return "\n".join(lines)
-
-
-def render_model_json(payload: dict | None) -> str:
-    """Normalized IR as pretty JSON (the machine-readable model of record)."""
-    import json
-
-    if not payload:
-        return ""
-    return json.dumps(payload.get("ir") or {}, ensure_ascii=False, indent=2)
-
-
-def get_model_state(sid: str) -> tuple[str, str]:
-    """Read the session's model of record and render both views."""
-    session = _resolve_session(sid)
-    payload = session.load_model()
-    return render_model_view(payload), render_model_json(payload)
-
-
-# ---------------------------------------------------------------------------
-# Code view: agent 产出的求解脚本，可编辑后重跑
-# ---------------------------------------------------------------------------
-
-
-def list_code_choices(sid: str) -> Any:
-    """Refresh the code file dropdown for the session."""
-    session = _resolve_session(sid)
-    names = [f.name for f in reversed(session.list_code_files())]
-    if not names:
-        return gr.update(choices=[], value=None)
-    return gr.update(choices=names, value=names[0])
-
-
-def load_code(sid: str, filename: str | None) -> str:
-    """Read one solver file from the session workspace."""
-    if not filename:
-        return ""
-    path = _resolve_session(sid).code_dir / filename
-    if not path.is_file():
-        return ""
-    return path.read_text(encoding="utf-8")
-
-
-def save_code(sid: str, filename: str | None, code: str) -> str:
-    """Write edited code back to the session workspace."""
-    if not filename:
-        return "未选择文件。"
-    path = _resolve_session(sid).save_code(code, filename)
-    return f"已保存：{path.name}"
-
-
-def run_code(sid: str, filename: str | None, code: str) -> str:
-    """Re-run the (possibly edited) script through the real run_solver path."""
-    from tools.solver_tool import RunSolverTool
-
-    if not filename:
-        return "未选择文件。"
-    session = _resolve_session(sid)
-    return RunSolverTool(workspace_dir=session.code_dir).run_file(code, filename)
 
 
 # ---------------------------------------------------------------------------
@@ -361,18 +175,18 @@ def create_ui(agent_factory: Callable[[], Any], default_mode: str = "interactive
             inputs=[msg, chatbot, state_key, mode_selector],
             outputs=[chatbot, msg, state_key],
         ).then(fn=get_model_state, inputs=[state_key], outputs=[model_view, model_json])
-        submit_event.then(
-            fn=list_code_choices, inputs=[state_key], outputs=[code_picker]
-        ).then(fn=load_code, inputs=[state_key, code_picker], outputs=[code_editor])
+        submit_event.then(fn=list_code_choices, inputs=[state_key], outputs=[code_picker]).then(
+            fn=load_code, inputs=[state_key, code_picker], outputs=[code_editor]
+        )
 
         submit_event = msg.submit(
             fn=run_agent,
             inputs=[msg, chatbot, state_key, mode_selector],
             outputs=[chatbot, msg, state_key],
         ).then(fn=get_model_state, inputs=[state_key], outputs=[model_view, model_json])
-        submit_event.then(
-            fn=list_code_choices, inputs=[state_key], outputs=[code_picker]
-        ).then(fn=load_code, inputs=[state_key, code_picker], outputs=[code_editor])
+        submit_event.then(fn=list_code_choices, inputs=[state_key], outputs=[code_picker]).then(
+            fn=load_code, inputs=[state_key, code_picker], outputs=[code_editor]
+        )
         clear_btn.click(fn=lambda: ([], ""), inputs=None, outputs=[chatbot, msg])
         mode_selector.change(
             fn=lambda mode: _MODE_INFO[mode],

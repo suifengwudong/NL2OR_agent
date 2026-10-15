@@ -28,7 +28,7 @@ from pathlib import Path
 import numpy as np
 from scipy.sparse.csgraph import shortest_path
 
-from benchmarks.references.block_model import render_script, solve_ir
+from core.block_model import render_script, solve_ir
 
 OUT_DIR = Path(__file__).parent / "orlib_cases"
 SOLVERS_DIR = Path(__file__).parent / "references" / "solvers"
@@ -295,7 +295,7 @@ def _cappmed_case(problem_index: int, data: str) -> dict:
 
 
 def _normalize(input_ir: dict) -> dict:
-    from core.ir_normalizer import validate_problem_ir
+    from core.ir_validate import validate_problem_ir
 
     report = validate_problem_ir(dict(input_ir))
     if not report["valid"]:

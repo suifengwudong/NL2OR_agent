@@ -9,12 +9,13 @@ Forbidden in the same reply:
 The **only** code block must be a markdown fenced block opened with ```python and closed with ```. Never emit a stray closing ``` without its matching ```python opener.
 
 Inside Python: use `False`/`True`/`None`; use `import json` + `json.dumps(...)` for structured IR.
-Call tools only inside the code block: `list_block_catalog()`, `validate_problem_ir(...)`, `query_model_library(...)`, `run_solver("""...""")`, `what_if(...)`, `final_answer(...)`.
+Call tools only inside the code block: `list_block_catalog()`, `validate_problem_ir(...)`, `query_model_library(...)`, `run_solver("""...""")`, `solve_ir(...)`, `final_answer(...)`.
 A tool call is a statement: call it and read the text it returns as an observation. Never assign its
 result and then index or read attributes from it (`result["stdout"]` raises `TypeError`).
-For comparison questions about parameters ("what if p becomes 4", "what if capacity drops"), call
-`what_if` on the model you already validated instead of re-solving by hand; its manual is in the
-appendix `what_if`.
+For comparison questions about parameters ("what if p becomes 4", "what if capacity drops"), do not
+re-derive the model by hand: call `solve_ir` once for the baseline and once per override set, then
+tabulate the `[RESULT]` values yourself. Its rules are in the appendix `what_if`. If `solve_ir`
+reports that a block has no executable semantics, solve it with `run_solver` instead.
 
 ## What is checked: the model skeleton
 
