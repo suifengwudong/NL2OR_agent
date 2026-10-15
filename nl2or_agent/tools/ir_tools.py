@@ -8,8 +8,9 @@ from pathlib import Path
 from hamlet.core.tools import Tool
 
 from core.ir_catalog import load_block_catalog
-from core.ir_normalizer import validate_problem_ir
-from utils.session import get_session
+from core.ir_validate import validate_problem_ir
+from core.problem_ir import ProblemIR
+from utils.session import get_session, write_model_of_record
 
 
 class ListBlockCatalogTool(Tool):
@@ -79,38 +80,18 @@ class ValidateProblemIrTool(Tool):
 
     def forward(self, ir_json: str) -> str:
         try:
-            ir = json.loads(ir_json)
-        except json.JSONDecodeError as exc:
+            ir = ProblemIR.parse(ir_json)
+        except ValueError as exc:
             return json.dumps(
-                {"valid": False, "errors": [f"Invalid JSON: {exc}"], "warnings": []},
+                {"valid": False, "errors": [str(exc)], "warnings": []},
                 ensure_ascii=False,
                 indent=2,
             )
-        if not isinstance(ir, dict):
-            return json.dumps(
-                {
-                    "valid": False,
-                    "errors": ["IR must be a JSON object"],
-                    "warnings": [],
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-        report = validate_problem_ir(ir)
+        report = validate_problem_ir(ir.data)
         self._save_model(report)
         return json.dumps(report, ensure_ascii=False, indent=2)
 
     def _save_model(self, report: dict) -> None:
         """记录本次校验的模型：IR 是内容的载体，前端与后续对照都以它为准。"""
-        if self._workspace is not None:
-            self._workspace.mkdir(parents=True, exist_ok=True)
-            payload = {
-                "saved_at": None,
-                "ir": report["normalized_ir"],
-                "report": report,
-            }
-            (self._workspace / "model.json").write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            return
-        get_session().save_model(report["normalized_ir"], report)
+        target = self._workspace if self._workspace is not None else get_session().workspace
+        write_model_of_record(target / "model.json", report["normalized_ir"], report)

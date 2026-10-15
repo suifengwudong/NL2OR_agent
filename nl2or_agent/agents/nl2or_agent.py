@@ -23,8 +23,8 @@ from tools import (
     ListBlockCatalogTool,
     QueryModelLibraryTool,
     RunSolverTool,
+    SolveIrTool,
     ValidateProblemIrTool,
-    WhatIfTool,
 )
 
 # Use markdown code fences instead of HAMLET's default ``<code>`` XML tags.
@@ -131,7 +131,7 @@ def build_nl2or_agent(
         ValidateProblemIrTool(workspace_dir=workspace_dir),
         QueryModelLibraryTool(),
         RunSolverTool(workspace_dir=workspace_dir),
-        WhatIfTool(workspace_dir=workspace_dir),
+        SolveIrTool(),
     ]
 
     system_prompt = load_system_prompt(mode)

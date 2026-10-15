@@ -4,14 +4,18 @@ import json
 import sys
 from pathlib import Path
 
-# <repo>/benchmarks/references/solvers/<case>.py -> <repo>
-_ROOT = Path(__file__).resolve().parents[3]
-if (_ROOT / 'benchmarks').is_dir():
-    sys.path.insert(0, str(_ROOT))
-else:
-    sys.path.insert(0, 'F:\\Uni\\s\\2026_1春\\Project\\Project：OP智能体\\nl2or_agent')
+_REPO_MARKER = Path('core') / 'block_model.py'
 
-from benchmarks.references.block_model import solve_ir  # noqa: E402
+
+def _repo_root() -> Path:
+    for base in Path(__file__).resolve().parents:
+        if (base / _REPO_MARKER).is_file():
+            return base
+    return Path('F:\\Uni\\s\\2026_1春\\Project\\Project：OP智能体\\nl2or_agent')
+
+sys.path.insert(0, str(_repo_root()))
+
+from core.block_model import solve_ir  # noqa: E402
 
 IR = json.loads(
     '{"problem_families": [{"id": "capacitated_p_median", "name": "capacita'

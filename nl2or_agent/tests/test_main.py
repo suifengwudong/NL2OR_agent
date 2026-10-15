@@ -224,7 +224,7 @@ class TestDisplayAnswer:
 class TestGetWorkspaceFiles:
     def test_no_sessions_returns_message(self, tmp_path, monkeypatch):
         import utils.session as mod
-        from web.app import get_workspace_files
+        from web.views import get_workspace_files
 
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "nosessions")
         from utils.session import Session
@@ -241,7 +241,7 @@ class TestGetWorkspaceFiles:
 
         s = Session(session_id="test123")
         s.save_code("print(1)", "solve.py")
-        from web.app import get_workspace_files
+        from web.views import get_workspace_files
 
         result = get_workspace_files("test123")
         assert "test123" in result or "solve" in result
@@ -315,7 +315,7 @@ class TestCreateUi:
 
 
 def _model_payload() -> dict:
-    from core.ir_normalizer import validate_problem_ir
+    from core.ir_validate import validate_problem_ir
 
     ir = {
         "problem_families": [{"id": "p_median"}],
@@ -347,12 +347,12 @@ def _model_payload() -> dict:
 
 class TestModelView:
     def test_empty_state_prompts_the_user(self):
-        from web.app import render_model_view
+        from web.views import render_model_view
 
         assert "尚未解析" in render_model_view(None)
 
     def test_shows_missing_template_block(self):
-        from web.app import render_model_view
+        from web.views import render_model_view
 
         view = render_model_view(_model_payload())
 
@@ -362,7 +362,7 @@ class TestModelView:
         assert "weighted_service_distance_objective" in view
 
     def test_shows_validation_messages(self):
-        from web.app import render_model_view
+        from web.views import render_model_view
 
         view = render_model_view(_model_payload())
 
@@ -371,7 +371,7 @@ class TestModelView:
     def test_json_view_is_the_normalized_ir(self):
         import json
 
-        from web.app import render_model_json
+        from web.views import render_model_json
 
         payload = _model_payload()
         rendered = json.loads(render_model_json(payload))
@@ -383,7 +383,7 @@ class TestModelView:
 class TestModelStateFromSession:
     def test_reads_the_session_model_of_record(self, tmp_path, monkeypatch):
         import utils.session as session_mod
-        from web.app import get_model_state
+        from web.views import get_model_state
 
         monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         payload = _model_payload()
@@ -396,7 +396,7 @@ class TestModelStateFromSession:
 
     def test_unknown_session_is_empty(self, tmp_path, monkeypatch):
         import utils.session as session_mod
-        from web.app import get_model_state
+        from web.views import get_model_state
 
         monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         view, raw = get_model_state("0")
@@ -450,7 +450,7 @@ class TestCodeView:
         return "code01"
 
     def test_list_choices_puts_newest_first(self, tmp_path, monkeypatch):
-        from web.app import list_code_choices
+        from web.views import list_code_choices
 
         sid = self._prepare(tmp_path, monkeypatch)
         import utils.session as session_mod
@@ -461,7 +461,7 @@ class TestCodeView:
         assert update["choices"] == ["b.py", "a.py"]
 
     def test_load_and_save_round_trip(self, tmp_path, monkeypatch):
-        from web.app import load_code, save_code
+        from web.views import load_code, save_code
 
         sid = self._prepare(tmp_path, monkeypatch)
 
@@ -470,7 +470,7 @@ class TestCodeView:
         assert load_code(sid, "a.py") == "print('Objective: 9')"
 
     def test_run_code_executes_the_edited_script(self, tmp_path, monkeypatch):
-        from web.app import run_code
+        from web.views import run_code
 
         sid = self._prepare(tmp_path, monkeypatch)
         output = run_code(sid, "a.py", "print('Objective: 2210')")
@@ -478,7 +478,7 @@ class TestCodeView:
         assert "[RESULT] Objective: 2210" in output
 
     def test_missing_selection_is_reported(self, tmp_path, monkeypatch):
-        from web.app import load_code, run_code, save_code
+        from web.views import load_code, run_code, save_code
 
         sid = self._prepare(tmp_path, monkeypatch)
 

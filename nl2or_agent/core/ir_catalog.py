@@ -1,12 +1,15 @@
 """IR catalog: load model bank and constraint block catalog.
 
-Provides shared data-loading functions used by normalizer, validator,
-prompt-loader, and the model-library tool.
+Both loaders read a file once per (path, mtime, size). The data files are static,
+but the system prompt is assembled on every turn, so re-parsing them per call is
+pure waste; keying the cache on the file stamp keeps edits on disk visible.
 """
 
 from __future__ import annotations
 
+import copy
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +17,13 @@ from ._defaults import BLOCKS_CATALOG_PATH as _BLOCKS_PATH
 from ._defaults import MODEL_BANK_PATH as _MODELS_PATH
 
 _SUPPORTED_SCHEMA_VERSION = 1
+_CACHE_SIZE = 8
+
+
+def _stamp(path: Path) -> tuple[str, int, int]:
+    """Cache key for *path*: name plus mtime and size."""
+    stat = path.stat()
+    return str(path), stat.st_mtime_ns, stat.st_size
 
 
 # ---------------------------------------------------------------------------
@@ -21,9 +31,9 @@ _SUPPORTED_SCHEMA_VERSION = 1
 # ---------------------------------------------------------------------------
 
 
-def load_model_bank(models_path: Path | None = None) -> dict[str, Any]:
-    """Load models.json and build a family-resolution index."""
-    path = models_path or _MODELS_PATH
+@lru_cache(maxsize=_CACHE_SIZE)
+def _model_bank_at(path_str: str, _mtime_ns: int, _size: int) -> dict[str, Any]:
+    path = Path(path_str)
     with open(path, encoding="utf-8") as f:
         bank = json.load(f)
     _assert_schema_version(bank, path)
@@ -37,8 +47,7 @@ def load_model_bank(models_path: Path | None = None) -> dict[str, Any]:
         family_name = m.get("family")
         blocks = list(m.get("blocks") or [])
         if family_name and family_name in by_id:
-            family = by_id[family_name]
-            base = family.get("base_blocks") or []
+            base = by_id[family_name].get("base_blocks") or []
             for b in reversed(base):
                 if b not in blocks:
                     blocks.insert(0, b)
@@ -49,14 +58,24 @@ def load_model_bank(models_path: Path | None = None) -> dict[str, Any]:
     return bank
 
 
+def load_model_bank(models_path: Path | None = None) -> dict[str, Any]:
+    """Load models.json and build a family-resolution index.
+
+    Returns a fresh copy, so callers may modify what they get without poisoning
+    the cache.
+    """
+    path = Path(models_path or _MODELS_PATH)
+    return copy.deepcopy(_model_bank_at(*_stamp(path)))
+
+
 # ---------------------------------------------------------------------------
 # Block catalog
 # ---------------------------------------------------------------------------
 
 
-def load_block_catalog(blocks_path: Path | None = None) -> dict[str, Any]:
-    """Load constraint_blocks.json and build lookup indices."""
-    path = blocks_path or _BLOCKS_PATH
+@lru_cache(maxsize=_CACHE_SIZE)
+def _block_catalog_at(path_str: str, _mtime_ns: int, _size: int) -> dict[str, Any]:
+    path = Path(path_str)
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
     _assert_schema_version(data, path)
@@ -76,6 +95,16 @@ def load_block_catalog(blocks_path: Path | None = None) -> dict[str, Any]:
         # 目标块的优化方向（minimize / maximize）；缺失时按未声明处理
         "objective_sense": {b["id"]: b["sense"] for b in objective_blocks if b.get("sense")},
     }
+
+
+def load_block_catalog(blocks_path: Path | None = None) -> dict[str, Any]:
+    """Load constraint_blocks.json and build lookup indices.
+
+    Returns a fresh copy, so callers may modify what they get without poisoning
+    the cache.
+    """
+    path = Path(blocks_path or _BLOCKS_PATH)
+    return copy.deepcopy(_block_catalog_at(*_stamp(path)))
 
 
 def _assert_schema_version(data: dict[str, Any], path: Path) -> None:

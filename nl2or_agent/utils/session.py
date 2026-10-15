@@ -22,6 +22,23 @@ _SESSIONS_ROOT = _WORKSPACE_ROOT / "sessions"
 _write_lock = threading.Lock()
 
 
+def write_model_of_record(path: Path, ir: dict, report: dict) -> Path:
+    """Persist a validated IR and its report to *path* (the model of record).
+
+    Single writer for ``model.json``: both the session and any explicit workspace
+    go through here, so the payload shape cannot drift between callers.
+    """
+    payload = {
+        "saved_at": datetime.now(timezone.utc).isoformat(),
+        "ir": ir,
+        "report": report,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _write_lock:
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
 class Session:
     """A single conversation session with its own workspace directory."""
 
@@ -58,16 +75,7 @@ class Session:
 
     def save_model(self, ir: dict, report: dict) -> Path:
         """Persist the validated Problem IR and its validation report."""
-        payload = {
-            "saved_at": datetime.now(timezone.utc).isoformat(),
-            "ir": ir,
-            "report": report,
-        }
-        with _write_lock:
-            self.model_file.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-        return self.model_file
+        return write_model_of_record(self.model_file, ir, report)
 
     def load_model(self) -> dict | None:
         """Load the last validated model of record, or None if none was saved."""
@@ -168,6 +176,18 @@ def get_session(session_id: str | None = None) -> Session:
 def reset_session() -> None:
     """Reset the current thread's session (create a new one next call)."""
     _tls.session = None
+
+
+def resolve_session(session_id: str | None = None) -> Session:
+    """Return the session for *session_id*, or a fresh one when it is unknown.
+
+    ``None`` and the UI's placeholder ``"0"`` both mean "no session yet".
+    """
+    if session_id and session_id != "0":
+        existing = Session.load(session_id)
+        if existing is not None:
+            return existing
+    return Session()
 
 
 def prune_old_sessions(max_age_days: int = 30) -> int:

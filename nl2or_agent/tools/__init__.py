@@ -2,13 +2,13 @@
 
 from .ir_tools import ListBlockCatalogTool, ValidateProblemIrTool
 from .model_library_tool import QueryModelLibraryTool
+from .solve_ir_tool import SolveIrTool
 from .solver_tool import RunSolverTool
-from .what_if_tool import WhatIfTool
 
 __all__ = [
     "QueryModelLibraryTool",
     "RunSolverTool",
     "ListBlockCatalogTool",
+    "SolveIrTool",
     "ValidateProblemIrTool",
-    "WhatIfTool",
 ]

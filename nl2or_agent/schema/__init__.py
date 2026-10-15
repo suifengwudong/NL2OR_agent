@@ -11,7 +11,7 @@ from .problem_ir import (
     OBJECTIVE_BLOCK_ALIASES,
     ObjectiveBlock,
     ProblemFamily,
-    ProblemIR,
+    ProblemIRDict,
     VALID_STATUS,
     ValidationReport,
 )
@@ -24,7 +24,7 @@ __all__ = [
     "OBJECTIVE_BLOCK_ALIASES",
     "ObjectiveBlock",
     "ProblemFamily",
-    "ProblemIR",
+    "ProblemIRDict",
     "VALID_STATUS",
     "ValidationReport",
 ]

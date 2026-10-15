@@ -22,7 +22,7 @@
 
 验收对象定为运筹模型的骨架（约束块集合与目标函数），与生成代码的写法无关。
 
-- **目标函数不再被静默替换**（`core/ir_normalizer.py`）：库中不认识的目标块保留原值并按库外目标记入提示；未声明目标只报提示，不再默认成 `weighted_service_distance_objective`；`sense` 由库中该目标块补全，与库冲突时报错
+- **目标函数不再被静默替换**（`core/ir_normalize.py`）：库中不认识的目标块保留原值并按库外目标记入提示；未声明目标只报提示，不再默认成 `weighted_service_distance_objective`；`sense` 由库中该目标块补全，与库冲突时报错
 - **目标块有了优化方向**：`constraint_blocks.json` 的 5 个目标块补 `sense`，新增 `total_value_objective`（背包，maximize），`knapsack` 模型补 `objective_block`
 - **骨架校验**（`validate_problem_ir`）：声明的族/模型所要求的约束块必须齐全（可用模板 `optional_blocks` 中同类别的块替代，降为提示）；块的 `requires_one_of` 必须满足；目标块的必填参数需在 `objective.parameters` 或顶层 `parameters` 中声明；报告新增 `skeleton` 段与 `catalog_objective_ids`
 - **块依赖数据**：`demand_coverage_activation` 补 `requires_one_of`（两个基数块之一）
@@ -38,14 +38,30 @@
 - **benchmark 四层与统一 schema**：用例（含正例、提示类、负例三类）统一声明 `family`/`scale`/`tiers`，T1 增加骨架判定与负例断言，T2 增加紧约束变体对照，T3 收紧目标值提取（只认带标签的数字）并做答复与产物的双重校验（回放 agent 自己写出的脚本），新增 T4 紧约束分析
 - **结果回显**：`run_solver` 在返回文本最后一行给出 `[RESULT] Objective: <值>`，提示词要求最终答复引用该行，避免汇报阶段凭记忆或从求解器日志里取数字
 
-### what_if：对话里的参数情景对比
+### what_if：参数情景对比
 
-比较性问题（「p 改成 4 会怎样」「缩减容量是否要多开设施」）不再靠重解一遍，而是调工具在同一份已解析模型上跑情景：
+比较性问题（「p 改成 4 会怎样」「缩减容量是否要多开设施」）不再靠手搓求解脚本，而是在同一份已解析模型上逐组替换参数求解：
 
-- **`WhatIfTool`**（工具名 `what_if`）：输入场景列表 JSON，基准取当前会话的 `model.json`（最近一次校验得到的模型），逐场景求解并返回对比表（场景 / 状态 / 目标值 / 与基准之差 / 决策）；不可行的场景如实标出，覆盖路径不认识或参数不支持就报错，缺数据直接列出缺哪些键
-- **`core/what_if.py`**：`apply_overrides`（只允许 `parameters.<键>`，键必须在 block_model 实际读取的集合内）、`run_scenarios`、`render_comparison`，以及 manual 的渲染
-- **本地 manual**：`data/model_bank/what_if_manual.json`（何时使用、场景结构、规则、边界、示例），与 `constraint_blocks.json` 同类放在 model_bank 下；`manual_markdown()` 把它的文字与「可算的模型」表、「可覆盖的键」表一起渲染成系统提示词的附录 `Appendix: what_if`，两张表由库派生，配一条双向漂移测试保证与 `block_model` 一致
-- 边界写进了 manual：覆盖 `forced_open` 这类参数只有在模型已含对应约束块时才生效，新增约束属于重新建模
+- **`SolveIrTool`**（工具名 `solve_ir`）：入参为 `ir_json` 与可选的 `overrides_json`，直接用库中已实现的块语义从 IR 建模求解，返回状态、应用的覆盖、`[RESULT] Objective: <值>` 与决策摘要。IR 显式传入，因此这个原语只依赖它的两个入参，不读会话状态
+- **循环与制表留在 skill 层**：工具只算一个情景（基准或某一组覆盖），多情景的循环、对照表与差值由 agent 自己完成。理由是「从同一份 IR 建出同一个模型」必须由代码保证，而循环与减法 LLM 做得可靠；这样每次调用的输入输出都可追溯，也不再有「只支持部分模型」的门禁
+- **`core/what_if.py`**：只剩 skill 层——manual 的加载与渲染，以及由模型库派生的「可算的模型」表。求解结果的渲染（`format_solution`／`summarize_decisions`／`describe_model`）搬到 `core/block_model.py`，紧挨它渲染的 `SolveResult`
+- **本地 manual**：`data/model_bank/what_if_manual.json`（何时使用、做法、规则、边界、示例），与 `constraint_blocks.json` 同类放在 model_bank 下；`manual_markdown()` 把它的文字与「可算的模型」表、「可覆盖的键」表一起渲染成系统提示词的附录 `Appendix: what_if`，两张表由库派生，配一条双向漂移测试保证与 `block_model` 一致
+- **边界与退路**：覆盖 `forced_open` 这类参数只有在模型已含对应约束块时才生效，新增约束属于重新建模；`solve_ir` 报「没有可执行语义的块」时，提示词要求改用 `run_solver` 自己写脚本
+
+### 分层归位与 IR 值对象
+
+- **`core/problem_ir.py`（新增）**：`ProblemIR` 值对象。`parse()` 收 dict／JSON 字符串／None，工具入参的规约只此一处；`normalized` 给归一化后的 IR；`parameters` 给可执行数据视图；`with_overrides()` 与 `parse_overrides()` 负责参数覆盖与键校验。`READABLE_DATA_KEYS` 一并归到这里，因为它是 IR 参数键的词汇表
+- **类型名让位**：`schema` 的 TypedDict `ProblemIR` 改名 `ProblemIRDict`（它描述线上形状），`ProblemIR` 这个名字给 `core` 里带行为的那个类；`schema` 保持纯数据
+- **可执行块语义归位**：`benchmarks/references/block_model.py` → `core/block_model.py`。它已经是核心代码，此前 `core` 反过来依赖 `benchmarks`，方向是反的。17 个参考脚本由 `render_script()` 生成，因此改的是模板并重生成，脚本自身不手改；搬运时一并修正了模板的 import 与 `_PROJECT_ROOT` 的层级
+- **`utils/session.py`**：新增 `write_model_of_record()`，`model.json` 只此一个写入点，`Session.save_model()` 与 `ValidateProblemIrTool` 都走它，落盘结构不再有两份写法
+
+### 结构梳理
+
+- **`core/ir_normalizer.py` 拆分**：归一化归 `ir_normalize.py`（`normalize_problem_ir`，以及接收已加载上下文的 `normalize_with_context`），骨架与维度校验归 `ir_validate.py`（`validate_problem_ir`）；参数视图的合并逻辑收进 `ProblemIR.parameters`，不再跨模块调用私有函数
+- **`core/ir_catalog.py` 按文件状态缓存**：两个 loader 以 `(路径, mtime, size)` 为键各读一次，并返回独立副本。系统提示词每轮都要组装，此前每轮都重新读盘解析一遍 `models.json` 与 `constraint_blocks.json`
+- **`web/app.py` 拆分**：会话视图（模型对照、代码文件读写、全部会话文件列表）移到 `web/views.py`，`app.py` 只保留 Agent 缓存、对话轮次与组件接线；`resolve_session()` 从 `web` 下沉到 `utils/session.py`
+- **`core/_defaults.py`**：`_PROJECT_ROOT` 改为公开的 `PROJECT_ROOT`，`block_model` 不再自己算一份
+- **生成脚本不再数路径层级**：`render_script()` 改为从脚本自身向上查找含 `core/block_model.py` 的目录，找不到才回退到烘焙的绝对路径；参考脚本从仓库内任意层级都能直接运行
 
 ### 前端：模型对照与代码视图
 
@@ -112,7 +128,7 @@ cp .env.example .env
 `.env` 示例：
 
 ```dotenv
-HAMLET_MODEL_ID=openrouter/anthropic/claude-3.5-sonnet   # 或 deepseek/deepseek-chat
+HAMLET_MODEL_ID=openrouter/deepseek/deepseek-v4.1-flash   # 或 openrouter/anthropic/claude-3.5-sonnet
 OPENROUTER_API_KEY=sk-or-xxx
 ```
 
@@ -165,7 +181,7 @@ uv run python main.py --mode web
 | T3 端到端 | `uv run python benchmarks/run_benchmark.py --mode online` | 是 | 是 | 需 `OPENROUTER_API_KEY`；答复与产物双重校验，支持 `--repeats`、`--agent-mode` 与预算 |
 | T4 紧约束 | `uv run python benchmarks/run_benchmark.py --mode tightness --write` | 否 | 是 | 计算并写回紧/非紧块元数据与参考脚本 |
 
-块的语义只有一处实现（`benchmarks/references/block_model.py`）：导入真值、参考脚本、紧约束分析与变体对照都走它。最优值来自独立求解与 OR-Library 的已发表值。用例 schema、四层细节与外部 benchmark 调研见 `benchmarks/README.md`。
+块的语义只有一处实现（`core/block_model.py`）：导入真值、参考脚本、紧约束分析与变体对照都走它。最优值来自独立求解与 OR-Library 的已发表值。用例 schema、四层细节与外部 benchmark 调研见 `benchmarks/README.md`。
 
 ---
 
@@ -185,28 +201,31 @@ nl2or_agent/
 ├── core/                   # 核心处理逻辑
 │   ├── __init__.py
 │   ├── _defaults.py        # 共享默认路径配置
-│   ├── ir_catalog.py       # 模型库/积木块目录加载
-│   ├── ir_normalizer.py    # Problem IR 归一化 + 骨架校验
+│   ├── block_model.py      # 可执行块语义：IR → PuLP，求解与结果渲染
+│   ├── ir_catalog.py       # 模型库/积木块目录加载（按文件状态缓存）
+│   ├── ir_normalize.py     # Problem IR 归一化
+│   ├── ir_validate.py      # 骨架与维度校验
 │   ├── output_format.py    # agent 输出清洗
+│   ├── problem_ir.py       # ProblemIR 值对象：解析 / 归一化视图 / 参数覆盖
 │   ├── prompt_loader.py    # 提示词加载
-│   └── what_if.py          # 参数情景对比（含 what_if manual 渲染）
+│   └── what_if.py          # what_if skill：manual 渲染 + 可算模型表
 │
 ├── schema/
 │   ├── __init__.py
-│   └── problem_ir.py       # TypedDict 数据定义 + 常量别名
+│   └── problem_ir.py       # TypedDict 数据定义（ProblemIRDict 等）+ 常量别名
 │
 ├── tools/
 │   ├── __init__.py
 │   ├── ir_tools.py             # ListBlockCatalogTool / ValidateProblemIrTool
 │   ├── model_library_tool.py   # QueryModelLibraryTool — 查询 OR 模型模板库
 │   ├── solver_tool.py          # RunSolverTool — 执行生成的求解代码
-│   └── what_if_tool.py         # WhatIfTool — 参数情景对比
+│   └── solve_ir_tool.py        # SolveIrTool — 按 IR 求解单个情景
 │
 ├── data/
 │   ├── model_bank/
 │   │   ├── models.json             # OR 模型模板库
 │   │   ├── constraint_blocks.json  # 约束积木块目录
-│   │   └── what_if_manual.json     # what_if 工具的 manual
+│   │   └── what_if_manual.json     # what_if 做法的 manual（skill 层）
 │   └── workspace/          # 生成的求解脚本存储目录
 │
 ├── benchmarks/             # 四层评测：IR 判定 / 求解执行 / 端到端 / 紧约束分析
@@ -218,7 +237,8 @@ nl2or_agent/
 │
 ├── web/
 │   ├── __init__.py
-│   └── app.py              # Gradio Web 界面（对话 / 模型 / 代码 三个标签页）
+│   ├── app.py              # Gradio 界面接线、对话轮次与 Agent 缓存
+│   └── views.py            # 会话视图：模型对照与代码文件的取值与渲染
 │
 └── prompts/
     ├── system.prompt.md                 # 模式无关的系统提示词
@@ -240,6 +260,7 @@ nl2or_agent/
 | 模型库接口 | `Tool` 子类 | `tools/model_library_tool.py` — `QueryModelLibraryTool` |
 | IR 校验接口 | `Tool` 子类 | `tools/ir_tools.py` — `ListBlockCatalogTool` / `ValidateProblemIrTool` |
 | 求解器接口 | `Tool` 子类 | `tools/solver_tool.py` — `RunSolverTool` |
+| 情景求解接口 | `Tool` 子类 | `tools/solve_ir_tool.py` — `SolveIrTool`（按 IR 求解单个情景，不写脚本） |
 | 代码生成器 | `CodeAgent` 内置 | CodeAgent 自带 Python 代码生成与执行能力 |
 | 本地存储 | 文件系统 | `data/workspace/` 目录，求解脚本按 UUID 命名存储 |
 | 用户界面 | Gradio | `web/app.py` — 自建 Gradio 聊天界面 + `main.py --mode web` |
@@ -260,8 +281,9 @@ graph TD
     end
 
     subgraph "core/ (处理引擎层)"
-        C1["ir_catalog.py<br/>目录加载"]
-        C2["ir_normalizer.py<br/>归一化 + 校验"]
+        C1["ir_catalog.py<br/>目录加载（缓存）"]
+        C2["ir_normalize.py<br/>归一化"]
+        C2b["ir_validate.py<br/>校验"]
         C3["output_format.py<br/>结构化输出"]
         C4["prompt_loader.py<br/>提示词加载"]
     end
@@ -277,25 +299,27 @@ graph TD
 
     subgraph "web/ (表现层)"
         W1["app.py"]
+        W2["views.py"]
     end
 
     A -->|组装 tools| T1 & T2 & T3 & T4
     A -->|系统 prompt| C4
-    T1 & T2 -->|调用| C1 & C2
+    T1 & T2 -->|调用| C1 & C2 & C2b
     T3 -->|搜索| U1
     T4 -->|存储| U2
-    C1 & C2 -->|引用常量| S1
+    C1 & C2 & C2b -->|引用常量| S1
     C4 -->|catalog| C1
     W1 -->|格式化输出| C3
+    W1 -->|取值与渲染| W2
 ```
 
 | 模块 | 职责 | 内容 |
 |------|------|------|
 | `schema/` | 数据定义层 | `problem_ir.py`（TypedDict + 常量别名） |
-| `core/` | 处理引擎层 | `ir_catalog.py`（目录加载）、`ir_normalizer.py`（归一化 + 骨架校验）、`output_format.py`（输出清洗）、`prompt_loader.py`（按模式组装提示词） |
+| `core/` | 处理引擎层 | `ir_catalog.py`（目录加载，按文件状态缓存）、`ir_normalize.py`（归一化）、`ir_validate.py`（骨架与维度校验）、`problem_ir.py`（IR 值对象）、`block_model.py`（可执行块语义）、`output_format.py`（输出清洗）、`prompt_loader.py`（按模式组装提示词） |
 | `tools/` | Agent 接口层 | HAMLET Tool 子类，薄封装调用 `core/` 函数 |
 | `utils/` | 基础设施层 | `search.py`（关键词检索）、`session.py`（会话管理） |
-| `web/` | 表现层 | `app.py`（Gradio Web 界面） |
+| `web/` | 表现层 | `app.py`（界面接线、对话轮次与 Agent 缓存）、`views.py`（会话视图取值与渲染） |
 | `agents/` | 入口层 | `nl2or_agent.py`（组装 CodeAgent） |
 
 ### Agent 工作流（对应 docs/flowchart.md 活动图）

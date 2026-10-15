@@ -42,7 +42,7 @@ class EntitySet(TypedDict, total=False):
     ids: list[str]
 
 
-class ProblemIR(TypedDict, total=False):
+class ProblemIRDict(TypedDict, total=False):
     problem_families: list[ProblemFamily]
     is_hybrid: bool
     hybrid_notes: str
@@ -57,7 +57,7 @@ class ProblemIR(TypedDict, total=False):
 
 class ValidationReport(TypedDict):
     valid: bool
-    normalized_ir: ProblemIR
+    normalized_ir: ProblemIRDict
     errors: list[str]
     warnings: list[str]
     catalog_block_ids: list[str]

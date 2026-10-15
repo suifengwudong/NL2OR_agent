@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from benchmarks.references.block_model import solve_ir
+from core.block_model import solve_ir
 from benchmarks.run_benchmark import (
     _extract_objectives,
     _load_cases,
@@ -157,7 +157,7 @@ def test_block_model_reproduces_case_objective(cases, case_id: str):
 
 def test_every_catalog_block_has_executable_semantics():
     """目录里的每个块都必须有可执行语义（统一接口的核心保证）。"""
-    from benchmarks.references.block_model import CONSTRAINT_BUILDERS, OBJECTIVE_BUILDERS
+    from core.block_model import CONSTRAINT_BUILDERS, OBJECTIVE_BUILDERS
     from core.ir_catalog import load_block_catalog
 
     for block in load_block_catalog()["blocks"]:

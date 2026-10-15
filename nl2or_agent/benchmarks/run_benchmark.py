@@ -123,7 +123,7 @@ def _reference_script_path(case: dict[str, Any]) -> Path:
 
 
 def _normalized_ir(case: dict[str, Any]) -> dict[str, Any]:
-    from core.ir_normalizer import validate_problem_ir
+    from core.ir_validate import validate_problem_ir
 
     report = validate_problem_ir(dict(case["input_ir"]))
     return report["normalized_ir"]
@@ -135,7 +135,7 @@ def _normalized_ir(case: dict[str, Any]) -> dict[str, Any]:
 
 
 def _score_ir_case(case: dict[str, Any]) -> dict[str, Any]:
-    from core.ir_normalizer import validate_problem_ir
+    from core.ir_validate import validate_problem_ir
 
     report = validate_problem_ir(dict(case["input_ir"]))
     expected = case["expected"]
@@ -222,7 +222,7 @@ def _score_solver_case(case: dict[str, Any], workspace: Path) -> dict[str, Any]:
     if script_path.is_file():
         script = script_path.read_text(encoding="utf-8")
     else:
-        from benchmarks.references.block_model import render_script
+        from core.block_model import render_script
 
         script = render_script(_normalized_ir(case))
         detail.append(f"参考脚本由 IR 现场渲染（{script_path.name} 不存在）")
@@ -234,7 +234,7 @@ def _score_solver_case(case: dict[str, Any], workspace: Path) -> dict[str, Any]:
 
     variants = list(case.get("tight_blocks") or []) + list(case.get("nonbinding_blocks") or [])
     if variants:
-        from benchmarks.references.block_model import render_script
+        from core.block_model import render_script
 
         ir = _normalized_ir(case)
         for block in case.get("tight_blocks") or []:
@@ -496,7 +496,7 @@ def run_online(
 
 
 def run_tightness(cases: list[dict[str, Any]], *, write: bool = False) -> dict[str, Any]:
-    from benchmarks.references.block_model import analyze_tightness
+    from core.block_model import analyze_tightness
 
     selected = _tier_cases(cases, "tightness")
     results: list[dict[str, Any]] = []
@@ -540,7 +540,7 @@ def run_tightness(cases: list[dict[str, Any]], *, write: bool = False) -> dict[s
 
 def _write_reference_script(case: dict[str, Any]) -> None:
     """Refresh the reference script derived from the case IR."""
-    from benchmarks.references.block_model import render_script
+    from core.block_model import render_script
 
     path = SOLVERS_DIR / f"{case['id']}.py"
     path.write_text(render_script(_normalized_ir(case)), encoding="utf-8")
