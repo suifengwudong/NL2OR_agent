@@ -34,6 +34,7 @@ def load_system_prompt(mode: str = "interactive") -> str:
     ``automatic`` runs the whole pipeline within a single turn.
     """
     from .ir_catalog import catalog_markdown
+    from .what_if import manual_markdown
 
     if mode not in AGENT_MODES:
         raise ValueError(f"Unknown agent mode {mode!r}. Expected one of: {', '.join(AGENT_MODES)}.")
@@ -55,5 +56,9 @@ def load_system_prompt(mode: str = "interactive") -> str:
     # 附录：积木块目录
     parts.append("\n\n### Canonical block_id catalog\n\n")
     parts.append(catalog_markdown())
+
+    # 附录：what_if 工具的 manual（与 catalog 同一机制，本地文件 + 库派生表）
+    parts.append("\n\n---\n\n## Appendix: what_if\n\n")
+    parts.append(manual_markdown())
 
     return "\n".join(parts)

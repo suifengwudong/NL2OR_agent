@@ -38,6 +38,15 @@
 - **benchmark 四层与统一 schema**：用例（含正例、提示类、负例三类）统一声明 `family`/`scale`/`tiers`，T1 增加骨架判定与负例断言，T2 增加紧约束变体对照，T3 收紧目标值提取（只认带标签的数字）并做答复与产物的双重校验（回放 agent 自己写出的脚本），新增 T4 紧约束分析
 - **结果回显**：`run_solver` 在返回文本最后一行给出 `[RESULT] Objective: <值>`，提示词要求最终答复引用该行，避免汇报阶段凭记忆或从求解器日志里取数字
 
+### what_if：对话里的参数情景对比
+
+比较性问题（「p 改成 4 会怎样」「缩减容量是否要多开设施」）不再靠重解一遍，而是调工具在同一份已解析模型上跑情景：
+
+- **`WhatIfTool`**（工具名 `what_if`）：输入场景列表 JSON，基准取当前会话的 `model.json`（最近一次校验得到的模型），逐场景求解并返回对比表（场景 / 状态 / 目标值 / 与基准之差 / 决策）；不可行的场景如实标出，覆盖路径不认识或参数不支持就报错，缺数据直接列出缺哪些键
+- **`core/what_if.py`**：`apply_overrides`（只允许 `parameters.<键>`，键必须在 block_model 实际读取的集合内）、`run_scenarios`、`render_comparison`，以及 manual 的渲染
+- **本地 manual**：`data/model_bank/what_if_manual.json`（何时使用、场景结构、规则、边界、示例），与 `constraint_blocks.json` 同类放在 model_bank 下；`manual_markdown()` 把它的文字与「可算的模型」表、「可覆盖的键」表一起渲染成系统提示词的附录 `Appendix: what_if`，两张表由库派生，配一条双向漂移测试保证与 `block_model` 一致
+- 边界写进了 manual：覆盖 `forced_open` 这类参数只有在模型已含对应约束块时才生效，新增约束属于重新建模
+
 ### 前端：模型对照与代码视图
 
 Gradio 界面从单一聊天页改为三个标签页，都挂在同一个会话上：
@@ -179,7 +188,8 @@ nl2or_agent/
 │   ├── ir_catalog.py       # 模型库/积木块目录加载
 │   ├── ir_normalizer.py    # Problem IR 归一化 + 骨架校验
 │   ├── output_format.py    # agent 输出清洗
-│   └── prompt_loader.py    # 提示词加载
+│   ├── prompt_loader.py    # 提示词加载
+│   └── what_if.py          # 参数情景对比（含 what_if manual 渲染）
 │
 ├── schema/
 │   ├── __init__.py
@@ -189,12 +199,14 @@ nl2or_agent/
 │   ├── __init__.py
 │   ├── ir_tools.py             # ListBlockCatalogTool / ValidateProblemIrTool
 │   ├── model_library_tool.py   # QueryModelLibraryTool — 查询 OR 模型模板库
-│   └── solver_tool.py          # RunSolverTool — 执行生成的求解代码
+│   ├── solver_tool.py          # RunSolverTool — 执行生成的求解代码
+│   └── what_if_tool.py         # WhatIfTool — 参数情景对比
 │
 ├── data/
 │   ├── model_bank/
 │   │   ├── models.json             # OR 模型模板库
-│   │   └── constraint_blocks.json  # 约束积木块目录
+│   │   ├── constraint_blocks.json  # 约束积木块目录
+│   │   └── what_if_manual.json     # what_if 工具的 manual
 │   └── workspace/          # 生成的求解脚本存储目录
 │
 ├── benchmarks/             # 四层评测：IR 判定 / 求解执行 / 端到端 / 紧约束分析
@@ -352,7 +364,6 @@ class MyTool(Tool):
 修改 `.env` 中的 `HAMLET_MODEL_ID`，支持的格式遵循 [litellm](https://docs.litellm.ai/docs/providers) 规范：
 
 ### 添加新的 OR 模型模板
-
 编辑 `data/model_bank/models.json`，按现有格式添加新条目。字段说明：
 
 - `id`: 唯一标识符

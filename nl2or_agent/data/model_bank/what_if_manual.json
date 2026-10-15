@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "name": "what_if",
+  "summary": "在同一份已解析模型上比较多组参数：给定一组参数覆盖，逐组求解并给出目标值与决策的差异。",
+  "when_to_use": [
+    "用户提出比较性问题，例如「如果把 p 改成 4 会怎样」「缩减容量是否要多开设施」「换一组强制开设位置差多少」",
+    "需要在同一个模型上试多组参数，不必重新解析一遍问题"
+  ],
+  "scenario": {
+    "id": "场景名，会出现在结果表第一列",
+    "overrides": [{"path": "parameters.p", "value": 4}]
+  },
+  "rules": [
+    "path 只支持 parameters.<键>，值直接替换顶层 parameters 中的同名键",
+    "scenarios_json 可以是场景列表（在代码块里直接写 Python 列表）或它的 JSON 字符串",
+    "各场景相互独立、都基于同一个基准模型；基准是该模型在既有参数下的解",
+    "覆盖 forced_open / forced_closed 这类参数，只有在模型已经包含对应约束块时才起作用；新增约束属于重新建模，不属于情景对比",
+    "不可行的场景如实标为不可行，不会被跳过，也不会替换成近似解",
+    "返回的对比表就是可以报告的内容；不要自行推算或编造数值，工具没给出数字就说明没算出来"
+  ],
+  "limits": [
+    "基准是当前会话最近一次 validate_problem_ir 得到的模型；还没有就先调用 validate_problem_ir 建立",
+    "模型必须带可执行数据；缺数据时会列出缺哪些键，不做估算替代",
+    "只支持下面列出的模型，其他问题族需要先补可执行语义"
+  ],
+  "examples": [
+    {
+      "title": "扫描设施数量",
+      "scenarios": [
+        {"id": "p=2", "overrides": [{"path": "parameters.p", "value": 2}]},
+        {"id": "p=4", "overrides": [{"path": "parameters.p", "value": 4}]}
+      ]
+    },
+    {
+      "title": "缩减背包容量",
+      "scenarios": [
+        {"id": "capacity=40", "overrides": [{"path": "parameters.capacity", "value": 40}]},
+        {"id": "capacity=60", "overrides": [{"path": "parameters.capacity", "value": 60}]}
+      ]
+    }
+  ]
+}
