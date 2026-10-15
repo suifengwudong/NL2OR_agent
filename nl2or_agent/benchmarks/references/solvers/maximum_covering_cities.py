@@ -1,26 +1,37 @@
-"""Reference solver: maximum_covering_cities. Prints the optimal objective."""
+"""Reference solver: model built from the case IR by block_model.py."""
 
-import pulp
+import json
+import sys
+from pathlib import Path
 
-DEMAND = [10, 8, 12, 6, 9, 5]
-COVER = [
-    [1, 0, 1, 0],
-    [1, 1, 0, 0],
-    [0, 1, 1, 0],
-    [0, 0, 1, 1],
-    [0, 0, 0, 1],
-    [1, 0, 0, 1],
-]
-P = 2
-n_d, n_j = 6, 4
+# <repo>/benchmarks/references/solvers/<case>.py -> <repo>
+_ROOT = Path(__file__).resolve().parents[3]
+if (_ROOT / 'benchmarks').is_dir():
+    sys.path.insert(0, str(_ROOT))
+else:
+    sys.path.insert(0, 'F:\\Uni\\s\\2026_1春\\Project\\Project：OP智能体\\nl2or_agent')
 
-prob = pulp.LpProblem("max_covering", pulp.LpMaximize)
-y = pulp.LpVariable.dicts("y", range(n_j), cat=pulp.LpBinary)
-z = pulp.LpVariable.dicts("z", range(n_d), cat=pulp.LpBinary)
-prob += pulp.lpSum(DEMAND[i] * z[i] for i in range(n_d))
-for i in range(n_d):
-    prob += z[i] <= pulp.lpSum(COVER[i][j] * y[j] for j in range(n_j))
-prob += pulp.lpSum(y[j] for j in range(n_j)) == P
-prob.solve(pulp.PULP_CBC_CMD(msg=False))
-value = pulp.value(prob.objective)
-print("Objective:", round(value) if isinstance(value, (int, float)) else 0)
+from benchmarks.references.block_model import solve_ir  # noqa: E402
+
+IR = json.loads(
+    '{"problem_families": [{"id": "maximum_covering", "name": "maximum_cove'
+    'ring", "confidence": "high", "notes": ""}], "is_hybrid": false, "hybri'
+    'd_notes": "", "entities": {"I": {"size": 6, "ids": []}, "J": {"size": '
+    '4, "ids": []}}, "parameters": {"p": 2, "demand": [10, 8, 12, 6, 9, 5],'
+    ' "coverage_matrix": [[1, 0, 1, 0], [1, 1, 0, 0], [0, 1, 1, 0], [0, 0, '
+    '1, 1], [0, 0, 0, 1], [1, 0, 0, 1]]}, "decision_variables": [], "object'
+    'ive": {"sense": "maximize", "block_id": "covered_demand_objective", "e'
+    'xpression": "", "natural_language": "", "parameters": {}}, "constraint'
+    '_blocks": [{"block_id": "demand_coverage_activation", "category": "cov'
+    'erage", "name": "需求覆盖状态联动", "parameters": {"coverage_matrix": "由覆盖矩阵给定'
+    '"}, "status": "required", "natural_language": ""}, {"block_id": "cardi'
+    'nality_open_p_facilities", "category": "cardinality", "name": "恰好开设 P '
+    '个设施", "parameters": {"p": 2}, "status": "required", "natural_language"'
+    ': ""}], "custom_constraints": [], "missing_data": []}'
+)
+DROP = []
+
+result = solve_ir(IR, drop=tuple(DROP))
+print('Objective:', result.objective)
+for name, value in sorted(result.variables.items()):
+    print(f'{name}: {value}')

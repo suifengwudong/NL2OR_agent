@@ -1,29 +1,40 @@
-"""Reference solver: p_median_community (小区服务中心选址). Prints the optimal objective."""
+"""Reference solver: model built from the case IR by block_model.py."""
 
-import pulp
+import json
+import sys
+from pathlib import Path
 
-POP = [80, 120, 100, 90, 110, 70]
-DIST = [
-    [4, 6, 9, 7, 8],
-    [5, 3, 8, 6, 7],
-    [9, 7, 4, 5, 6],
-    [8, 6, 5, 3, 4],
-    [6, 5, 7, 4, 3],
-    [7, 8, 6, 5, 4],
-]
-P = 3
-n_i, n_j = 6, 5
+# <repo>/benchmarks/references/solvers/<case>.py -> <repo>
+_ROOT = Path(__file__).resolve().parents[3]
+if (_ROOT / 'benchmarks').is_dir():
+    sys.path.insert(0, str(_ROOT))
+else:
+    sys.path.insert(0, 'F:\\Uni\\s\\2026_1春\\Project\\Project：OP智能体\\nl2or_agent')
 
-prob = pulp.LpProblem("p_median", pulp.LpMinimize)
-y = pulp.LpVariable.dicts("y", range(n_j), cat=pulp.LpBinary)
-x = pulp.LpVariable.dicts("x", (range(n_i), range(n_j)), cat=pulp.LpBinary)
-prob += pulp.lpSum(POP[i] * DIST[i][j] * x[i][j] for i in range(n_i) for j in range(n_j))
-for i in range(n_i):
-    prob += pulp.lpSum(x[i][j] for j in range(n_j)) == 1
-for i in range(n_i):
-    for j in range(n_j):
-        prob += x[i][j] <= y[j]
-prob += pulp.lpSum(y[j] for j in range(n_j)) == P
-prob.solve(pulp.PULP_CBC_CMD(msg=False))
-value = pulp.value(prob.objective)
-print("Objective:", round(value) if isinstance(value, (int, float)) else 0)
+from benchmarks.references.block_model import solve_ir  # noqa: E402
+
+IR = json.loads(
+    '{"problem_families": [{"id": "p_median", "name": "p_median", "confiden'
+    'ce": "high", "notes": ""}], "is_hybrid": false, "hybrid_notes": "", "e'
+    'ntities": {"I": {"size": 6, "ids": []}, "J": {"size": 5, "ids": ["A", '
+    '"B", "C", "D", "E"]}}, "parameters": {"p": 3, "demand": [80, 120, 100,'
+    ' 90, 110, 70], "distance": [[4, 6, 9, 7, 8], [5, 3, 8, 6, 7], [9, 7, 4'
+    ', 5, 6], [8, 6, 5, 3, 4], [6, 5, 7, 4, 3], [7, 8, 6, 5, 4]]}, "decisio'
+    'n_variables": [], "objective": {"sense": "minimize", "block_id": "weig'
+    'hted_service_distance_objective", "expression": "minimize_total_weight'
+    'ed_distance", "natural_language": "minimize_total_weighted_distance", '
+    '"parameters": {}}, "constraint_blocks": [{"block_id": "assign_each_dem'
+    'and_once", "category": "assignment", "name": "需求唯一分配", "parameters": {'
+    '}, "status": "required", "natural_language": ""}, {"block_id": "link_a'
+    'ssignment_to_open", "category": "linking", "name": "分配-开设联动", "paramet'
+    'ers": {}, "status": "required", "natural_language": ""}, {"block_id": '
+    '"cardinality_open_p_facilities", "category": "cardinality", "name": "恰'
+    '好开设 P 个设施", "parameters": {"p": 3}, "status": "required", "natural_lan'
+    'guage": ""}], "custom_constraints": [], "missing_data": []}'
+)
+DROP = []
+
+result = solve_ir(IR, drop=tuple(DROP))
+print('Objective:', result.objective)
+for name, value in sorted(result.variables.items()):
+    print(f'{name}: {value}')

@@ -1,125 +1,1857 @@
 {
-  "_comment": "NL2OR benchmark cases. input_ir = 脏 IR（LLM 原始输出，含别名）；expected = 归一化后应得结果；solver_objective = 参考最优目标值（由 benchmarks/references/solve_references.py 计算）。",
+  "_comment": "NL2OR benchmark cases（与 orlib_cases/*.json 同一套 schema）。字段：id / name / family / scale / tiers / problem / input_ir / expected / solver_objective / tight_blocks / nonbinding_blocks。input_ir 是脏 IR（含别名、占位值）且携带可执行数据与 entities；expected 描述 T1 必须得到的判定；tight_blocks 与 nonbinding_blocks 由 `--mode tightness --write` 生成。",
   "cases": [
     {
       "id": "p_median_community",
       "name": "P-Median 社区服务中心",
+      "family": "p_median",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "online",
+        "tightness"
+      ],
       "problem": "某街道计划在 5 个候选位置 A、B、C、D、E 中开设 3 个社区服务中心。6 个居民区的人口分别为 80、120、100、90、110、70。各居民区到各候选位置的距离矩阵为 [[4,6,9,7,8],[5,3,8,6,7],[9,7,4,5,6],[8,6,5,3,4],[6,5,7,4,3],[7,8,6,5,4]]。每个居民区必须且只能分配到一个服务中心，只有开设的服务中心才能接收分配，恰好开设 3 个。目标是最小化所有居民区到其服务中心的需求加权总距离。",
       "input_ir": {
-        "problem_families": [{"id": "p-median", "confidence": 0.9}],
-        "parameters": {"p": 3},
+        "problem_families": [
+          {
+            "id": "p-median",
+            "confidence": 0.9
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 5,
+            "ids": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E"
+            ]
+          }
+        },
+        "parameters": {
+          "p": 3,
+          "demand": [
+            80,
+            120,
+            100,
+            90,
+            110,
+            70
+          ],
+          "distance": [
+            [
+              4,
+              6,
+              9,
+              7,
+              8
+            ],
+            [
+              5,
+              3,
+              8,
+              6,
+              7
+            ],
+            [
+              9,
+              7,
+              4,
+              5,
+              6
+            ],
+            [
+              8,
+              6,
+              5,
+              3,
+              4
+            ],
+            [
+              6,
+              5,
+              7,
+              4,
+              3
+            ],
+            [
+              7,
+              8,
+              6,
+              5,
+              4
+            ]
+          ]
+        },
         "constraint_blocks": [
-          {"block_id": "assignment", "parameters": {}, "status": "required"},
-          {"block_id": "linking", "parameters": {}, "status": "required"},
-          {"block_id": "cardinality", "parameters": {"p": 3}, "status": "required"}
+          {
+            "block_id": "assignment",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "linking",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "cardinality",
+            "parameters": {
+              "p": 3
+            },
+            "status": "required"
+          }
         ],
         "objective": "minimize_total_weighted_distance"
       },
       "expected": {
-        "families": ["p_median"],
-        "block_ids": ["assign_each_demand_once", "link_assignment_to_open", "cardinality_open_p_facilities"],
+        "valid": true,
+        "families": [
+          "p_median"
+        ],
+        "block_ids": [
+          "assign_each_demand_once",
+          "link_assignment_to_open",
+          "cardinality_open_p_facilities"
+        ],
         "objective_block": "weighted_service_distance_objective"
       },
-      "solver_objective": 2210.0
+      "solver_objective": 2210.0,
+      "tight_blocks": [
+        "assign_each_demand_once",
+        "link_assignment_to_open",
+        "cardinality_open_p_facilities"
+      ],
+      "nonbinding_blocks": []
     },
     {
       "id": "set_covering_emergency",
       "name": "集合覆盖应急设施",
+      "family": "set_covering",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "online",
+        "tightness"
+      ],
       "problem": "为 6 个应急需求点选址建设应急物资点，候选位置 1~5。覆盖矩阵（候选 j 能否覆盖需求点 i）为 [[1,0,1,0,0],[1,1,0,0,0],[0,1,1,1,0],[0,0,1,1,1],[0,0,0,1,1],[1,0,0,0,1]]。各候选的固定建设成本为 4、3、5、2、4。要求每个需求点至少被一个已建设设施覆盖，目标是使固定建设总成本最小。",
       "input_ir": {
-        "problem_families": [{"id": "set_covering", "confidence": 0.85}],
-        "parameters": {"fixed_cost": [4, 3, 5, 2, 4]},
-        "constraint_blocks": [
-          {"block_id": "set_covering_constraint", "parameters": {"coverage_matrix": "由覆盖矩阵给定"}, "status": "required"}
+        "problem_families": [
+          {
+            "id": "set_covering",
+            "confidence": 0.85
+          }
         ],
-        "objective": {"block_id": "facility_opening_cost_objective"}
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 5
+          }
+        },
+        "parameters": {
+          "fixed_cost": [
+            4,
+            3,
+            5,
+            2,
+            4
+          ],
+          "coverage_matrix": [
+            [
+              1,
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              0,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              1
+            ]
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "set_covering_constraint",
+            "parameters": {
+              "coverage_matrix": "由覆盖矩阵给定"
+            },
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "opening_cost"
+        }
       },
       "expected": {
-        "families": ["set_covering"],
-        "block_ids": ["cover_each_demand_at_least_once"],
+        "valid": true,
+        "families": [
+          "set_covering"
+        ],
+        "block_ids": [
+          "cover_each_demand_at_least_once"
+        ],
         "objective_block": "facility_opening_cost_objective"
       },
-      "solver_objective": 6.0
+      "solver_objective": 6.0,
+      "tight_blocks": [
+        "cover_each_demand_at_least_once"
+      ],
+      "nonbinding_blocks": []
     },
     {
       "id": "maximum_covering_cities",
       "name": "最大覆盖选址",
+      "family": "maximum_covering",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "online",
+        "tightness"
+      ],
       "problem": "城市要在 4 个候选位置中开设 2 个服务站。6 个需求点的权重分别为 10、8、12、6、9、5。覆盖矩阵为 [[1,0,1,0],[1,1,0,0],[0,1,1,0],[0,0,1,1],[0,0,0,1],[1,0,0,1]]。只有当至少一个已开设设施覆盖需求点时，该需求点才计入已覆盖。目标是最大化被覆盖需求点的权重之和。",
       "input_ir": {
-        "problem_families": [{"id": "maximum_covering", "confidence": 0.9}],
-        "parameters": {"p": 2, "demand": [10, 8, 12, 6, 9, 5]},
-        "constraint_blocks": [
-          {"block_id": "max_covering_constraint", "parameters": {"coverage_matrix": "由覆盖矩阵给定"}, "status": "required"},
-          {"block_id": "cardinality", "parameters": {"p": 2}, "status": "required"}
+        "problem_families": [
+          {
+            "id": "maximum_covering",
+            "confidence": 0.9
+          }
         ],
-        "objective": {"block_id": "covered_demand_objective"}
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 4
+          }
+        },
+        "parameters": {
+          "p": 2,
+          "demand": [
+            10,
+            8,
+            12,
+            6,
+            9,
+            5
+          ],
+          "coverage_matrix": [
+            [
+              1,
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              1
+            ]
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "max_covering_constraint",
+            "parameters": {
+              "coverage_matrix": "由覆盖矩阵给定"
+            },
+            "status": "required"
+          },
+          {
+            "block_id": "cardinality",
+            "parameters": {
+              "p": 2
+            },
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "max_covered_demand"
+        }
       },
       "expected": {
-        "families": ["maximum_covering"],
-        "block_ids": ["demand_coverage_activation", "cardinality_open_p_facilities"],
+        "valid": true,
+        "families": [
+          "maximum_covering"
+        ],
+        "block_ids": [
+          "demand_coverage_activation",
+          "cardinality_open_p_facilities"
+        ],
         "objective_block": "covered_demand_objective"
       },
-      "solver_objective": 42.0
+      "solver_objective": 42.0,
+      "tight_blocks": [
+        "demand_coverage_activation",
+        "cardinality_open_p_facilities"
+      ],
+      "nonbinding_blocks": []
+    },
+    {
+      "id": "maximum_covering_at_most_p",
+      "name": "最大覆盖（最多 P 个，可选块替代）",
+      "family": "maximum_covering",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "online",
+        "tightness"
+      ],
+      "problem": "城市要在 4 个候选位置中最多开设 2 个服务站。6 个需求点的权重分别为 10、8、12、6、9、5。覆盖矩阵为 [[1,0,1,0],[1,1,0,0],[0,1,1,0],[0,0,1,1],[0,0,0,1],[1,0,0,1]]。只有当至少一个已开设设施覆盖需求点时，该需求点才计入已覆盖。目标是最大化被覆盖需求点的权重之和。",
+      "input_ir": {
+        "problem_families": [
+          {
+            "id": "maximum_covering",
+            "confidence": 0.9
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 4
+          }
+        },
+        "parameters": {
+          "p": 2,
+          "demand": [
+            10,
+            8,
+            12,
+            6,
+            9,
+            5
+          ],
+          "coverage_matrix": [
+            [
+              1,
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              1
+            ]
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "max_covering_constraint",
+            "parameters": {
+              "coverage_matrix": "由覆盖矩阵给定"
+            },
+            "status": "required"
+          },
+          {
+            "block_id": "open_at_most_p",
+            "parameters": {
+              "p": 2
+            },
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "max_covered_demand",
+          "sense": "maximize"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "families": [
+          "maximum_covering"
+        ],
+        "block_ids": [
+          "demand_coverage_activation",
+          "cardinality_open_at_most_p_facilities"
+        ],
+        "substituted_blocks": [
+          "cardinality_open_p_facilities"
+        ],
+        "objective_block": "covered_demand_objective"
+      },
+      "solver_objective": 42.0,
+      "tight_blocks": [
+        "demand_coverage_activation",
+        "cardinality_open_at_most_p_facilities"
+      ],
+      "nonbinding_blocks": []
     },
     {
       "id": "p_center_emergency",
       "name": "P-Center 应急选址",
+      "family": "p_center",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "online",
+        "tightness"
+      ],
       "problem": "在 4 个候选位置中选 2 个建设应急点，服务 6 个需求点。距离矩阵为 [[10,20,30,40],[20,15,25,35],[30,25,12,28],[40,35,28,18],[25,22,20,15],[35,30,25,20]]。每个需求点分配到一个已开设应急点，用辅助变量 w 约束所有实际分配距离。目标是最小化所有需求点到其服务应急点距离中的最大值。",
       "input_ir": {
-        "problem_families": [{"id": "p-center", "confidence": 0.88}],
-        "parameters": {"p": 2},
-        "constraint_blocks": [
-          {"block_id": "assignment", "parameters": {}, "status": "required"},
-          {"block_id": "linking", "parameters": {}, "status": "required"},
-          {"block_id": "cardinality", "parameters": {"p": 2}, "status": "required"},
-          {"block_id": "p_center_distance_bound", "parameters": {"distance": "由距离矩阵给定"}, "status": "required"}
+        "problem_families": [
+          {
+            "id": "p-center",
+            "confidence": 0.88
+          }
         ],
-        "objective": {"block_id": "p_center_objective"}
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 4
+          }
+        },
+        "parameters": {
+          "p": 2,
+          "distance": [
+            [
+              10,
+              20,
+              30,
+              40
+            ],
+            [
+              20,
+              15,
+              25,
+              35
+            ],
+            [
+              30,
+              25,
+              12,
+              28
+            ],
+            [
+              40,
+              35,
+              28,
+              18
+            ],
+            [
+              25,
+              22,
+              20,
+              15
+            ],
+            [
+              35,
+              30,
+              25,
+              20
+            ]
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "assignment",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "linking",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "cardinality",
+            "parameters": {
+              "p": 2
+            },
+            "status": "required"
+          },
+          {
+            "block_id": "p_center_distance_bound",
+            "parameters": {
+              "distance": "由距离矩阵给定"
+            },
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "p_center_objective"
+        }
       },
       "expected": {
-        "families": ["p_center"],
-        "block_ids": ["assign_each_demand_once", "link_assignment_to_open", "cardinality_open_p_facilities", "max_service_distance_bound"],
+        "valid": true,
+        "families": [
+          "p_center"
+        ],
+        "block_ids": [
+          "assign_each_demand_once",
+          "link_assignment_to_open",
+          "cardinality_open_p_facilities",
+          "max_service_distance_bound"
+        ],
         "objective_block": "minimize_max_distance_objective"
       },
-      "solver_objective": 25.0
+      "solver_objective": 25.0,
+      "tight_blocks": [
+        "assign_each_demand_once",
+        "link_assignment_to_open",
+        "cardinality_open_p_facilities",
+        "max_service_distance_bound"
+      ],
+      "nonbinding_blocks": []
     },
     {
       "id": "facility_location_logistics",
       "name": "无容量设施选址",
+      "family": "facility_location",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "online",
+        "tightness"
+      ],
       "problem": "物流公司在 3 个候选仓库位置中选址，固定开设成本分别为 100、80、120。5 个需求点的单位服务成本矩阵为 [[15,20,18],[22,12,25],[18,24,14],[30,16,20],[12,22,19]]。每个需求点必须恰好分配到一个已开设仓库，只有开设的仓库才能接收分配。目标是固定开设成本与服务成本之和最小。",
       "input_ir": {
-        "problem_families": [{"id": "facility location", "confidence": 0.8}],
-        "parameters": {"fixed_cost": [100, 80, 120], "service_cost": "由服务成本矩阵给定"},
-        "constraint_blocks": [
-          {"block_id": "assignment", "parameters": {}, "status": "required"},
-          {"block_id": "linking", "parameters": {}, "status": "required"}
+        "problem_families": [
+          {
+            "id": "facility location",
+            "confidence": 0.8
+          }
         ],
-        "objective": {"block_id": "uflp_objective"}
+        "entities": {
+          "I": {
+            "size": 5
+          },
+          "J": {
+            "size": 3
+          }
+        },
+        "parameters": {
+          "fixed_cost": [
+            100,
+            80,
+            120
+          ],
+          "service_cost": [
+            [
+              15,
+              20,
+              18
+            ],
+            [
+              22,
+              12,
+              25
+            ],
+            [
+              18,
+              24,
+              14
+            ],
+            [
+              30,
+              16,
+              20
+            ],
+            [
+              12,
+              22,
+              19
+            ]
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "assignment",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "linking",
+            "parameters": {},
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "uflp_objective"
+        }
       },
       "expected": {
-        "families": ["facility_location"],
-        "block_ids": ["assign_each_demand_once", "link_assignment_to_open"],
+        "valid": true,
+        "families": [
+          "facility_location"
+        ],
+        "block_ids": [
+          "assign_each_demand_once",
+          "link_assignment_to_open"
+        ],
         "objective_block": "fixed_plus_service_cost_objective"
       },
-      "solver_objective": 174.0
+      "solver_objective": 174.0,
+      "tight_blocks": [
+        "assign_each_demand_once",
+        "link_assignment_to_open"
+      ],
+      "nonbinding_blocks": []
     },
     {
       "id": "knapsack_gadget",
       "name": "背包问题",
+      "family": "knapsack",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "online",
+        "tightness"
+      ],
       "problem": "背包容量为 50。三件物品的价值分别为 60、100、120，重量分别为 10、20、30。目标是在不超过背包容量的前提下，最大化所选物品的总价值。",
       "input_ir": {
-        "problem_families": [{"id": "knapsack", "confidence": 0.95}],
-        "parameters": {"value": [60, 100, 120], "weight": [10, 20, 30], "capacity": 50},
+        "problem_families": [
+          {
+            "id": "knapsack",
+            "confidence": 0.95
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 3
+          }
+        },
+        "parameters": {
+          "value": [
+            60,
+            100,
+            120
+          ],
+          "weight": [
+            10,
+            20,
+            30
+          ],
+          "capacity": 50
+        },
         "constraint_blocks": [
-          {"block_id": "knapsack", "parameters": {"capacity": 50}, "status": "required"}
+          {
+            "block_id": "knapsack",
+            "parameters": {
+              "capacity": 50
+            },
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "maximize_value",
+          "sense": "maximize"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "families": [
+          "knapsack"
+        ],
+        "block_ids": [
+          "knapsack_capacity"
+        ],
+        "objective_block": "total_value_objective"
+      },
+      "solver_objective": 220.0,
+      "tight_blocks": [
+        "knapsack_capacity"
+      ],
+      "nonbinding_blocks": []
+    },
+    {
+      "id": "p_median_force_open",
+      "name": "P-Median 强制开设（紧约束）",
+      "family": "p_median",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "online",
+        "tightness"
+      ],
+      "problem": "某街道计划在 5 个候选位置 A、B、C、D、E 中开设 3 个社区服务中心，其中位置 A 必须开设。6 个居民区的人口分别为 80、120、100、90、110、70。各居民区到各候选位置的距离矩阵为 [[4,6,9,7,8],[5,3,8,6,7],[9,7,4,5,6],[8,6,5,3,4],[6,5,7,4,3],[7,8,6,5,4]]。每个居民区必须且只能分配到一个服务中心，只有开设的服务中心才能接收分配。目标是最小化所有居民区到其服务中心的需求加权总距离。",
+      "input_ir": {
+        "problem_families": [
+          {
+            "id": "p_median",
+            "confidence": 0.9
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 5,
+            "ids": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E"
+            ]
+          }
+        },
+        "parameters": {
+          "p": 3,
+          "demand": [
+            80,
+            120,
+            100,
+            90,
+            110,
+            70
+          ],
+          "distance": [
+            [
+              4,
+              6,
+              9,
+              7,
+              8
+            ],
+            [
+              5,
+              3,
+              8,
+              6,
+              7
+            ],
+            [
+              9,
+              7,
+              4,
+              5,
+              6
+            ],
+            [
+              8,
+              6,
+              5,
+              3,
+              4
+            ],
+            [
+              6,
+              5,
+              7,
+              4,
+              3
+            ],
+            [
+              7,
+              8,
+              6,
+              5,
+              4
+            ]
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "assignment",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "linking",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "cardinality",
+            "parameters": {
+              "p": 3
+            },
+            "status": "required"
+          },
+          {
+            "block_id": "forcing",
+            "parameters": {
+              "facility_ids": [
+                "A"
+              ]
+            },
+            "status": "user_specified"
+          }
+        ],
+        "objective": {
+          "block_id": "weighted_distance"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "families": [
+          "p_median"
+        ],
+        "block_ids": [
+          "assign_each_demand_once",
+          "link_assignment_to_open",
+          "cardinality_open_p_facilities",
+          "force_facility_open"
+        ],
+        "objective_block": "weighted_service_distance_objective"
+      },
+      "solver_objective": 2240.0,
+      "tight_blocks": [
+        "assign_each_demand_once",
+        "link_assignment_to_open",
+        "cardinality_open_p_facilities",
+        "force_facility_open"
+      ],
+      "nonbinding_blocks": []
+    },
+    {
+      "id": "p_median_force_closed",
+      "name": "P-Median 禁止开设（紧约束）",
+      "family": "p_median",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "online",
+        "tightness"
+      ],
+      "problem": "某街道计划在 5 个候选位置 A、B、C、D、E 中开设 3 个社区服务中心，其中位置 B 不允许开设。6 个居民区的人口分别为 80、120、100、90、110、70。各居民区到各候选位置的距离矩阵为 [[4,6,9,7,8],[5,3,8,6,7],[9,7,4,5,6],[8,6,5,3,4],[6,5,7,4,3],[7,8,6,5,4]]。每个居民区必须且只能分配到一个服务中心，只有开设的服务中心才能接收分配。目标是最小化所有居民区到其服务中心的需求加权总距离。",
+      "input_ir": {
+        "problem_families": [
+          {
+            "id": "p_median",
+            "confidence": 0.9
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 5,
+            "ids": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E"
+            ]
+          }
+        },
+        "parameters": {
+          "p": 3,
+          "demand": [
+            80,
+            120,
+            100,
+            90,
+            110,
+            70
+          ],
+          "distance": [
+            [
+              4,
+              6,
+              9,
+              7,
+              8
+            ],
+            [
+              5,
+              3,
+              8,
+              6,
+              7
+            ],
+            [
+              9,
+              7,
+              4,
+              5,
+              6
+            ],
+            [
+              8,
+              6,
+              5,
+              3,
+              4
+            ],
+            [
+              6,
+              5,
+              7,
+              4,
+              3
+            ],
+            [
+              7,
+              8,
+              6,
+              5,
+              4
+            ]
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "assignment",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "linking",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "cardinality",
+            "parameters": {
+              "p": 3
+            },
+            "status": "required"
+          },
+          {
+            "block_id": "prohibiting",
+            "parameters": {
+              "facility_ids": [
+                "B"
+              ]
+            },
+            "status": "user_specified"
+          }
+        ],
+        "objective": {
+          "block_id": "weighted_service_distance_objective",
+          "sense": "minimize",
+          "parameters": {
+            "distance": "由距离矩阵给定"
+          }
+        }
+      },
+      "expected": {
+        "valid": true,
+        "families": [
+          "p_median"
+        ],
+        "block_ids": [
+          "assign_each_demand_once",
+          "link_assignment_to_open",
+          "cardinality_open_p_facilities",
+          "force_facility_closed"
+        ],
+        "objective_block": "weighted_service_distance_objective"
+      },
+      "solver_objective": 2290.0,
+      "tight_blocks": [
+        "assign_each_demand_once",
+        "link_assignment_to_open",
+        "cardinality_open_p_facilities",
+        "force_facility_closed"
+      ],
+      "nonbinding_blocks": []
+    },
+    {
+      "id": "p_median_force_closed_nonbinding",
+      "name": "P-Median 禁止开设（非紧约束，用于对照）",
+      "family": "p_median",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "online",
+        "tightness"
+      ],
+      "problem": "某街道计划在 5 个候选位置 A、B、C、D、E 中开设 3 个社区服务中心，其中位置 D 不允许开设。6 个居民区的人口分别为 80、120、100、90、110、70。各居民区到各候选位置的距离矩阵为 [[4,6,9,7,8],[5,3,8,6,7],[9,7,4,5,6],[8,6,5,3,4],[6,5,7,4,3],[7,8,6,5,4]]。每个居民区必须且只能分配到一个服务中心，只有开设的服务中心才能接收分配。目标是最小化所有居民区到其服务中心的需求加权总距离。",
+      "input_ir": {
+        "problem_families": [
+          {
+            "id": "p_median",
+            "confidence": 0.9
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 5,
+            "ids": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E"
+            ]
+          }
+        },
+        "parameters": {
+          "p": 3,
+          "demand": [
+            80,
+            120,
+            100,
+            90,
+            110,
+            70
+          ],
+          "distance": [
+            [
+              4,
+              6,
+              9,
+              7,
+              8
+            ],
+            [
+              5,
+              3,
+              8,
+              6,
+              7
+            ],
+            [
+              9,
+              7,
+              4,
+              5,
+              6
+            ],
+            [
+              8,
+              6,
+              5,
+              3,
+              4
+            ],
+            [
+              6,
+              5,
+              7,
+              4,
+              3
+            ],
+            [
+              7,
+              8,
+              6,
+              5,
+              4
+            ]
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "assignment",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "linking",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "cardinality",
+            "parameters": {
+              "p": 3
+            },
+            "status": "required"
+          },
+          {
+            "block_id": "forcing_closed",
+            "parameters": {
+              "facility_ids": [
+                "D"
+              ]
+            },
+            "status": "user_specified"
+          }
+        ],
+        "objective": {
+          "block_id": "weighted_service_distance_objective",
+          "sense": "minimize",
+          "parameters": {
+            "distance": "由距离矩阵给定"
+          }
+        }
+      },
+      "expected": {
+        "valid": true,
+        "families": [
+          "p_median"
+        ],
+        "block_ids": [
+          "assign_each_demand_once",
+          "link_assignment_to_open",
+          "cardinality_open_p_facilities",
+          "force_facility_closed"
+        ],
+        "objective_block": "weighted_service_distance_objective"
+      },
+      "solver_objective": 2210.0,
+      "tight_blocks": [
+        "assign_each_demand_once",
+        "link_assignment_to_open",
+        "cardinality_open_p_facilities"
+      ],
+      "nonbinding_blocks": [
+        "force_facility_closed"
+      ]
+    },
+    {
+      "id": "hybrid_p_median_custom",
+      "name": "P-Median + 库外规则（混合）",
+      "family": "p_median",
+      "scale": "s",
+      "tiers": [
+        "ir"
+      ],
+      "problem": "某街道计划在 5 个候选位置 A、B、C、D、E 中开设 3 个社区服务中心，其中位置 B 与 E 不允许同时开设。6 个居民区的人口分别为 80、120、100、90、110、70。各居民区到各候选位置的距离矩阵为 [[4,6,9,7,8],[5,3,8,6,7],[9,7,4,5,6],[8,6,5,3,4],[6,5,7,4,3],[7,8,6,5,4]]。每个居民区必须且只能分配到一个服务中心。目标是最小化需求加权总距离。",
+      "input_ir": {
+        "problem_families": [
+          {
+            "id": "p_median",
+            "confidence": 0.9
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 5,
+            "ids": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E"
+            ]
+          }
+        },
+        "parameters": {
+          "p": 3,
+          "demand": [
+            80,
+            120,
+            100,
+            90,
+            110,
+            70
+          ],
+          "distance": [
+            [
+              4,
+              6,
+              9,
+              7,
+              8
+            ],
+            [
+              5,
+              3,
+              8,
+              6,
+              7
+            ],
+            [
+              9,
+              7,
+              4,
+              5,
+              6
+            ],
+            [
+              8,
+              6,
+              5,
+              3,
+              4
+            ],
+            [
+              6,
+              5,
+              7,
+              4,
+              3
+            ],
+            [
+              7,
+              8,
+              6,
+              5,
+              4
+            ]
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "assignment",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "linking",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "cardinality",
+            "parameters": {
+              "p": 3
+            },
+            "status": "required"
+          }
+        ],
+        "custom_constraints": [
+          "位置 B 与 E 不允许同时开设"
+        ],
+        "objective": {
+          "block_id": "weighted_service_distance_objective",
+          "sense": "minimize",
+          "parameters": {
+            "distance": "由距离矩阵给定"
+          }
+        }
+      },
+      "expected": {
+        "valid": true,
+        "families": [
+          "p_median"
+        ],
+        "block_ids": [
+          "assign_each_demand_once",
+          "link_assignment_to_open",
+          "cardinality_open_p_facilities"
+        ],
+        "objective_block": "weighted_service_distance_objective"
+      }
+    },
+    {
+      "id": "neg_missing_linking",
+      "name": "负例：漏掉联动约束",
+      "family": "p_median",
+      "scale": "s",
+      "tiers": [
+        "ir"
+      ],
+      "problem": "负例，用于确认骨架校验能发现缺失的约束块。",
+      "input_ir": {
+        "problem_families": [
+          {
+            "id": "p_median"
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 5
+          }
+        },
+        "parameters": {
+          "p": 3
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "assignment",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "cardinality",
+            "parameters": {
+              "p": 3
+            },
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "weighted_service_distance_objective",
+          "sense": "minimize",
+          "parameters": {
+            "distance": "给定"
+          }
+        }
+      },
+      "expected": {
+        "valid": false,
+        "error_contains": [
+          "骨架缺少模板要求的约束块",
+          "link_assignment_to_open"
+        ]
+      }
+    },
+    {
+      "id": "neg_sense_conflict",
+      "name": "负例：优化方向与库冲突",
+      "family": "maximum_covering",
+      "scale": "s",
+      "tiers": [
+        "ir"
+      ],
+      "problem": "负例，用于确认目标方向冲突会报错。",
+      "input_ir": {
+        "objective": {
+          "block_id": "covered_demand_objective",
+          "sense": "minimize"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "error_contains": [
+          "优化方向"
+        ]
+      }
+    },
+    {
+      "id": "neg_requires_one_of",
+      "name": "负例：块依赖未满足",
+      "family": "maximum_covering",
+      "scale": "s",
+      "tiers": [
+        "ir"
+      ],
+      "problem": "负例，用于确认 requires_one_of 未满足会报错。",
+      "input_ir": {
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 4
+          }
+        },
+        "parameters": {
+          "coverage_matrix": [
+            [
+              1,
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              1
+            ]
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "demand_coverage_activation",
+            "parameters": {
+              "coverage_matrix": "给定"
+            },
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "covered_demand_objective",
+          "sense": "maximize",
+          "parameters": {
+            "demand": "给定"
+          }
+        }
+      },
+      "expected": {
+        "valid": false,
+        "error_contains": [
+          "需要同时使用"
+        ]
+      }
+    },
+    {
+      "id": "neg_unknown_block",
+      "name": "负例：库中没有的块 id",
+      "family": "p_median",
+      "scale": "s",
+      "tiers": [
+        "ir"
+      ],
+      "problem": "负例，用于确认未知块 id 会报错。",
+      "input_ir": {
+        "constraint_blocks": [
+          {
+            "block_id": "vehicle_routing_constraint",
+            "parameters": {},
+            "status": "required"
+          }
         ]
       },
       "expected": {
-        "families": ["knapsack"],
-        "block_ids": ["knapsack_capacity"],
-        "objective_block": null
+        "valid": false,
+        "error_contains": [
+          "未知 block_id"
+        ]
+      }
+    },
+    {
+      "id": "neg_custom_as_block",
+      "name": "负例：库外规则写成了 block_id",
+      "family": "p_median",
+      "scale": "s",
+      "tiers": [
+        "ir"
+      ],
+      "problem": "负例，用于确认 custom_constraints 不得作为 block_id。",
+      "input_ir": {
+        "constraint_blocks": [
+          {
+            "block_id": "custom_constraints",
+            "parameters": {
+              "rule": "B 与 E 不同时开设"
+            },
+            "status": "required"
+          }
+        ]
       },
-      "solver_objective": 220.0
+      "expected": {
+        "valid": false,
+        "error_contains": [
+          "custom_constraints"
+        ]
+      }
+    },
+    {
+      "id": "neg_out_of_catalog_objective",
+      "name": "负例：库外目标函数（保留并提示，不替换）",
+      "family": "p_median",
+      "scale": "s",
+      "tiers": [
+        "ir"
+      ],
+      "problem": "负例，用于确认库外目标不被静默替换。",
+      "input_ir": {
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 5
+          }
+        },
+        "parameters": {
+          "p": 3
+        },
+        "objective": {
+          "block_id": "weighted_sum_objective",
+          "sense": "minimize"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "warning_contains": [
+          "不在库中"
+        ]
+      }
+    },
+    {
+      "id": "neg_missing_objective",
+      "name": "负例：未声明目标函数",
+      "family": "p_median",
+      "scale": "s",
+      "tiers": [
+        "ir"
+      ],
+      "problem": "负例，用于确认缺目标只提示、不默认成选址目标。",
+      "input_ir": {
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 5
+          }
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "assignment",
+            "parameters": {},
+            "status": "required"
+          }
+        ]
+      },
+      "expected": {
+        "valid": true,
+        "warning_contains": [
+          "未声明目标函数"
+        ]
+      }
+    },
+    {
+      "id": "neg_objective_family_mismatch",
+      "name": "负例：目标块与声明的族不一致",
+      "family": "p_median",
+      "scale": "s",
+      "tiers": [
+        "ir"
+      ],
+      "problem": "负例，用于确认目标与族不一致会提示。",
+      "input_ir": {
+        "problem_families": [
+          {
+            "id": "p_median"
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 5
+          }
+        },
+        "parameters": {
+          "p": 3
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "assignment",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "linking",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "cardinality",
+            "parameters": {
+              "p": 3
+            },
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "covered_demand_objective",
+          "sense": "maximize"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "warning_contains": [
+          "与声明的族/模型不一致"
+        ]
+      }
+    },
+    {
+      "id": "neg_dimension_mismatch",
+      "name": "负例：数据维度与索引集合不符",
+      "family": "p_median",
+      "scale": "s",
+      "tiers": [
+        "ir"
+      ],
+      "problem": "负例，用于确认数据维度与 entities 不符会报错。",
+      "input_ir": {
+        "problem_families": [
+          {
+            "id": "p_median"
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 4
+          }
+        },
+        "parameters": {
+          "p": 2,
+          "demand": [
+            80,
+            120,
+            100,
+            90,
+            110,
+            70
+          ],
+          "distance": [
+            [
+              4,
+              6,
+              9,
+              7,
+              8
+            ],
+            [
+              5,
+              3,
+              8,
+              6,
+              7
+            ],
+            [
+              9,
+              7,
+              4,
+              5,
+              6
+            ],
+            [
+              8,
+              6,
+              5,
+              3,
+              4
+            ],
+            [
+              6,
+              5,
+              7,
+              4,
+              3
+            ],
+            [
+              7,
+              8,
+              6,
+              5,
+              4
+            ]
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "assignment",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "linking",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "cardinality",
+            "parameters": {
+              "p": 2
+            },
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "weighted_service_distance_objective",
+          "sense": "minimize",
+          "parameters": {
+            "distance": "给定"
+          }
+        }
+      },
+      "expected": {
+        "valid": false,
+        "error_contains": [
+          "维度"
+        ]
+      }
+    },
+    {
+      "id": "neg_p_exceeds_facilities",
+      "name": "负例：p 超过候选设施数",
+      "family": "p_median",
+      "scale": "s",
+      "tiers": [
+        "ir"
+      ],
+      "problem": "负例，用于确认 p 超过 |J| 会报错。",
+      "input_ir": {
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 5
+          }
+        },
+        "parameters": {
+          "p": 6
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "cardinality",
+            "parameters": {
+              "p": 6
+            },
+            "status": "required"
+          }
+        ]
+      },
+      "expected": {
+        "valid": false,
+        "error_contains": [
+          "超过候选设施数"
+        ]
+      }
+    },
+    {
+      "id": "neg_forced_outside_j",
+      "name": "负例：强制开设的设施不在 J 中",
+      "family": "p_median",
+      "scale": "s",
+      "tiers": [
+        "ir"
+      ],
+      "problem": "负例，用于确认强制设施必须落在索引集合 J 内。",
+      "input_ir": {
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 5,
+            "ids": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E"
+            ]
+          }
+        },
+        "parameters": {
+          "p": 3
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "forcing",
+            "parameters": {
+              "facility_ids": [
+                "Z"
+              ]
+            },
+            "status": "required"
+          }
+        ]
+      },
+      "expected": {
+        "valid": false,
+        "error_contains": [
+          "不在设施集合 J 中"
+        ]
+      }
     }
   ]
 }

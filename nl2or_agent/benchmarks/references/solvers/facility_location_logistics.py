@@ -1,28 +1,36 @@
-"""Reference solver: facility_location_logistics (UFLP). Prints the optimal objective."""
+"""Reference solver: model built from the case IR by block_model.py."""
 
-import pulp
+import json
+import sys
+from pathlib import Path
 
-FIXED = [100, 80, 120]
-SERVICE = [
-    [15, 20, 18],
-    [22, 12, 25],
-    [18, 24, 14],
-    [30, 16, 20],
-    [12, 22, 19],
-]
-n_i, n_j = 5, 3
+# <repo>/benchmarks/references/solvers/<case>.py -> <repo>
+_ROOT = Path(__file__).resolve().parents[3]
+if (_ROOT / 'benchmarks').is_dir():
+    sys.path.insert(0, str(_ROOT))
+else:
+    sys.path.insert(0, 'F:\\Uni\\s\\2026_1春\\Project\\Project：OP智能体\\nl2or_agent')
 
-prob = pulp.LpProblem("uflp", pulp.LpMinimize)
-y = pulp.LpVariable.dicts("y", range(n_j), cat=pulp.LpBinary)
-x = pulp.LpVariable.dicts("x", (range(n_i), range(n_j)), cat=pulp.LpBinary)
-prob += pulp.lpSum(FIXED[j] * y[j] for j in range(n_j)) + pulp.lpSum(
-    SERVICE[i][j] * x[i][j] for i in range(n_i) for j in range(n_j)
+from benchmarks.references.block_model import solve_ir  # noqa: E402
+
+IR = json.loads(
+    '{"problem_families": [{"id": "facility_location", "name": "facility_lo'
+    'cation", "confidence": "high", "notes": ""}], "is_hybrid": false, "hyb'
+    'rid_notes": "", "entities": {"I": {"size": 5, "ids": []}, "J": {"size"'
+    ': 3, "ids": []}}, "parameters": {"fixed_cost": [100, 80, 120], "servic'
+    'e_cost": [[15, 20, 18], [22, 12, 25], [18, 24, 14], [30, 16, 20], [12,'
+    ' 22, 19]]}, "decision_variables": [], "objective": {"sense": "minimize'
+    '", "block_id": "fixed_plus_service_cost_objective", "expression": "", '
+    '"natural_language": "", "parameters": {}}, "constraint_blocks": [{"blo'
+    'ck_id": "assign_each_demand_once", "category": "assignment", "name": "'
+    '需求唯一分配", "parameters": {}, "status": "required", "natural_language": "'
+    '"}, {"block_id": "link_assignment_to_open", "category": "linking", "na'
+    'me": "分配-开设联动", "parameters": {}, "status": "required", "natural_langu'
+    'age": ""}], "custom_constraints": [], "missing_data": []}'
 )
-for i in range(n_i):
-    prob += pulp.lpSum(x[i][j] for j in range(n_j)) == 1
-for i in range(n_i):
-    for j in range(n_j):
-        prob += x[i][j] <= y[j]
-prob.solve(pulp.PULP_CBC_CMD(msg=False))
-value = pulp.value(prob.objective)
-print("Objective:", round(value) if isinstance(value, (int, float)) else 0)
+DROP = []
+
+result = solve_ir(IR, drop=tuple(DROP))
+print('Objective:', result.objective)
+for name, value in sorted(result.variables.items()):
+    print(f'{name}: {value}')

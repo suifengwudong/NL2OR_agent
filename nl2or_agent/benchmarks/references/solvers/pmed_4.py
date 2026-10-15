@@ -220,7 +220,6 @@ x = pulp.LpVariable.dicts("x", (range(N), range(N)), cat=pulp.LpBinary)
 prob += pulp.lpSum(SP[i][j] * x[i][j] for i in range(N) for j in range(N))
 for i in range(N):
     prob += pulp.lpSum(x[i][j] for j in range(N)) == 1
-for i in range(N):
     for j in range(N):
         prob += x[i][j] <= y[j]
 prob += pulp.lpSum(y[j] for j in range(N)) == P
