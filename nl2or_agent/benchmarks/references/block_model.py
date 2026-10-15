@@ -54,6 +54,24 @@ _Z_BLOCKS = {"demand_coverage_activation", "covered_demand_objective"}
 _W_BLOCKS = {"max_service_distance_bound", "minimize_max_distance_objective"}
 _X1_BLOCKS = {"knapsack_capacity", "total_value_objective"}
 
+# block_model 实际会读取的数据键（情景覆盖只允许改这些键）
+READABLE_DATA_KEYS: frozenset[str] = frozenset(
+    {
+        "p",
+        "distance",
+        "demand",
+        "value",
+        "weight",
+        "capacity",
+        "facility_capacity",
+        "fixed_cost",
+        "service_cost",
+        "coverage_matrix",
+        "forced_open",
+        "forced_closed",
+    }
+)
+
 
 @dataclass
 class ModelContext:
