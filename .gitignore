@@ -3,6 +3,7 @@ progress*
 
 # 可忽略文件
 .vscode/
+*.pdf
 
 # 会话记录提取的中间产物
 .scratch/
