@@ -116,6 +116,18 @@ class TestRunCli:
             _run_cli()
         assert any("错误" in m or "agent failed" in m for m in printed_messages)
 
+    def test_cli_builds_agent_with_given_mode(self):
+        from main import _run_cli
+
+        with (
+            patch("agents.build_nl2or_agent") as mock_build,
+            patch("builtins.input", side_effect=["quit"]),
+            patch("builtins.print"),
+        ):
+            _run_cli(agent_mode="automatic")
+
+        assert mock_build.call_args.kwargs["mode"] == "automatic"
+
 
 # ---------------------------------------------------------------------------
 # _run_web tests
@@ -141,6 +153,18 @@ class TestRunWeb:
         # Invoke the factory to verify it delegates to build_nl2or_agent
         agent = factory_arg()
         assert agent is mock_agent
+        assert mock_launch.call_args.kwargs["default_mode"] == "interactive"
+
+    def test_run_web_forwards_agent_mode(self):
+        from main import _run_web
+
+        with (
+            patch("agents.build_nl2or_agent", return_value=MagicMock()),
+            patch("web.launch_web") as mock_launch,
+            patch("utils.session.prune_old_sessions", return_value=0),
+        ):
+            _run_web(agent_mode="automatic")
+        assert mock_launch.call_args.kwargs["default_mode"] == "automatic"
 
 
 # ---------------------------------------------------------------------------
@@ -149,13 +173,12 @@ class TestRunWeb:
 
 
 class TestDisplayAnswer:
-    def test_valid_json_payload(self):
+    def test_passes_through_plain_answer(self):
         from web.app import _display_answer
 
-        raw = '{"conclusion":"ok","key_evidence":["x"],"constraints_assumptions":["x"],"actionable_steps":["x"]}'
-        result = _display_answer(raw)
-        assert "结论" in result
-        assert "关键依据" in result
+        result = _display_answer("请确认：\n已解析为 p-中位问题，p=2")
+        assert "请确认" in result
+        assert "p-中位问题" in result
 
     def test_fallback_on_invalid_format(self):
         from web.app import _display_answer
@@ -199,6 +222,215 @@ class TestGetWorkspaceFiles:
 
 
 # ---------------------------------------------------------------------------
+# web/app.py mode selector tests
+# ---------------------------------------------------------------------------
+
+
+class TestRunAgentTurn:
+    def test_applies_selected_mode(self, tmp_path, monkeypatch):
+        import utils.session as session_mod
+        from web.app import run_agent_turn
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = "最优目标值 220"
+        factory = MagicMock(return_value=mock_agent)
+
+        with patch("web.app.apply_agent_mode") as mock_apply:
+            history, cleared, sid = run_agent_turn(factory, "背包问题", [], "0", "automatic")
+
+        mock_apply.assert_called_once_with(mock_agent, "automatic")
+        assert cleared == ""
+        assert sid
+        assert history[0] == {"role": "user", "content": "背包问题"}
+        assert "220" in history[1]["content"]
+
+    def test_empty_message_returns_history_unchanged(self):
+        from web.app import run_agent_turn
+
+        history: list = []
+        factory = MagicMock()
+        result = run_agent_turn(factory, "   ", history, "0", "interactive")
+
+        assert result == ([], "", "0")
+        factory.assert_not_called()
+
+
+class TestCreateUi:
+    def test_mode_selector_default_and_choices(self):
+        import gradio as gr
+
+        from web.app import create_ui
+
+        ui = create_ui(lambda: None, default_mode="automatic")
+        radios = [b for b in ui.blocks.values() if isinstance(b, gr.Radio)]
+
+        assert len(radios) == 1
+        assert radios[0].value == "automatic"
+        assert [c[1] for c in radios[0].choices] == ["interactive", "automatic"]
+
+    def test_ui_exposes_model_and_code_views(self):
+        import gradio as gr
+
+        from web.app import create_ui
+
+        ui = create_ui(lambda: None)
+        blocks = list(ui.blocks.values())
+        tab_labels = [b.label for b in blocks if isinstance(b, gr.Tab)]
+
+        assert tab_labels == ["对话", "模型", "代码"]
+        assert any(isinstance(b, gr.Code) and b.language == "python" for b in blocks)
+        assert any(isinstance(b, gr.Code) and b.language == "json" for b in blocks)
+
+
+# ---------------------------------------------------------------------------
+# Model view (IR vs template requirement)
+# ---------------------------------------------------------------------------
+
+
+def _model_payload() -> dict:
+    from core.ir_normalizer import validate_problem_ir
+
+    ir = {
+        "problem_families": [{"id": "p_median"}],
+        "entities": {"I": {"size": 6}, "J": {"size": 5}},
+        "parameters": {
+            "p": 3,
+            "demand": [80, 120, 100, 90, 110, 70],
+            "distance": [
+                [4, 6, 9, 7, 8],
+                [5, 3, 8, 6, 7],
+                [9, 7, 4, 5, 6],
+                [8, 6, 5, 3, 4],
+                [6, 5, 7, 4, 3],
+                [7, 8, 6, 5, 4],
+            ],
+        },
+        "constraint_blocks": [
+            {"block_id": "assignment", "parameters": {}},
+            {"block_id": "cardinality", "parameters": {"p": 3}},
+        ],
+        "objective": {
+            "block_id": "weighted_service_distance_objective",
+            "parameters": {"distance": "给定"},
+        },
+    }
+    report = validate_problem_ir(ir)
+    return {"ir": report["normalized_ir"], "report": report}
+
+
+class TestModelView:
+    def test_empty_state_prompts_the_user(self):
+        from web.app import render_model_view
+
+        assert "尚未解析" in render_model_view(None)
+
+    def test_shows_missing_template_block(self):
+        from web.app import render_model_view
+
+        view = render_model_view(_model_payload())
+
+        assert "校验未通过" in view
+        assert "| `link_assignment_to_open` | 缺失 |" in view
+        assert "`assign_each_demand_once` | 命中" in view
+        assert "weighted_service_distance_objective" in view
+
+    def test_shows_validation_messages(self):
+        from web.app import render_model_view
+
+        view = render_model_view(_model_payload())
+
+        assert "错误：" in view
+
+    def test_json_view_is_the_normalized_ir(self):
+        import json
+
+        from web.app import render_model_json
+
+        payload = _model_payload()
+        rendered = json.loads(render_model_json(payload))
+
+        assert rendered == payload["ir"]
+        assert render_model_json(None) == ""
+
+
+class TestModelStateFromSession:
+    def test_reads_the_session_model_of_record(self, tmp_path, monkeypatch):
+        import utils.session as session_mod
+        from web.app import get_model_state
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        payload = _model_payload()
+        session_mod.Session(session_id="web01").save_model(payload["ir"], payload["report"])
+
+        view, raw = get_model_state("web01")
+
+        assert "校验未通过" in view
+        assert "assign_each_demand_once" in raw
+
+    def test_unknown_session_is_empty(self, tmp_path, monkeypatch):
+        import utils.session as session_mod
+        from web.app import get_model_state
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        view, raw = get_model_state("0")
+
+        assert "尚未解析" in view
+        assert raw == ""
+
+
+# ---------------------------------------------------------------------------
+# Code view (edit and re-run the artifact in place)
+# ---------------------------------------------------------------------------
+
+
+class TestCodeView:
+    def _prepare(self, tmp_path, monkeypatch) -> str:
+        import utils.session as session_mod
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        session_mod.Session(session_id="code01").save_code("print('Objective: 1')", "a.py")
+        return "code01"
+
+    def test_list_choices_puts_newest_first(self, tmp_path, monkeypatch):
+        from web.app import list_code_choices
+
+        sid = self._prepare(tmp_path, monkeypatch)
+        import utils.session as session_mod
+
+        session_mod.Session(session_id=sid).save_code("print('Objective: 2')", "b.py")
+
+        update = list_code_choices(sid)
+        assert update["choices"] == ["b.py", "a.py"]
+
+    def test_load_and_save_round_trip(self, tmp_path, monkeypatch):
+        from web.app import load_code, save_code
+
+        sid = self._prepare(tmp_path, monkeypatch)
+
+        assert load_code(sid, "a.py") == "print('Objective: 1')"
+        assert "已保存" in save_code(sid, "a.py", "print('Objective: 9')")
+        assert load_code(sid, "a.py") == "print('Objective: 9')"
+
+    def test_run_code_executes_the_edited_script(self, tmp_path, monkeypatch):
+        from web.app import run_code
+
+        sid = self._prepare(tmp_path, monkeypatch)
+        output = run_code(sid, "a.py", "print('Objective: 2210')")
+
+        assert "[RESULT] Objective: 2210" in output
+
+    def test_missing_selection_is_reported(self, tmp_path, monkeypatch):
+        from web.app import load_code, run_code, save_code
+
+        sid = self._prepare(tmp_path, monkeypatch)
+
+        assert load_code(sid, None) == ""
+        assert "未选择文件" in save_code(sid, None, "print(1)")
+        assert "未选择文件" in run_code(sid, None, "print(1)")
+
+
+# ---------------------------------------------------------------------------
 # main() argument parsing tests
 # ---------------------------------------------------------------------------
 
@@ -238,4 +470,26 @@ class TestMain:
         ):
             main()
         mock_web.assert_called_once()
+        mock_cli.assert_not_called()
+
+    def test_main_default_agent_mode_is_interactive(self):
+        from main import main
+
+        with (
+            patch("main._run_cli") as mock_cli,
+            patch("sys.argv", ["main.py"]),
+        ):
+            main()
+        assert mock_cli.call_args[0][0] == "interactive"
+
+    def test_main_forwards_automatic_agent_mode(self):
+        from main import main
+
+        with (
+            patch("main._run_cli") as mock_cli,
+            patch("main._run_web") as mock_web,
+            patch("sys.argv", ["main.py", "--mode", "web", "--agent-mode", "automatic"]),
+        ):
+            main()
+        mock_web.assert_called_once_with("automatic")
         mock_cli.assert_not_called()

@@ -213,3 +213,43 @@ class TestGetSession:
         reset_session()
         s2 = get_session()
         assert s1.session_id != s2.session_id
+
+
+# ---------------------------------------------------------------------------
+# Model of record
+# ---------------------------------------------------------------------------
+
+
+class TestModelOfRecord:
+    def _session(self, tmp_path: Path, monkeypatch) -> Session:
+        import utils.session as mod
+
+        monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        return Session(session_id="model01")
+
+    def test_load_model_is_none_when_absent(self, tmp_path: Path, monkeypatch):
+        session = self._session(tmp_path, monkeypatch)
+        assert session.load_model() is None
+
+    def test_save_and_load_model_round_trip(self, tmp_path: Path, monkeypatch):
+        session = self._session(tmp_path, monkeypatch)
+        ir = {"constraint_blocks": [{"block_id": "assign_each_demand_once"}]}
+        report = {"valid": True, "errors": [], "warnings": []}
+
+        path = session.save_model(ir, report)
+        loaded = session.load_model()
+
+        assert path.name == "model.json"
+        assert loaded is not None
+        assert loaded["ir"] == ir
+        assert loaded["report"] == report
+        assert loaded["saved_at"]
+
+    def test_save_model_overwrites_previous(self, tmp_path: Path, monkeypatch):
+        session = self._session(tmp_path, monkeypatch)
+        session.save_model({"a": 1}, {"valid": True})
+
+        session.save_model({"b": 2}, {"valid": False})
+
+        loaded = session.load_model()
+        assert loaded is not None and loaded["ir"] == {"b": 2}

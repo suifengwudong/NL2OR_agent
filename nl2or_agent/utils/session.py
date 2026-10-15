@@ -47,6 +47,35 @@ class Session:
         """Path to the conversation log (JSON Lines)."""
         return self.workspace / "conversation.jsonl"
 
+    @property
+    def model_file(self) -> Path:
+        """Path to the validated model of record (normalized IR + report)."""
+        return self.workspace / "model.json"
+
+    # ----------------------------------------------------------------
+    # Model of record
+    # ----------------------------------------------------------------
+
+    def save_model(self, ir: dict, report: dict) -> Path:
+        """Persist the validated Problem IR and its validation report."""
+        payload = {
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "ir": ir,
+            "report": report,
+        }
+        with _write_lock:
+            self.model_file.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        return self.model_file
+
+    def load_model(self) -> dict | None:
+        """Load the last validated model of record, or None if none was saved."""
+        if not self.model_file.is_file():
+            return None
+        with open(self.model_file, encoding="utf-8") as f:
+            return json.load(f)
+
     # ----------------------------------------------------------------
     # Code / output persistence
     # ----------------------------------------------------------------
