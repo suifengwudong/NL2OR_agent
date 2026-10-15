@@ -33,6 +33,7 @@ def _run_cli(agent_mode: str = "interactive") -> None:
     """Interactive CLI loop: read user input, run the agent, print the result."""
     from agents import build_nl2or_agent
     from core.output_format import format_agent_output
+    from utils.session import get_session
 
     print("=" * 60)
     print(f"  NL2OR Agent  [{agent_mode}]  (输入 'quit' 或 'exit' 退出)")
@@ -58,6 +59,16 @@ def _run_cli(agent_mode: str = "interactive") -> None:
             result = agent.run(user_input, reset=False)
             display_result = format_agent_output(str(result))
             print(f"\nNL2OR > {display_result}\n")
+            session = get_session()
+            model_status = "已生成" if session.model_file.is_file() else "未生成"
+            code_files = session.list_code_files()
+            print(
+                f"[产物] 模型：{model_status}；"
+                f"代码：{len(code_files)} 个文件；"
+                f"会话目录：{session.workspace}"
+            )
+            if code_files:
+                print("[代码文件] " + ", ".join(str(path) for path in code_files))
         except Exception as exc:  # noqa: BLE001
             print(f"\n[错误] {exc}\n")
 

@@ -16,7 +16,7 @@ import gradio as gr
 
 from agents import AGENT_MODES, apply_agent_mode
 from core.output_format import format_agent_output
-from utils.session import Session
+from utils.session import Session, get_session
 
 _MAX_AGENTS = 100
 
@@ -97,6 +97,10 @@ def run_agent_turn(
     try:
         session = _resolve_session(sid)
         sid = session.session_id
+        # Tools persist model/code through the thread-local session when they
+        # are created without an explicit workspace. Bind that session to the
+        # browser's session id before running the agent.
+        get_session(sid)
         agent = _get_or_create_agent(sid, agent_factory)
         apply_agent_mode(agent, mode)
         session.save_conversation_entry(role="user", content=message.strip())
@@ -352,16 +356,23 @@ def create_ui(agent_factory: Callable[[], Any], default_mode: str = "interactive
                     )
                     files_refresh = gr.Button("刷新文件列表")
 
-        submit_btn.click(
+        submit_event = submit_btn.click(
             fn=run_agent,
             inputs=[msg, chatbot, state_key, mode_selector],
             outputs=[chatbot, msg, state_key],
         ).then(fn=get_model_state, inputs=[state_key], outputs=[model_view, model_json])
-        msg.submit(
+        submit_event.then(
+            fn=list_code_choices, inputs=[state_key], outputs=[code_picker]
+        ).then(fn=load_code, inputs=[state_key, code_picker], outputs=[code_editor])
+
+        submit_event = msg.submit(
             fn=run_agent,
             inputs=[msg, chatbot, state_key, mode_selector],
             outputs=[chatbot, msg, state_key],
         ).then(fn=get_model_state, inputs=[state_key], outputs=[model_view, model_json])
+        submit_event.then(
+            fn=list_code_choices, inputs=[state_key], outputs=[code_picker]
+        ).then(fn=load_code, inputs=[state_key, code_picker], outputs=[code_editor])
         clear_btn.click(fn=lambda: ([], ""), inputs=None, outputs=[chatbot, msg])
         mode_selector.change(
             fn=lambda mode: _MODE_INFO[mode],
