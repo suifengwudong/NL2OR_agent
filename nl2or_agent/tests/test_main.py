@@ -80,6 +80,32 @@ class TestRunCli:
             _run_cli()
         mock_agent.run.assert_called_once_with("我有一个背包问题", reset=False)
 
+    def test_cli_displays_saved_artifact_status(self, tmp_path, monkeypatch):
+        import utils.session as session_mod
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        session = session_mod.get_session()
+        session.save_model({"objective": {}}, {"valid": True})
+        session.save_code("print('Objective: 1')", "solve.py")
+
+        from main import _run_cli
+
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = "模型求解完成"
+        printed_messages = []
+        with (
+            patch("agents.build_nl2or_agent", return_value=mock_agent),
+            patch("builtins.input", side_effect=["question", "quit"]),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: printed_messages.append(a[0] if a else ""),
+            ),
+        ):
+            _run_cli()
+
+        assert any("[产物]" in message and "模型：已生成" in message for message in printed_messages)
+        assert any("[代码文件]" in message and "solve.py" in message for message in printed_messages)
+
     def test_cli_intercepts_invalid_final_answer_format(self):
         from main import _run_cli
 
@@ -377,6 +403,37 @@ class TestModelStateFromSession:
 
         assert "尚未解析" in view
         assert raw == ""
+
+
+class TestAgentSessionBinding:
+    def test_agent_turn_persists_artifacts_in_browser_session(self, tmp_path, monkeypatch):
+        import utils.session as session_mod
+        from web.app import run_agent_turn
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        session_mod.Session(session_id="browser01")
+
+        agent = MagicMock()
+
+        def run_agent(*_args, **_kwargs):
+            current = session_mod.get_session()
+            current.save_model({"objective": {}}, {"valid": True})
+            current.save_code("print('Objective: 1')", "solve.py")
+            return "模型求解完成"
+
+        agent.run.side_effect = run_agent
+
+        def factory():
+            return agent
+
+        history, _, sid = run_agent_turn(factory, "question", [], "browser01", "interactive")
+
+        assert sid == "browser01"
+        assert history[-1]["content"] == "模型求解完成"
+        session = session_mod.Session.load("browser01")
+        assert session is not None
+        assert session.load_model() is not None
+        assert [path.name for path in session.list_code_files()] == ["solve.py"]
 
 
 # ---------------------------------------------------------------------------
