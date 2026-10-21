@@ -16,6 +16,7 @@ import threading
 from typing import Any, Callable
 
 import gradio as gr
+from gradio.themes import Soft
 
 from agents import AGENT_MODES, apply_agent_mode
 from core.output_format import format_agent_output
@@ -37,6 +38,22 @@ _MODE_INFO = {
     "interactive": "逐步确认：先给出解析结果，确认后再查库与求解。",
     "automatic": "自动完成：粘贴完整需求，一次运行完成解析、查库、建模与求解。",
 }
+
+_CSS = """
+.gradio-container { max-width: 1180px !important; margin: 0 auto; }
+#nl2or-hero { padding: 4px 0 8px; border-bottom: 1px solid var(--border-color-primary); }
+#nl2or-hero h1 { margin-bottom: 4px; letter-spacing: 0.2px; }
+#nl2or-hero p { margin: 0; color: var(--body-text-color-subdued); font-size: 14px; }
+.nl2or-panel { border: 1px solid var(--border-color-primary); border-radius: 10px; padding: 12px 14px; }
+.nl2or-panel h3 { margin: 0 0 6px; font-size: 14px; letter-spacing: 0.3px; }
+.nl2or-hint { color: var(--body-text-color-subdued); font-size: 13px; line-height: 1.6; }
+.markdown-body table { font-size: 13px; }
+.markdown-body th, .markdown-body td { padding: 4px 10px; }
+.gradio-container .cm-editor { font-size: 13px; }
+footer { display: none !important; }
+"""
+
+_THEME = Soft(primary_hue="indigo", neutral_hue="slate", radius_size="md")
 
 
 def _display_answer(raw: str) -> str:
@@ -114,61 +131,81 @@ def create_ui(agent_factory: Callable[[], Any], default_mode: str = "interactive
         return run_agent_turn(agent_factory, message, history, sid, mode)
 
     with gr.Blocks(title="NL2OR Agent") as ui:
-        gr.Markdown("# NL2OR Agent\n将自然语言运筹学问题转化为数学模型并自动求解。")
+        gr.Markdown(
+            "# NL2OR Agent\n"
+            "自然语言运筹学问题 → 数学模型 → 求解。验收对象是模型的约束块与目标函数，与代码写法无关。",
+            elem_id="nl2or-hero",
+        )
 
         state_key = gr.Textbox(value="0", visible=False)
 
         with gr.Tabs():
             with gr.Tab("对话"):
                 with gr.Row():
-                    with gr.Column(scale=3):
-                        chatbot = gr.Chatbot(label="对话", height=420)
-                        mode_selector = gr.Radio(
-                            choices=list(AGENT_MODES),
-                            value=default_mode,
-                            label="模式",
-                        )
-                        mode_info = gr.Markdown(_MODE_INFO[default_mode])
+                    with gr.Column(scale=7):
+                        chatbot = gr.Chatbot(label="对话", height=460)
                         msg = gr.Textbox(
-                            label="输入你的运筹学问题",
-                            placeholder="例如：有5个候选仓库和10个需求点，选3个使总距离最小...",
-                            lines=2,
+                            label="输入运筹学问题",
+                            placeholder=(
+                                "例如：5 个候选仓库、10 个需求点，开设 3 个，"
+                                "每个需求点只能由一个已开设仓库服务，使加权总距离最小。"
+                            ),
+                            lines=3,
                         )
                         with gr.Row():
-                            submit_btn = gr.Button("发送", variant="primary")
-                            clear_btn = gr.Button("清空对话")
-                    with gr.Column(scale=1):
-                        gr.Markdown("### 使用说明")
-                        gr.Markdown(
-                            "**interactive**：输入问题 → 确认解析结果 → 查库与求解，逐步推进。\n\n"
-                            "**automatic**：粘贴完整需求 → 一次运行自动完成建模与求解。\n\n"
-                            "生成结果可在「模型」与「代码」两个标签查看。"
-                        )
+                            submit_btn = gr.Button("发送", variant="primary", scale=3)
+                            clear_btn = gr.Button("清空对话", variant="secondary", scale=1)
+                    with gr.Column(scale=3):
+                        with gr.Group(elem_classes="nl2or-panel"):
+                            mode_selector = gr.Radio(
+                                choices=list(AGENT_MODES),
+                                value=default_mode,
+                                label="模式",
+                            )
+                            mode_info = gr.Markdown(
+                                _MODE_INFO[default_mode], elem_classes="nl2or-hint"
+                            )
+                        with gr.Accordion("使用说明", open=True):
+                            gr.Markdown(
+                                "- **interactive**：输入问题 → 确认解析结果 → 查库与求解，逐步推进\n"
+                                "- **automatic**：粘贴完整需求 → 一次运行自动完成建模与求解\n"
+                                "- 生成后到「模型」看约束块与目标函数的对照，到「代码」看求解脚本并可改后重跑",
+                                elem_classes="nl2or-hint",
+                            )
 
             with gr.Tab("模型"):
+                gr.Markdown(
+                    "归一化后的 Problem IR 与模板要求逐块对照：命中 / 替代 / 缺失 / 额外。",
+                    elem_classes="nl2or-hint",
+                )
                 with gr.Row():
-                    model_view = gr.Markdown(render_model_view(None))
-                    with gr.Column():
+                    with gr.Column(scale=3):
+                        model_view = gr.Markdown(render_model_view(None))
+                    with gr.Column(scale=2):
                         model_json = gr.Code(
-                            label="归一化 Problem IR", language="json", lines=26, interactive=False
+                            label="归一化 Problem IR", language="json", lines=28, interactive=False
                         )
-                        model_refresh = gr.Button("刷新模型")
+                        model_refresh = gr.Button("刷新模型", variant="secondary")
 
             with gr.Tab("代码"):
+                gr.Markdown(
+                    "agent 写出的求解脚本：可编辑后原地重跑，输出走真实的 run_solver 路径。",
+                    elem_classes="nl2or-hint",
+                )
                 with gr.Row():
-                    code_picker = gr.Dropdown(label="求解脚本", choices=[], value=None, scale=3)
-                    code_refresh = gr.Button("刷新列表", scale=1)
-                code_editor = gr.Code(label="求解脚本（可修改后重跑）", language="python", lines=22)
+                    code_picker = gr.Dropdown(label="求解脚本", choices=[], value=None, scale=4)
+                    code_refresh = gr.Button("刷新列表", variant="secondary", scale=1)
+                code_editor = gr.Code(label="求解脚本", language="python", lines=24)
                 with gr.Row():
-                    code_save = gr.Button("保存")
+                    code_save = gr.Button("保存", variant="secondary")
                     code_run = gr.Button("运行", variant="primary")
-                code_output = gr.Textbox(label="运行输出", lines=10, interactive=False)
-                status_line = gr.Markdown("")
+                code_output = gr.Textbox(label="运行输出", lines=12, interactive=False)
+                status_line = gr.Markdown("", elem_classes="nl2or-hint")
                 with gr.Accordion("全部会话的求解文件", open=False):
                     files_display = gr.Textbox(
                         value="(no sessions yet)", lines=8, interactive=False
                     )
-                    files_refresh = gr.Button("刷新文件列表")
+                    files_refresh = gr.Button("刷新文件列表", variant="secondary")
 
         submit_event = submit_btn.click(
             fn=run_agent,
@@ -216,4 +253,4 @@ def launch_web(
 ):
     """Launch the NL2OR web GUI."""
     ui = create_ui(agent_factory, default_mode=default_mode)
-    ui.launch(share=False, **kwargs)
+    ui.launch(share=False, theme=_THEME, css=_CSS, **kwargs)
