@@ -35,7 +35,7 @@ SOLVERS_DIR = Path(__file__).parent / "references" / "solvers"
 FILES_URL = "https://people.brunel.ac.uk/~mastjjb/jeb/orlib/files/"
 
 FAMILIES = ("pmed", "uflp", "cflp", "cappmed")
-DEFAULT_IDS = {"pmed": [1], "uflp": [71], "cflp": [41], "cappmed": [1]}
+DEFAULT_IDS = {"pmed": [1], "uflp": [71], "cflp": [61], "cappmed": [1]}
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +173,11 @@ def _warehouse_case(kind: str, instance_id: int, data: str, optima: dict[str, fl
         ["facility_capacity"] if kind == "cflp" else []
     )
     check = solve_ir(_normalize(input_ir))
+    if check.status != "Optimal":
+        raise ValueError(
+            f"{name}: 单源分配模型下不可行（状态 {check.status}）。"
+            "Beasley 的 cap 系列允许需求拆分，单个需求超过单仓容量的实例无法用当前块语义表达。"
+        )
     if abs((check.objective or 0.0) - published) > 1e-3 * max(1.0, published):
         raise ValueError(f"{name}: 自算 {check.objective} 与已发表 {published} 不一致")
 

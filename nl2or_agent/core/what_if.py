@@ -67,7 +67,10 @@ def manual_markdown(manual_path: Path | None = None) -> str:
         lines.extend(f"- {item}" for item in manual[key])
         lines.append("")
 
-    lines.append(f"**可覆盖的键**：{'、'.join(f'`{k}`' for k in sorted(READABLE_DATA_KEYS))}")
+    lines.append(
+        f"**可覆盖的键（须由该模型启用的块读取）**："
+        f"{'、'.join(f'`{k}`' for k in sorted(READABLE_DATA_KEYS))}"
+    )
     lines.append("")
 
     lines.append(

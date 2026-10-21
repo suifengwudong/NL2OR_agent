@@ -1,6 +1,6 @@
 # NL2OR Benchmark
 
-评估 NL2OR Agent 的建模与求解能力。所有用例（`cases.json` 与 `orlib_cases/*.json`）使用同一套 schema，四层评测共用同一份加载与报告接口。
+评估 NL2OR Agent 的建模与求解能力。所有用例（`cases.json` 与 `orlib_cases/*.json`）使用同一套 schema，五层评测共用同一份加载与报告接口。
 
 ## 用例 schema
 
@@ -40,7 +40,7 @@
 | `warning` | `expected.valid` 为 true 且有 `warning_contains` | 判定通过且命中指定提示（例如库外目标不替换、缺目标只提示） |
 | `negative` | `expected.valid` 为 false | 命中指定错误 |
 
-`warning` 与 `negative` 用例不进求解层。`tiers` 声明该用例参与哪些层；声明 `what_if` 就必须给出 `scenarios`，反之亦然；每个情景需要且只需要 `expected_objective` 与 `expected_status` 之一。`tight_blocks` 与 `nonbinding_blocks` 由 `--mode tightness --write` 计算并写回，该命令同时刷新由 IR 派生的参考脚本。
+`warning` 与 `negative` 用例不进求解层。`tiers` 声明该用例参与哪些层；声明 `what_if` 就必须给出 `solver_objective` 与 `scenarios`，反之亦然；每个情景需要且只需要 `expected_objective` 与 `expected_status` 之一，`expected_status` 必须是求解器状态词，情景 `id` 在同一用例内唯一。`tight_blocks` 与 `nonbinding_blocks` 由 `--mode tightness --write` 计算并写回，该命令同时刷新由 IR 派生的参考脚本。
 
 ## 可执行语义（单一实现）
 
@@ -77,22 +77,25 @@ analyze_tightness(ir)         # 逐个去掉约束块，判断是否改变最优
 | OR-Library | `pmed_1..pmed_5`（n=100，已发表最优） | p_median | m |
 | OR-Library | `pmed_6`、`pmed_10`（n=200，仅 ir 层） | p_median | l |
 | OR-Library | `uflp_cap71`、`uflp_cap101` | facility_location | m |
-| OR-Library | `cflp_cap41`、`cflp_cap61` | capacitated_facility_location | m |
+| OR-Library | `cflp_cap61` | capacitated_facility_location | m |
 | OR-Library | `cappmed_1..3`（有容量 p-median，文件自带最优） | capacitated_p_median | m |
+| 手工 | `cappmed_emergency_network`（12 需求点 × 8 设施，容量 + 强制开/关） | capacitated_p_median | m |
 
 OR-Library 的最优值取自 `pmedopt.txt`、`uncapopt.txt`、`capopt.txt` 与 `pmedcap1.txt` 自身；导入时会用 `block_model` 独立复算并比对（n>100 的 p-median 不复算，直接采用已发表值）。
+
+`cap41` 未收录：Beasley 的 cap 系列允许需求拆分，而库里的 `assign_each_demand_once` 是单源分配；cap41 有一个客户需求 12912、单仓容量仅 5000，单源模型下不可行。导入器现在会先检查求解状态，遇到这种情况直接报错而不是写入一个不可行的用例。
 
 导入：
 
 ```bash
 uv run python benchmarks/import_orlib.py                          # 默认子集（各 family 一个）
 uv run python benchmarks/import_orlib.py --family uflp --ids 71 101
-uv run python benchmarks/import_orlib.py --family cflp --ids 41 61
+uv run python benchmarks/import_orlib.py --family cflp --ids 61
 uv run python benchmarks/import_orlib.py --family cappmed --ids 1 2 3
 uv run python benchmarks/import_orlib.py --family pmed --ids 1 5 6 10
 ```
 
-## 四层评测
+## 五层评测
 
 | 层 | 模式 | 走 agent | 走求解 | 确定性 | 用途 |
 |----|------|---------|--------|--------|------|
@@ -147,9 +150,9 @@ uv run python benchmarks/run_benchmark.py --mode what_if
 uv run python benchmarks/run_benchmark.py --mode what_if --cases p_median_community
 ```
 
-每个声明了 `scenarios` 的用例：先解基准（并与 `solver_objective` 核对），再逐个应用 `overrides` 求解，断言目标值等于 `expected_objective`，或状态等于 `expected_status`（用来锁住"不可行不被跳过"）。`overrides` 走的是与 `solve_ir` 工具同一套校验（`ProblemIR.parse_overrides`），所以不认识的键会直接失败，不会静默放过。
+每个声明了 `scenarios` 的用例：先解基准（并与 `solver_objective` 核对），再逐个应用 `overrides` 求解，断言目标值等于 `expected_objective`，或状态等于 `expected_status`（用来锁住"不可行不被跳过"）。`overrides` 走的是与 `solve_ir` 工具同一套校验（`block_model.prepare_overrides`）：键必须由该用例启用的块读取，值的长度与维度必须与实体规模一致，写错键名或写错长度都不会静默放过；单条情景或单个用例求解失败只记为不通过，不会中断整层。
 
-目前 6 个用例共 19 个情景，覆盖：设施数量扫描（p=1/2/4/5）、越界不可行（p=6，|J|=5）、最大化方向的饱和（容量 60 起不再变化）、成本矩阵覆盖关系（改小成本但覆盖不到某需求点则不变）、强制开设（置空回到无约束最优、强制最优解本身不变、强制非最优解变差）。
+目前 12 个用例共 29 个情景，覆盖：设施数量扫描（p=1/2/4/5）、越界不可行（p=6，|J|=5）、最大化方向的饱和（容量 60 起不再变化）、成本矩阵覆盖关系（改小成本但覆盖不到某需求点则不变）、强制开设（置空回到无约束最优、强制最优解本身不变、强制非最优解变差）、OR-Library 实例上的固定成本置零与容量减半（`cappmed_1/2/3`、`cflp_cap61`、`uflp_cap71/101`，其中 p=4 与容量减半锁住不可行）。
 
 ## 报告
 

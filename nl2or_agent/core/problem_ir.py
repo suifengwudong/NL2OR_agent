@@ -98,8 +98,9 @@ class ProblemIR:
     def with_overrides(self, overrides: dict[str, Any] | None = None) -> ProblemIR:
         """Return a copy whose top-level parameters are replaced by *overrides*.
 
-        Validation happens in :meth:`parse_overrides`, so this stays a plain copy
-        and callers can render the overrides they applied.
+        Keys and value shapes are validated before the call (:meth:`parse_overrides`
+        plus :func:`block_model.prepare_overrides`), so this stays a plain copy and
+        callers can render the overrides they applied.
         """
         out = copy.deepcopy(self.data)
         for key, value in (overrides or {}).items():
@@ -107,17 +108,23 @@ class ProblemIR:
         return ProblemIR(out)
 
     @classmethod
-    def parse_overrides(cls, value: str | dict[str, Any] | None) -> dict[str, Any]:
+    def parse_overrides(
+        cls, value: str | dict[str, Any] | None, allowed: frozenset[str] | None = None
+    ) -> dict[str, Any]:
         """Coerce a scenario-override argument and reject keys nothing would read.
 
-        Accepts a dict, its JSON string, or None. Unknown keys raise, so a typo
-        cannot silently leave a scenario identical to the baseline.
+        Accepts a dict, its JSON string, or None. *allowed* narrows the vocabulary
+        to the keys one model's blocks read; unknown keys raise either way, so a
+        typo cannot silently leave a scenario identical to the baseline.
         """
         applied = _as_object(value, "overrides_json")
-        unknown = sorted(key for key in applied if key not in READABLE_DATA_KEYS)
+        keys = READABLE_DATA_KEYS if allowed is None else allowed
+        unknown = sorted(key for key in applied if key not in keys)
         if unknown:
-            allowed = "、".join(sorted(READABLE_DATA_KEYS))
-            raise ValueError(f"不支持的参数 {unknown[0]!r}；可覆盖的键为 {allowed}")
+            if not keys:
+                raise ValueError(f"不支持的参数 {unknown[0]!r}；该模型没有可覆盖的参数")
+            allowed_list = "、".join(sorted(keys))
+            raise ValueError(f"不支持的参数 {unknown[0]!r}；该模型可覆盖的键为 {allowed_list}")
         return applied
 
 

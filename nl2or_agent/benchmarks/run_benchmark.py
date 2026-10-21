@@ -36,6 +36,8 @@ sys.path.insert(0, str(_ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
 
+from core.block_model import SOLVE_STATUSES, objective_close  # noqa: E402
+
 load_dotenv(_ROOT / ".env")
 
 CASES_PATH = Path(__file__).parent / "cases.json"
@@ -93,7 +95,9 @@ def _normalize_case(raw: dict[str, Any], origin: str) -> dict[str, Any]:
         raise ValueError(f"{origin}: case {case['id']} 含未知评测层 {unknown}")
     if "solver" in tiers and case.get("solver_objective") is None:
         raise ValueError(f"{origin}: case {case['id']} 声明了 solver 层但没有 solver_objective")
-    if kind != "positive" and "solver" in tiers:
+    if "what_if" in tiers and case.get("solver_objective") is None:
+        raise ValueError(f"{origin}: case {case['id']} 声明了 what_if 层但没有 solver_objective")
+    if kind != "positive" and {"solver", "what_if"} & set(tiers):
         raise ValueError(f"{origin}: {kind} 用例 {case['id']} 不应进入求解层")
     case.setdefault("tight_blocks", [])
     case.setdefault("nonbinding_blocks", [])
@@ -102,10 +106,18 @@ def _normalize_case(raw: dict[str, Any], origin: str) -> dict[str, Any]:
         raise ValueError(f"{origin}: case {case['id']} 声明了 what_if 层但没有 scenarios")
     if scenarios and "what_if" not in tiers:
         raise ValueError(f"{origin}: case {case['id']} 有 scenarios 但没有声明 what_if 层")
+    seen: set[str] = set()
     for scenario in scenarios:
         for key in ("id", "overrides"):
             if key not in scenario:
                 raise ValueError(f"{origin}: case {case['id']} 的情景缺少字段 {key!r}")
+        if scenario["id"] in seen:
+            raise ValueError(f"{origin}: case {case['id']} 的情景 id {scenario['id']!r} 重复")
+        seen.add(scenario["id"])
+        if not isinstance(scenario["overrides"], dict):
+            raise ValueError(
+                f"{origin}: case {case['id']} 情景 {scenario['id']} 的 overrides 必须是对象"
+            )
         has_objective = "expected_objective" in scenario
         has_status = "expected_status" in scenario
         if has_objective == has_status:
@@ -113,6 +125,18 @@ def _normalize_case(raw: dict[str, Any], origin: str) -> dict[str, Any]:
                 f"{origin}: case {case['id']} 情景 {scenario['id']} 需要且只需要一个"
                 " expected_objective / expected_status"
             )
+        if has_status and scenario["expected_status"] not in SOLVE_STATUSES:
+            raise ValueError(
+                f"{origin}: case {case['id']} 情景 {scenario['id']} 的 expected_status 必须是"
+                f" {sorted(SOLVE_STATUSES)} 之一"
+            )
+        if has_objective:
+            value = scenario["expected_objective"]
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise ValueError(
+                    f"{origin}: case {case['id']} 情景 {scenario['id']} 的 expected_objective"
+                    " 必须是数值"
+                )
     case["origin"] = origin
     return case
 
@@ -319,12 +343,12 @@ def _objective_matches(text: str, expected: float, tol: float = 1e-6) -> bool:
     candidates = [float(raw) for raw in _OBJECTIVE_LINE_RE.findall(text)]
     if not candidates:
         candidates = [float(raw) for raw in _CONTEXT_RE.findall(text)]
-    return any(abs(value - expected) <= tol * max(1.0, abs(expected)) for value in candidates)
+    return any(objective_close(value, expected, tol) for value in candidates)
 
 
 def _objective_match_kind(text: str, expected: float, tol: float = 1e-6) -> str | None:
     for kind, value in _extract_objectives(text):
-        if abs(value - expected) <= tol * max(1.0, abs(expected)):
+        if objective_close(value, expected, tol):
             return kind
     return None
 
@@ -527,10 +551,8 @@ def run_tightness(cases: list[dict[str, Any]], *, write: bool = False) -> dict[s
         baseline = report["baseline_objective"]
         ok = baseline is not None and not report["unsolved_blocks"]
         if ok and case.get("solver_objective") is not None and baseline is not None:
-            ok = abs(baseline - float(case["solver_objective"])) <= 1e-6 * max(
-                1.0, abs(float(case["solver_objective"]))
-            )
-        if write:
+            ok = objective_close(baseline, float(case["solver_objective"]))
+        if write and ok:
             _write_tightness(case, report)
             _write_reference_script(case)
         results.append(
@@ -556,6 +578,40 @@ def run_tightness(cases: list[dict[str, Any]], *, write: bool = False) -> dict[s
     }
 
 
+def _score_scenario(ir: Any, scenario: dict[str, Any]) -> dict[str, Any]:
+    """Apply one scenario to *ir* and compare the result with its declared expectation."""
+    from core.block_model import prepare_overrides, solve_ir
+
+    row: dict[str, Any] = {
+        "id": scenario["id"],
+        "passed": False,
+        "status": None,
+        "objective": None,
+        "overrides": scenario["overrides"],
+        "expected": scenario.get("expected_objective", scenario.get("expected_status")),
+        "detail": "",
+    }
+    try:
+        overrides = prepare_overrides(ir.data, scenario["overrides"])
+        result = solve_ir(ir.with_overrides(overrides).data)
+    except Exception as exc:  # noqa: BLE001
+        row["detail"] = str(exc)
+        return row
+
+    row["status"] = result.status
+    row["objective"] = result.objective
+    if "expected_status" in scenario:
+        expected = scenario["expected_status"]
+        ok = result.status == expected
+        row["detail"] = "" if ok else f"状态 {result.status}，期望 {expected}"
+    else:
+        expected = float(scenario["expected_objective"])
+        ok = result.objective is not None and objective_close(result.objective, expected)
+        row["detail"] = "" if ok else f"目标值 {result.objective}，期望 {expected}"
+    row["passed"] = ok
+    return row
+
+
 def run_what_if(cases: list[dict[str, Any]]) -> dict[str, Any]:
     """Solve the baseline plus every declared parameter scenario."""
     from core.block_model import solve_ir
@@ -564,57 +620,44 @@ def run_what_if(cases: list[dict[str, Any]]) -> dict[str, Any]:
     selected = _tier_cases(cases, "what_if")
     results: list[dict[str, Any]] = []
     for case in selected:
-        ir = ProblemIR(_normalized_ir(case))
-        baseline = solve_ir(ir.data)
-        declared_baseline = case.get("solver_objective")
+        identity = {
+            "case_id": case["id"],
+            "family": case["family"],
+            "scale": case["scale"],
+        }
+        try:
+            ir = ProblemIR(_normalized_ir(case))
+            baseline = solve_ir(ir.data)
+        except Exception as exc:  # noqa: BLE001
+            results.append(
+                {
+                    **identity,
+                    "passed": False,
+                    "checks": {"baseline": False},
+                    "baseline": None,
+                    "scenarios": [],
+                    "detail": f"基准求解失败：{exc}",
+                }
+            )
+            continue
+
+        declared = case.get("solver_objective")
         baseline_ok = (
             baseline.status == "Optimal"
             and baseline.objective is not None
-            and (
-                declared_baseline is None
-                or abs(baseline.objective - float(declared_baseline))
-                <= 1e-6 * max(1.0, abs(float(declared_baseline)))
-            )
+            and (declared is None or objective_close(baseline.objective, float(declared)))
         )
-
-        rows: list[dict[str, Any]] = []
-        for scenario in case["scenarios"]:
-            try:
-                overrides = ProblemIR.parse_overrides(scenario["overrides"])
-                result = solve_ir(ir.with_overrides(overrides).data)
-            except ValueError as exc:
-                rows.append({"id": scenario["id"], "passed": False, "detail": str(exc)})
-                continue
-            if "expected_status" in scenario:
-                ok = result.status == scenario["expected_status"]
-                detail = f"status={result.status} expected={scenario['expected_status']}"
-            else:
-                expected = float(scenario["expected_objective"])
-                ok = result.objective is not None and abs(
-                    result.objective - expected
-                ) <= 1e-6 * max(1.0, abs(expected))
-                detail = f"objective={result.objective} expected={expected}"
-            rows.append(
-                {
-                    "id": scenario["id"],
-                    "passed": ok,
-                    "status": result.status,
-                    "objective": result.objective,
-                    "overrides": scenario["overrides"],
-                    "detail": "" if ok else detail,
-                }
-            )
-
+        rows = [_score_scenario(ir, scenario) for scenario in case["scenarios"]]
         results.append(
             {
-                "case_id": case["id"],
-                "family": case["family"],
-                "scale": case["scale"],
-                "passed": baseline_ok and all(r["passed"] for r in rows),
+                **identity,
+                "passed": baseline_ok and all(row["passed"] for row in rows),
                 "checks": {"baseline": baseline_ok},
                 "baseline": baseline.objective,
                 "scenarios": rows,
-                "detail": "" if baseline_ok else f"baseline={baseline} 与 solver_objective 不符",
+                "detail": ""
+                if baseline_ok
+                else f"基准 {baseline.status} {baseline.objective}，solver_objective 为 {declared}",
             }
         )
     return {
@@ -683,14 +726,17 @@ def _format_report(report: dict[str, Any], json_out: bool) -> None:
         if report["mode"] == "what_if":
             print(f"        - 基准 {result.get('baseline')}")
             for row in result.get("scenarios", []):
-                mark = "" if row["passed"] else "  ← 不符"
                 # 非最优场景 PuLP 会残留上一次的目标值，它不是该场景的解
                 objective = row.get("objective") if row.get("status") == "Optimal" else None
+                mark = "" if row["passed"] else "  ← 不符"
                 print(
-                    f"        - {row['id']}: {row.get('status')}"
+                    f"        - {row['id']}: {row.get('status') or '—'}"
                     f" {objective if objective is not None else '—'}"
-                    f" | overrides {row.get('overrides')}{mark}"
+                    f" | overrides {row.get('overrides')}"
+                    f" | 期望 {row.get('expected')}{mark}"
                 )
+                if not row["passed"]:
+                    print(f"          {row['detail']}")
         if not result["passed"]:
             for name, ok in result.get("checks", {}).items():
                 if not ok:

@@ -14,11 +14,41 @@
         "what_if"
       ],
       "scenarios": [
-        {"id": "p=1", "overrides": {"p": 1}, "expected_objective": 2840},
-        {"id": "p=2", "overrides": {"p": 2}, "expected_objective": 2400},
-        {"id": "p=4", "overrides": {"p": 4}, "expected_objective": 2050},
-        {"id": "p=5", "overrides": {"p": 5}, "expected_objective": 1960},
-        {"id": "p=6（超过候选数）", "overrides": {"p": 6}, "expected_status": "Infeasible"}
+        {
+          "id": "p=1",
+          "overrides": {
+            "p": 1
+          },
+          "expected_objective": 2840
+        },
+        {
+          "id": "p=2",
+          "overrides": {
+            "p": 2
+          },
+          "expected_objective": 2400
+        },
+        {
+          "id": "p=4",
+          "overrides": {
+            "p": 4
+          },
+          "expected_objective": 2050
+        },
+        {
+          "id": "p=5",
+          "overrides": {
+            "p": 5
+          },
+          "expected_objective": 1960
+        },
+        {
+          "id": "p=6（超过候选数）",
+          "overrides": {
+            "p": 6
+          },
+          "expected_status": "Infeasible"
+        }
       ],
       "problem": "某街道计划在 5 个候选位置 A、B、C、D、E 中开设 3 个社区服务中心。6 个居民区的人口分别为 80、120、100、90、110、70。各居民区到各候选位置的距离矩阵为 [[4,6,9,7,8],[5,3,8,6,7],[9,7,4,5,6],[8,6,5,3,4],[6,5,7,4,3],[7,8,6,5,4]]。每个居民区必须且只能分配到一个服务中心，只有开设的服务中心才能接收分配，恰好开设 3 个。目标是最小化所有居民区到其服务中心的需求加权总距离。",
       "input_ir": {
@@ -152,9 +182,45 @@
         "what_if"
       ],
       "scenarios": [
-        {"id": "成本不变（对照）", "overrides": {"fixed_cost": [4, 3, 5, 2, 4]}, "expected_objective": 6},
-        {"id": "候选1成本降到 1", "overrides": {"fixed_cost": [1, 3, 5, 2, 4]}, "expected_objective": 3},
-        {"id": "候选2成本降到 1（覆盖不到需求1）", "overrides": {"fixed_cost": [4, 1, 5, 2, 4]}, "expected_objective": 6}
+        {
+          "id": "成本不变（对照）",
+          "overrides": {
+            "fixed_cost": [
+              4,
+              3,
+              5,
+              2,
+              4
+            ]
+          },
+          "expected_objective": 6
+        },
+        {
+          "id": "候选1成本降到 1",
+          "overrides": {
+            "fixed_cost": [
+              1,
+              3,
+              5,
+              2,
+              4
+            ]
+          },
+          "expected_objective": 3
+        },
+        {
+          "id": "候选2成本降到 1（覆盖不到需求1）",
+          "overrides": {
+            "fixed_cost": [
+              4,
+              1,
+              5,
+              2,
+              4
+            ]
+          },
+          "expected_objective": 6
+        }
       ],
       "problem": "为 6 个应急需求点选址建设应急物资点，候选位置 1~5。覆盖矩阵（候选 j 能否覆盖需求点 i）为 [[1,0,1,0,0],[1,1,0,0,0],[0,1,1,1,0],[0,0,1,1,1],[0,0,0,1,1],[1,0,0,0,1]]。各候选的固定建设成本为 4、3、5、2、4。要求每个需求点至少被一个已建设设施覆盖，目标是使固定建设总成本最小。",
       "input_ir": {
@@ -381,8 +447,20 @@
         "what_if"
       ],
       "scenarios": [
-        {"id": "p=1", "overrides": {"p": 1}, "expected_objective": 28},
-        {"id": "p=4（全覆盖，饱和）", "overrides": {"p": 4}, "expected_objective": 50}
+        {
+          "id": "p=1",
+          "overrides": {
+            "p": 1
+          },
+          "expected_objective": 28
+        },
+        {
+          "id": "p=4（全覆盖，饱和）",
+          "overrides": {
+            "p": 4
+          },
+          "expected_objective": 50
+        }
       ],
       "problem": "城市要在 4 个候选位置中最多开设 2 个服务站。6 个需求点的权重分别为 10、8、12、6、9、5。覆盖矩阵为 [[1,0,1,0],[1,1,0,0],[0,1,1,0],[0,0,1,1],[0,0,0,1],[1,0,0,1]]。只有当至少一个已开设设施覆盖需求点时，该需求点才计入已覆盖。目标是最大化被覆盖需求点的权重之和。",
       "input_ir": {
@@ -504,8 +582,20 @@
         "what_if"
       ],
       "scenarios": [
-        {"id": "p=1", "overrides": {"p": 1}, "expected_objective": 30},
-        {"id": "p=4", "overrides": {"p": 4}, "expected_objective": 20}
+        {
+          "id": "p=1",
+          "overrides": {
+            "p": 1
+          },
+          "expected_objective": 30
+        },
+        {
+          "id": "p=4",
+          "overrides": {
+            "p": 4
+          },
+          "expected_objective": 20
+        }
       ],
       "problem": "在 4 个候选位置中选 2 个建设应急点，服务 6 个需求点。距离矩阵为 [[10,20,30,40],[20,15,25,35],[30,25,12,28],[40,35,28,18],[25,22,20,15],[35,30,25,20]]。每个需求点分配到一个已开设应急点，用辅助变量 w 约束所有实际分配距离。目标是最小化所有需求点到其服务应急点距离中的最大值。",
       "input_ir": {
@@ -724,10 +814,34 @@
         "what_if"
       ],
       "scenarios": [
-        {"id": "capacity=30", "overrides": {"capacity": 30}, "expected_objective": 160},
-        {"id": "capacity=40", "overrides": {"capacity": 40}, "expected_objective": 180},
-        {"id": "capacity=60（装得下全部）", "overrides": {"capacity": 60}, "expected_objective": 280},
-        {"id": "capacity=100（饱和）", "overrides": {"capacity": 100}, "expected_objective": 280}
+        {
+          "id": "capacity=30",
+          "overrides": {
+            "capacity": 30
+          },
+          "expected_objective": 160
+        },
+        {
+          "id": "capacity=40",
+          "overrides": {
+            "capacity": 40
+          },
+          "expected_objective": 180
+        },
+        {
+          "id": "capacity=60（装得下全部）",
+          "overrides": {
+            "capacity": 60
+          },
+          "expected_objective": 280
+        },
+        {
+          "id": "capacity=100（饱和）",
+          "overrides": {
+            "capacity": 100
+          },
+          "expected_objective": 280
+        }
       ],
       "problem": "背包容量为 50。三件物品的价值分别为 60、100、120，重量分别为 10、20、30。目标是在不超过背包容量的前提下，最大化所选物品的总价值。",
       "input_ir": {
@@ -798,9 +912,34 @@
         "what_if"
       ],
       "scenarios": [
-        {"id": "不强制（回到 p-median 最优）", "overrides": {"forced_open": []}, "expected_objective": 2210},
-        {"id": "强制开设最优解那三个", "overrides": {"forced_open": ["B", "C", "E"]}, "expected_objective": 2210},
-        {"id": "同时强制 A 与 B", "overrides": {"forced_open": ["A", "B"]}, "expected_objective": 2240}
+        {
+          "id": "不强制（回到 p-median 最优）",
+          "overrides": {
+            "forced_open": []
+          },
+          "expected_objective": 2210
+        },
+        {
+          "id": "强制开设最优解那三个",
+          "overrides": {
+            "forced_open": [
+              "B",
+              "C",
+              "E"
+            ]
+          },
+          "expected_objective": 2210
+        },
+        {
+          "id": "同时强制 A 与 B",
+          "overrides": {
+            "forced_open": [
+              "A",
+              "B"
+            ]
+          },
+          "expected_objective": 2240
+        }
       ],
       "problem": "某街道计划在 5 个候选位置 A、B、C、D、E 中开设 3 个社区服务中心，其中位置 A 必须开设。6 个居民区的人口分别为 80、120、100、90、110、70。各居民区到各候选位置的距离矩阵为 [[4,6,9,7,8],[5,3,8,6,7],[9,7,4,5,6],[8,6,5,3,4],[6,5,7,4,3],[7,8,6,5,4]]。每个居民区必须且只能分配到一个服务中心，只有开设的服务中心才能接收分配。目标是最小化所有居民区到其服务中心的需求加权总距离。",
       "input_ir": {
@@ -1889,6 +2028,297 @@
           "不在设施集合 J 中"
         ]
       }
+    },
+    {
+      "id": "cappmed_emergency_network",
+      "name": "有容量 P-中位 应急供应网络（含强制开关）",
+      "family": "capacitated_p_median",
+      "scale": "m",
+      "tiers": [
+        "ir",
+        "solver",
+        "online",
+        "tightness"
+      ],
+      "problem": "某地区要建应急物资供应网络。12 个需求点的坐标与需求量如下（编号, x, y, 需求量）：(1,0,0,14) (2,0,4,9) (3,2,8,11) (4,4,1,7) (5,4,6,16) (6,6,0,5) (7,6,4,12) (8,6,9,8) (9,8,2,13) (10,8,7,6) (11,10,1,10) (12,10,5,4)。8 个候选设施的坐标与容量如下（编号, x, y, 容量）：(F1,0,2,40) (F2,2,0,40) (F3,2,10,40) (F4,4,4,40) (F5,6,7,40) (F6,8,0,40) (F7,8,10,40) (F8,10,8,40)。两点之间的距离按曼哈顿距离计算，即 |Δx| + |Δy|。要求恰好建设 3 个设施；每个需求点必须且只能分配到一个已建设设施，只有已建设的设施才能接收分配；每个设施承接的需求量之和不得超过其容量。此外，F7 必须建设，F1 因场地改造必须关闭。目标是最小化所有需求点到其服务设施的距离之和，该目标不按需求量加权，需求量只用于容量核算。",
+      "input_ir": {
+        "problem_families": [
+          {
+            "id": "capacitated_p_median",
+            "confidence": 0.9
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 12
+          },
+          "J": {
+            "size": 8,
+            "ids": [
+              "F1",
+              "F2",
+              "F3",
+              "F4",
+              "F5",
+              "F6",
+              "F7",
+              "F8"
+            ]
+          }
+        },
+        "parameters": {
+          "p": 3,
+          "demand": [
+            14,
+            9,
+            11,
+            7,
+            16,
+            5,
+            12,
+            8,
+            13,
+            6,
+            10,
+            4
+          ],
+          "distance": [
+            [
+              2,
+              2,
+              12,
+              8,
+              13,
+              8,
+              18,
+              18
+            ],
+            [
+              2,
+              6,
+              8,
+              4,
+              9,
+              12,
+              14,
+              14
+            ],
+            [
+              8,
+              8,
+              2,
+              6,
+              5,
+              14,
+              8,
+              8
+            ],
+            [
+              5,
+              3,
+              11,
+              3,
+              8,
+              5,
+              13,
+              13
+            ],
+            [
+              8,
+              8,
+              6,
+              2,
+              3,
+              10,
+              8,
+              8
+            ],
+            [
+              8,
+              4,
+              14,
+              6,
+              7,
+              2,
+              12,
+              12
+            ],
+            [
+              8,
+              8,
+              10,
+              2,
+              3,
+              6,
+              8,
+              8
+            ],
+            [
+              13,
+              13,
+              5,
+              7,
+              2,
+              11,
+              3,
+              5
+            ],
+            [
+              8,
+              8,
+              14,
+              6,
+              7,
+              2,
+              8,
+              8
+            ],
+            [
+              13,
+              13,
+              9,
+              7,
+              2,
+              7,
+              3,
+              3
+            ],
+            [
+              11,
+              9,
+              17,
+              9,
+              10,
+              3,
+              11,
+              7
+            ],
+            [
+              13,
+              13,
+              13,
+              7,
+              6,
+              7,
+              7,
+              3
+            ]
+          ],
+          "facility_capacity": [
+            40,
+            40,
+            40,
+            40,
+            40,
+            40,
+            40,
+            40
+          ],
+          "forced_open": [
+            "F7"
+          ],
+          "forced_closed": [
+            "F1"
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "assignment",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "linking",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "cardinality",
+            "parameters": {
+              "p": 3
+            },
+            "status": "required"
+          },
+          {
+            "block_id": "warehouse_capacity",
+            "parameters": {
+              "facility_capacity": [
+                40,
+                40,
+                40,
+                40,
+                40,
+                40,
+                40,
+                40
+              ],
+              "demand": [
+                14,
+                9,
+                11,
+                7,
+                16,
+                5,
+                12,
+                8,
+                13,
+                6,
+                10,
+                4
+              ]
+            },
+            "status": "required"
+          },
+          {
+            "block_id": "forcing",
+            "parameters": {
+              "facility_ids": [
+                "F7"
+              ]
+            },
+            "status": "user_specified"
+          },
+          {
+            "block_id": "prohibiting",
+            "parameters": {
+              "facility_ids": [
+                "F1"
+              ]
+            },
+            "status": "user_specified"
+          }
+        ],
+        "objective": {
+          "block_id": "total_distance",
+          "sense": "minimize"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "families": [
+          "capacitated_p_median"
+        ],
+        "block_ids": [
+          "assign_each_demand_once",
+          "link_assignment_to_open",
+          "cardinality_open_p_facilities",
+          "facility_capacity",
+          "force_facility_open",
+          "force_facility_closed"
+        ],
+        "objective_block": "total_service_distance_objective"
+      },
+      "solver_objective": 55.0,
+      "tight_blocks": [
+        "assign_each_demand_once",
+        "cardinality_open_p_facilities",
+        "facility_capacity",
+        "force_facility_open",
+        "force_facility_closed"
+      ],
+      "nonbinding_blocks": [
+        "link_assignment_to_open"
+      ]
     }
   ]
 }

@@ -50,7 +50,7 @@
 
 ### 分层归位与 IR 值对象
 
-- **`core/problem_ir.py`（新增）**：`ProblemIR` 值对象。`parse()` 收 dict／JSON 字符串／None，工具入参的规约只此一处；`normalized` 给归一化后的 IR；`parameters` 给可执行数据视图；`with_overrides()` 与 `parse_overrides()` 负责参数覆盖与键校验。`READABLE_DATA_KEYS` 一并归到这里，因为它是 IR 参数键的词汇表
+- **`core/problem_ir.py`（新增）**：`ProblemIR` 值对象。`parse()` 收 dict／JSON 字符串／None，工具入参的规约只此一处；`normalized` 给归一化后的 IR；`parameters` 给可执行数据视图；`with_overrides()` 与 `parse_overrides()` 负责参数覆盖与键名校验，`block_model.prepare_overrides()` 再按模型取键并校验值的形状。`READABLE_DATA_KEYS` 一并归到这里，因为它是 IR 参数键的词汇表
 - **类型名让位**：`schema` 的 TypedDict `ProblemIR` 改名 `ProblemIRDict`（它描述线上形状），`ProblemIR` 这个名字给 `core` 里带行为的那个类；`schema` 保持纯数据
 - **可执行块语义归位**：`benchmarks/references/block_model.py` → `core/block_model.py`。它已经是核心代码，此前 `core` 反过来依赖 `benchmarks`，方向是反的。17 个参考脚本由 `render_script()` 生成，因此改的是模板并重生成，脚本自身不手改；搬运时一并修正了模板的 import 与 `_PROJECT_ROOT` 的层级
 - **`utils/session.py`**：新增 `write_model_of_record()`，`model.json` 只此一个写入点，`Session.save_model()` 与 `ValidateProblemIrTool` 都走它，落盘结构不再有两份写法
@@ -172,7 +172,7 @@ uv run python main.py --mode web
 
 ## Benchmark 评测
 
-`benchmarks/` 提供四层评测，T1、T2、T4 不依赖 LLM：
+`benchmarks/` 提供五层评测，T1、T2、T4、T5 不依赖 LLM：
 
 | 层 | 命令 | 走 agent | 走求解 | 内容 |
 |----|------|---------|--------|------|
@@ -181,7 +181,7 @@ uv run python main.py --mode web
 | T3 端到端 | `uv run python benchmarks/run_benchmark.py --mode online` | 是 | 是 | 需 `OPENROUTER_API_KEY`；答复与产物双重校验，支持 `--repeats`、`--agent-mode` 与预算 |
 | T4 紧约束 | `uv run python benchmarks/run_benchmark.py --mode tightness --write` | 否 | 是 | 计算并写回紧/非紧块元数据与参考脚本 |
 
-块的语义只有一处实现（`core/block_model.py`）：导入真值、参考脚本、紧约束分析与变体对照都走它。最优值来自独立求解与 OR-Library 的已发表值。用例 schema、四层细节与外部 benchmark 调研见 `benchmarks/README.md`。
+块的语义只有一处实现（`core/block_model.py`）：导入真值、参考脚本、紧约束分析与变体对照都走它。最优值来自独立求解与 OR-Library 的已发表值。用例 schema、五层细节与外部 benchmark 调研见 `benchmarks/README.md`。
 
 ---
 
@@ -228,7 +228,7 @@ nl2or_agent/
 │   │   └── what_if_manual.json     # what_if 做法的 manual（skill 层）
 │   └── workspace/          # 生成的求解脚本存储目录
 │
-├── benchmarks/             # 四层评测：IR 判定 / 求解执行 / 端到端 / 紧约束分析
+├── benchmarks/             # 五层评测：IR 判定 / 求解执行 / 端到端 / 紧约束分析 / 情景对比
 │
 ├── utils/
 │   ├── __init__.py
