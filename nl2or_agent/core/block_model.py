@@ -60,6 +60,8 @@ _STATUS_TEXT = {
     "Undefined": "未定义",
 }
 
+SOLVE_STATUSES: frozenset[str] = frozenset(_STATUS_TEXT)
+
 _VARIABLE_LABELS = {"y": "开设", "z": "覆盖需求", "x2": "分配", "x1": "选中"}
 
 
@@ -249,6 +251,101 @@ OBJECTIVE_BUILDERS: dict[str, ConstraintBuilder] = {
 
 
 # ---------------------------------------------------------------------------
+# Which parameter overrides this model actually reads
+# ---------------------------------------------------------------------------
+
+# The executable keys each block reads. Derived per model from the active
+# blocks, so a key that no active block reads is rejected instead of being
+# applied and silently ignored.
+READ_BLOCK_KEYS: dict[str, tuple[str, ...]] = {
+    "assign_each_demand_once": (),
+    "link_assignment_to_open": (),
+    "cardinality_open_p_facilities": ("p",),
+    "cardinality_open_at_most_p_facilities": ("p",),
+    "force_facility_open": ("forced_open",),
+    "force_facility_closed": ("forced_closed",),
+    "facility_capacity": ("demand", "facility_capacity"),
+    "knapsack_capacity": ("capacity", "weight"),
+    "cover_each_demand_at_least_once": ("coverage_matrix",),
+    "demand_coverage_activation": ("coverage_matrix",),
+    "max_service_distance_bound": ("distance",),
+    "weighted_service_distance_objective": ("distance", "demand"),
+    "total_service_distance_objective": ("distance",),
+    "facility_opening_cost_objective": ("fixed_cost",),
+    "fixed_plus_service_cost_objective": ("fixed_cost", "service_cost"),
+    "covered_demand_objective": ("demand",),
+    "minimize_max_distance_objective": (),
+    "total_value_objective": ("value",),
+}
+
+
+def readable_keys(ir: dict[str, Any]) -> frozenset[str]:
+    """The parameter keys this IR's blocks read, and only those."""
+    blocks = [*constraint_block_ids(ir), objective_block_id(ir)]
+    keys: set[str] = set()
+    for block in blocks:
+        keys.update(READ_BLOCK_KEYS.get(block, ()))
+    return frozenset(keys)
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _check_override_value(key: str, value: Any, n_i: int, n_j: int) -> None:
+    """Reject an override whose value cannot be read as the key's own shape."""
+
+    def fail(expected: str) -> None:
+        raise ValueError(f"覆盖 {key!r} 的值应为{expected}，收到 {value!r}")
+
+    if key == "p":
+        if not _is_number(value) or value < 0 or float(value) != int(value):
+            fail("非负整数")
+        return
+    if key == "capacity":
+        if not _is_number(value) or value < 0:
+            fail("非负数")
+        return
+    if key in {"forced_open", "forced_closed"}:
+        if not isinstance(value, list):
+            fail("设施下标的列表")
+        return
+    if key in {"demand", "value", "weight", "fixed_cost", "facility_capacity"}:
+        length = n_i if key in {"demand", "value", "weight"} else n_j
+        if _is_number(value):
+            return
+        if (
+            not isinstance(value, list)
+            or len(value) != length
+            or not all(_is_number(v) for v in value)
+        ):
+            fail(f"长度 {length} 的数值列表")
+        return
+    if key in {"distance", "service_cost", "coverage_matrix"}:
+        shaped = (
+            isinstance(value, list)
+            and len(value) == n_i
+            and all(
+                isinstance(row, list) and len(row) == n_j and all(_is_number(v) for v in row)
+                for row in value
+            )
+        )
+        if not shaped:
+            fail(f" {n_i}x{n_j} 的数值矩阵")
+        return
+    fail("块模型可读取的值")
+
+
+def prepare_overrides(ir: dict[str, Any], value: Any) -> dict[str, Any]:
+    """Coerce, key-check and shape-check the overrides for this model."""
+    overrides = ProblemIR.parse_overrides(value, allowed=readable_keys(ir))
+    n_i, n_j = _sizes(ir)
+    for key, item in overrides.items():
+        _check_override_value(key, item, n_i, n_j)
+    return overrides
+
+
+# ---------------------------------------------------------------------------
 # IR -> model
 # ---------------------------------------------------------------------------
 
@@ -273,6 +370,11 @@ def describe_model(ir: dict[str, Any]) -> str:
 
 def format_number(value: float) -> str:
     return str(int(value)) if float(value).is_integer() else f"{value:g}"
+
+
+def objective_close(value: float, expected: float, tol: float = 1e-6) -> bool:
+    """True when two objective values count as the same solution."""
+    return abs(value - expected) <= tol * max(1.0, abs(expected))
 
 
 def summarize_decisions(variables: dict[str, float]) -> str:
@@ -426,16 +528,23 @@ def solve_ir(
 def analyze_tightness(ir: dict[str, Any], *, time_limit: int | None = None) -> dict[str, Any]:
     """Which constraint blocks change the optimum when removed."""
     base = solve_ir(ir, time_limit=time_limit)
+    if base.status != "Optimal" or base.objective is None:
+        # 基准没有最优解时逐块比较没有意义；PuLP 还会残留上一次的目标值
+        return {
+            "baseline_objective": None,
+            "status": base.status,
+            "tight_blocks": [],
+            "nonbinding_blocks": [],
+            "unsolved_blocks": constraint_block_ids(ir),
+        }
     tight: list[str] = []
     nonbinding: list[str] = []
     failed: list[str] = []
     for block in constraint_block_ids(ir):
         variant = solve_ir(ir, drop=(block,), time_limit=time_limit)
-        if variant.objective is None:
+        if variant.objective is None or variant.status != "Optimal":
             failed.append(block)
-        elif base.objective is not None and abs(variant.objective - base.objective) > 1e-6 * max(
-            1.0, abs(base.objective)
-        ):
+        elif not objective_close(variant.objective, base.objective):
             tight.append(block)
         else:
             nonbinding.append(block)

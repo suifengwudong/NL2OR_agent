@@ -9,11 +9,15 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 from core.block_model import (
     CONSTRAINT_BUILDERS,
     OBJECTIVE_BUILDERS,
     describe_model,
     format_solution,
+    prepare_overrides,
+    readable_keys,
     solve_ir,
     summarize_decisions,
 )
@@ -161,6 +165,13 @@ class TestSolveIrTool:
         assert "无法求解" in output
         assert "可覆盖的键" in output
 
+    def test_reports_a_key_this_model_does_not_read(self):
+        """别的模型读的键不能静默放过：p-median 上没有容量块。"""
+        output = SolveIrTool().forward(_model_ir("p_median_community"), {"capacity": 10})
+
+        assert "无法求解" in output
+        assert "capacity" in output
+
     def test_reports_a_block_without_executable_semantics(self):
         """库外目标块要如实报错，agent 才能按 appendix 回退到 run_solver。"""
         ir = {
@@ -186,3 +197,29 @@ class TestSolveIrTool:
         assert "what_if" not in agent.tools
         assert "Appendix: what_if" in agent.system_prompt
         assert "solve_ir" in agent.system_prompt
+
+
+# ---------------------------------------------------------------------------
+# 覆盖校验：键按模型取，值按维度查
+# ---------------------------------------------------------------------------
+
+
+class TestOverrideValidation:
+    def test_readable_keys_follow_the_active_blocks(self):
+        assert readable_keys(_model_ir("p_median_community")) == {"p", "distance", "demand"}
+
+    def test_key_of_another_model_is_rejected(self):
+        with pytest.raises(ValueError, match="capacity"):
+            prepare_overrides(_model_ir("p_median_community"), {"capacity": 10})
+
+    def test_wrong_list_length_is_rejected(self):
+        with pytest.raises(ValueError, match="长度 3"):
+            prepare_overrides(_model_ir("knapsack_gadget"), {"weight": [10, 20]})
+
+    def test_matrix_shape_is_checked(self):
+        with pytest.raises(ValueError, match="6x5"):
+            prepare_overrides(_model_ir("p_median_community"), {"distance": [[1]]})
+
+    def test_p_must_be_an_integer(self):
+        with pytest.raises(ValueError, match="非负整数"):
+            prepare_overrides(_model_ir("p_median_community"), {"p": 2.5})

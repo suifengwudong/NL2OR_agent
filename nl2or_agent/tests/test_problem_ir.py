@@ -118,9 +118,24 @@ class TestOverrides:
 
         assert ProblemIR.parse_overrides(overrides) == overrides
 
+    def test_parse_overrides_narrows_to_the_allowed_keys(self):
+        assert ProblemIR.parse_overrides({"p": 2}, allowed=frozenset({"p"})) == {"p": 2}
+        with pytest.raises(ValueError, match="该模型可覆盖的键为 p"):
+            ProblemIR.parse_overrides({"capacity": 1}, allowed=frozenset({"p"}))
+
+    def test_parse_overrides_reports_a_model_without_readable_keys(self):
+        with pytest.raises(ValueError, match="没有可覆盖的参数"):
+            ProblemIR.parse_overrides({"p": 2}, allowed=frozenset())
+
     def test_readable_keys_match_what_the_block_model_reads(self):
         """防止可覆盖键与 block_model 实际读取的键漂移（双向）。"""
         source = (_BASE / "core" / "block_model.py").read_text(encoding="utf-8")
         used = set(re.findall(r'(?:data\.get|list_value|matrix|indices)\("([a-z_]+)"', source))
 
         assert used == set(READABLE_DATA_KEYS)
+
+    def test_block_key_map_covers_every_readable_key(self):
+        """每个全局可覆盖键都要能由某个约束块或目标块读取。"""
+        from core.block_model import READ_BLOCK_KEYS
+
+        assert set().union(*READ_BLOCK_KEYS.values()) == set(READABLE_DATA_KEYS)
