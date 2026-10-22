@@ -20,6 +20,7 @@ from hamlet.core import CodeAgent, LiteLLMModel
 
 from core.prompt_loader import load_system_prompt
 from tools import (
+    IrScriptTool,
     ListBlockCatalogTool,
     QueryModelLibraryTool,
     RunSolverTool,
@@ -86,6 +87,20 @@ def apply_agent_mode(agent: CodeAgent, mode: str) -> None:
         agent.prompt_templates["system_prompt"] = system_prompt
 
 
+def _reasoning_kwargs() -> dict:
+    """Reasons budget for the model call.
+
+    Reasoning tokens are about 80% of the completion on this model and dominate
+    the per-step wall time.  litellm does not recognise the model id, so
+    ``reasoning_effort=`` is dropped before it reaches the request; only
+    ``extra_body`` is forwarded verbatim.  The provider honours the on/off
+    switch only (``effort`` and ``max_tokens`` were measured to have no effect).
+    """
+    if os.getenv("HAMLET_REASONING", "").strip().lower() not in {"off", "none", "false"}:
+        return {}
+    return {"extra_body": {"reasoning": {"enabled": False}}}
+
+
 def build_nl2or_agent(
     *,
     mode: str = "interactive",
@@ -124,7 +139,7 @@ def build_nl2or_agent(
         f"Using model: {resolved_model_id}, with OPENROUTER_API_KEY: {'set' if _or_key else 'not set'}"
     )
 
-    model = LiteLLMModel(model_id=resolved_model_id, api_key=_or_key)
+    model = LiteLLMModel(model_id=resolved_model_id, api_key=_or_key, **_reasoning_kwargs())
 
     tools = [
         ListBlockCatalogTool(),
@@ -132,6 +147,7 @@ def build_nl2or_agent(
         QueryModelLibraryTool(),
         RunSolverTool(workspace_dir=workspace_dir),
         SolveIrTool(workspace_dir=workspace_dir),
+        IrScriptTool(workspace_dir=workspace_dir),
     ]
 
     system_prompt = load_system_prompt(mode)

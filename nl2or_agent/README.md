@@ -12,6 +12,19 @@
 - **快路径也留产物**：`solve_ir` 把由 IR 渲染出的脚本写成 `solver_from_ir.py`，与 `run_solver` 走同一条落盘路径，「代码」页仍可查看、编辑与重跑
 - **动机**：实测一个复杂用例（12 需求点 × 8 设施）总耗时 103 秒，其中 94 秒花在手写求解脚本与改脚本上（首版写了一段多余的组合枚举，还把 `LpVariable.dicts` 的嵌套字典当成扁平键索引而报错两次），而该 IR 的六个块全部有可执行语义，`solve_ir` 亚秒级给出同一个 55
 
+### 上下文与提示词
+
+- **自动模式合并步骤**：查库与求解并为一步（调用 `solve_ir` 前按需查模板），一轮从 4 步降到 3 步
+- **观测截断**：`run_solver` 的 stdout 只保留尾部 40 行并注明省略了多少行，求解器过程日志不再随步数反复重发；目标值仍从完整 stdout 提取，`[RESULT]` 行不变
+- **`ir_to_script`**：把 `render_script` 暴露成工具，返回脚本文本并落盘为 `solver_ir_script.py`；用于用户想读或改代码的场合。求解仍走 `solve_ir`，没有把它写进工作流
+- **`HAMLET_REASONING=off`**：该模型是思考型，reasoning token 占 completion 约八成（单次问答 3469/4302），步耗时主要由它决定。litellm 的模型表里没有这个 id，`reasoning_effort` 与 `reasoning.max_tokens` 都在过滤阶段被丢掉，只有 `extra_body` 里的 `reasoning.enabled=false` 生效：同题 31.6 秒降到 9.8 秒
+- **思考 token 不进历史**：HAMLET 只保存 `content`，不读 `reasoning_content`，所以关闭思考不影响下一轮的输入长度，代价只落在答复质量上
+
+### 基准数据修正
+
+- **pmed 用例去重**：OR-Library pmed 数据里同一对节点出现两次且权重不同（pmed_1 两条、pmed_2 七条、pmed_4 四条），题面把两套权重都列出来，「后出现覆盖前面的」与「取较小值」会得到不同最优值（pmed_1 5819 对 5718、pmed_2 4093 对 4069、pmed_4 3034 对 2999）。导入时去重并保留后出现的那条，已发表最优值不变，T3 复跑 pmed_1/2/4 从失败转为 3/3
+- **诊断依据**：模型写出的 100×100 距离矩阵与参考最短路矩阵有 772 个格子不一致且全部偏小，对角线、对称性、最大值 299 均正确，说明差异来自权重取值约定而非抄写错误
+
 ---
 
 ## 更新日志 (2026-10-15)
@@ -140,6 +153,8 @@ cp .env.example .env
 ```dotenv
 HAMLET_MODEL_ID=openrouter/deepseek/deepseek-v4.1-flash   # 或 openrouter/anthropic/claude-3.5-sonnet
 OPENROUTER_API_KEY=sk-or-xxx
+# 可选：off 关闭模型的思考 token（该模型的思考占 completion 约八成，单步耗时主要由它决定）
+HAMLET_REASONING=off
 ```
 
 ### 3. 运行
@@ -396,6 +411,8 @@ class MyTool(Tool):
 ### 切换 LLM 提供商
 
 修改 `.env` 中的 `HAMLET_MODEL_ID`，支持的格式遵循 [litellm](https://docs.litellm.ai/docs/providers) 规范：
+
+思考型模型的 reasoning token 会把单步耗时拉长（实测占 completion 的八成）。`HAMLET_REASONING=off` 时通过 `extra_body={"reasoning": {"enabled": false}}` 关闭思考；改用 `reasoning_effort=` 无效，litellm 的模型表里没有这个 id，参数会在过滤阶段被丢掉。
 
 ### 添加新的 OR 模型模板
 编辑 `data/model_bank/models.json`，按现有格式添加新条目。字段说明：
