@@ -122,7 +122,7 @@ uv run python benchmarks/import_orlib.py --family pmed --ids 1 5 6 10
 | 检查 | 内容 |
 |------|------|
 | `claimed` | 答复里的目标值：先取 `Objective: <值>`，再取带标签的数字（目标值、最优值、总成本、总价值、最大距离…）。不带标签的孤立数字不计入 |
-| `artifact` | 把 agent 自己写出的求解脚本用 `RunSolverTool` 回放一遍，检查它真正算出的目标值 |
+| `artifact` | 把它产出（或由 `solve_ir` 落盘）的求解脚本用 `RunSolverTool` 回放一遍，检查它真正算出的目标值 |
 
 两者都通过才算一次通过。`claimed` 通过而 `artifact` 失败说明答复与产物不一致；`artifact` 通过而 `claimed` 失败属于汇报错误（模型自己编了数字）。报告给出 `claim_pass_rate`、`artifact_pass_rate` 与两者合并的 `attempt_pass_rate`。
 

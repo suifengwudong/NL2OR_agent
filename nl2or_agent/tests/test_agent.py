@@ -62,6 +62,14 @@ class TestLoadSystemPrompt:
         with pytest.raises(ValueError, match="interactive"):
             load_system_prompt("nonsense")
 
+    def test_prompts_route_solving_through_solve_ir_first(self):
+        """求解默认走确定性快路径，run_solver 只作为库外块的退路。"""
+        for mode in AGENT_MODES:
+            prompt = load_system_prompt(mode)
+            assert "solve_ir" in prompt
+            assert "solve_ir" in prompt.split("Fall back to `run_solver")[0]
+            assert "without executable semantics" in prompt
+
 
 # ---------------------------------------------------------------------------
 # build_nl2or_agent tests
