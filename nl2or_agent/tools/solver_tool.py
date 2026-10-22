@@ -18,6 +18,18 @@ _TIMEOUT_SECONDS = 60
 # 结果契约：脚本按此格式打印目标值，评测与答复都以它为准
 _OBJECTIVE_LINE_RE = re.compile(r"Objective:\s*(-?\d+(?:\.\d+)?)")
 
+# 观测里的 stdout 只保留尾部这些行：求解器的过程日志会随步数反复重发，撑大上下文
+_STDOUT_TAIL_LINES = 40
+
+
+def _tail(text: str, max_lines: int = _STDOUT_TAIL_LINES) -> str:
+    """Keep the last *max_lines* lines of *text*, noting how many were dropped."""
+    lines = text.strip().splitlines()
+    if len(lines) <= max_lines:
+        return "\n".join(lines)
+    kept = lines[-max_lines:]
+    return f"[... 前段省略 {len(lines) - max_lines} 行求解器日志 ...]\n" + "\n".join(kept)
+
 
 class RunSolverTool(Tool):
     """Execute Python solver code (gurobipy / scipy / PuLP) and return the output.
@@ -115,10 +127,10 @@ class RunSolverTool(Tool):
         output_parts: list[str] = []
         objective_line = ""
         if result.stdout:
-            output_parts.append(f"[STDOUT]\n{result.stdout.strip()}")
             match = _OBJECTIVE_LINE_RE.search(result.stdout)
             if match:
                 objective_line = match.group(0).strip()
+            output_parts.append(f"[STDOUT]\n{_tail(result.stdout)}")
         if result.stderr:
             output_parts.append(f"[STDERR]\n{result.stderr.strip()}")
         if result.returncode != 0:

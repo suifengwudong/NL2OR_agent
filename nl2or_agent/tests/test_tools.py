@@ -252,6 +252,18 @@ class TestRunSolverTool:
         result = solver_tool.forward("print('no objective here')")
         assert "[RESULT]" not in result
 
+    def test_long_stdout_is_truncated_to_the_tail(self, solver_tool: RunSolverTool):
+        """求解器日志会随步数反复重发，观测只保留尾部若干行。"""
+        code = "\n".join(
+            ["for i in range(200):", "    print('log line', i)", "print('Objective: 42')"]
+        )
+        result = solver_tool.forward(code)
+
+        assert "前段省略" in result
+        assert "[RESULT] Objective: 42" in result
+        assert "log line 199" in result
+        assert "log line 0" not in result
+
     def test_forward_timeout(self, solver_tool: RunSolverTool):
         """Simulate a timeout scenario."""
         with patch("tools.solver_tool.subprocess.run") as mock_run:
