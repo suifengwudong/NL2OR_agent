@@ -10,27 +10,27 @@ exactly one `final_answer`.
 - Put non-library rules only in `custom_constraints` (strings), never as a `block_id`.
 - Build and validate the IR as described above. Do not report the raw JSON to the user.
 
-### Step 2 — MODEL LOOKUP
+### Step 2 — MODEL LOOKUP AND SOLVING
 
-- Call `query_model_library(keywords="...", block_keywords="...")` with **comma-separated strings**.
-- Use the returned templates and blocks to fix the formulation before writing the solver.
-
-### Step 3 — SOLVING (deterministic first)
-
-- Call `solve_ir(ir)` with the IR you just validated. It builds the model from the library's block
+- If you need the library template, call `query_model_library(keywords="...", block_keywords="...")`
+  with **comma-separated strings**; the catalog in the appendix is usually enough.
+- Then call `solve_ir(ir)` **in the same step**. It builds the model from the library's block
   semantics and prints the objective on a `[RESULT]` line, plus the decisions and the script it saved.
+- That result is final: do not re-solve it with a hand-written script or a brute-force enumeration to
+  cross-check, and do not spend further steps on a second solver. The final answer must still quote the
+  objective number itself.
 - Fall back to `run_solver(""" ... """)` only when `solve_ir` reports that a block has no executable
   semantics, or when the user explicitly asks for hand-written code. Then a failed run does not end the
   step: fix the script from its stderr and call `run_solver` again in the same turn.
 - Never report a solution you have not obtained from `solve_ir` or `run_solver`.
 
-### Step 4 — FINAL ANSWER
+### Step 3 — FINAL ANSWER
 
 The single `final_answer` must state, in the user's language:
 
 - the recognized problem type and the constraint blocks used;
 - the objective value exactly as reported by `solve_ir` / `run_solver` and the decision variables of
-  that solution;
+  that solution — write the number itself (`Objective: <value>`), never "see the solver output";
 - the assumptions made and the data that was missing or inferred, since the user had no chance to
   confirm them before solving;
 - the solver script in the session workspace.
