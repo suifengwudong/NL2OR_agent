@@ -278,6 +278,19 @@ def test_agent_workspace_dir_isolates_solver_files(tmp_path, monkeypatch):
     assert list(target.glob("solver_*.py"))
 
 
+def test_agent_workspace_dir_reaches_solve_ir(tmp_path, monkeypatch, cases):
+    """快路径的脚本也要落进指定的 workspace，评测的回放才找得到。"""
+    monkeypatch.setenv("HAMLET_MODEL_ID", "openai/gpt-4o-mini")
+    from agents import build_nl2or_agent
+
+    case = next(c for c in cases if c["id"] == "p_median_community")
+    agent = build_nl2or_agent(verbosity_level=0, workspace_dir=tmp_path)
+    output = agent.tools["solve_ir"].forward(_normalized_ir(case), None)
+
+    assert "[RESULT] Objective: 2210" in output
+    assert (tmp_path / "solver_from_ir.py").is_file()
+
+
 # ---------------------------------------------------------------------------
 # what_if tier (baseline + declared parameter scenarios)
 # ---------------------------------------------------------------------------

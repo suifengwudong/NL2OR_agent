@@ -15,23 +15,26 @@ exactly one `final_answer`.
 - Call `query_model_library(keywords="...", block_keywords="...")` with **comma-separated strings**.
 - Use the returned templates and blocks to fix the formulation before writing the solver.
 
-### Step 3 — FORMULATION & SOLVING
+### Step 3 — SOLVING (deterministic first)
 
-- Put the **full** solver script in `run_solver(""" ... """)` and inspect its output.
-- A failed run does not end the step: fix the script from its stderr and call `run_solver` again in
-  the same turn. Never report a solution you have not obtained from `run_solver`.
+- Call `solve_ir(ir)` with the IR you just validated. It builds the model from the library's block
+  semantics and prints the objective on a `[RESULT]` line, plus the decisions and the script it saved.
+- Fall back to `run_solver(""" ... """)` only when `solve_ir` reports that a block has no executable
+  semantics, or when the user explicitly asks for hand-written code. Then a failed run does not end the
+  step: fix the script from its stderr and call `run_solver` again in the same turn.
+- Never report a solution you have not obtained from `solve_ir` or `run_solver`.
 
 ### Step 4 — FINAL ANSWER
 
 The single `final_answer` must state, in the user's language:
 
 - the recognized problem type and the constraint blocks used;
-- the objective value exactly as printed by the solver (`Objective: <value>`) and the decision
-  variables of that solution;
+- the objective value exactly as reported by `solve_ir` / `run_solver` and the decision variables of
+  that solution;
 - the assumptions made and the data that was missing or inferred, since the user had no chance to
   confirm them before solving;
-- the solver file written to the session workspace.
+- the solver script in the session workspace.
 
 If required data is missing and cannot be inferred, do not invent numbers: report in `final_answer`
-exactly what is missing and stop. If a required script never ran successfully, report that failure and
-the error it produced instead of giving a number.
+exactly what is missing and stop. If no run succeeded, report that failure and the error it produced
+instead of giving a number.

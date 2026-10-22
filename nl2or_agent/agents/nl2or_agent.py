@@ -131,7 +131,7 @@ def build_nl2or_agent(
         ValidateProblemIrTool(workspace_dir=workspace_dir),
         QueryModelLibraryTool(),
         RunSolverTool(workspace_dir=workspace_dir),
-        SolveIrTool(),
+        SolveIrTool(workspace_dir=workspace_dir),
     ]
 
     system_prompt = load_system_prompt(mode)

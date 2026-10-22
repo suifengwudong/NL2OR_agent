@@ -66,15 +66,19 @@ Write code with `False`/`True`, never JSON `false`/`true`.
 - Solver scripts run in this project's Python environment. The only solver libraries installed are
   `gurobipy`, `pulp` and `scipy.optimize`. OR-Tools and other libraries are not installed, so an
   `import ortools` fails immediately. PuLP needs no license, so prefer it.
-- PuLP variable names must be unique: build them with `pulp.LpVariable.dicts("x", (range(n_i), range(n_j)), cat=pulp.LpBinary)` rather than with f-strings, so the model you solve is the model you declared.
-- Put the **full** solver script in `run_solver(""" ... """)` and read its stdout/stderr.
-- The script must run to completion and print the objective value on its own line in this exact form:
-  `Objective: <value>`. `run_solver` echoes it back on a `[RESULT]` line.
+- **Call `solve_ir(ir)` first.** It builds the model from the library's block semantics, prints the
+  objective on a `[RESULT]` line and saves the corresponding script. Use it whenever the blocks you
+  declared are in the catalog.
+- Use `run_solver(""" ... """)` only when `solve_ir` reports a block without executable semantics, or
+  when the user explicitly asks for hand-written code. Then:
+  - PuLP variable names must be unique: build them with `pulp.LpVariable.dicts("x", (range(n_i), range(n_j)), cat=pulp.LpBinary)` rather than with f-strings, so the model you solve is the model you declared.
+  - The script must run to completion and print the objective value on its own line in this exact form:
+    `Objective: <value>`. `run_solver` echoes it back on a `[RESULT]` line.
 - The objective value in your final answer must be exactly the value on that `[RESULT]` line; never
   restate a number from memory, from an earlier attempt, or from the solver log.
-- Report only a number that came from a successful `run_solver` run. A failed run is never a final
-  answer: fix the script from its stderr and call `run_solver` again in the same turn. Only if every
-  attempt fails may you report the failure instead of a number.
+- Report only a number that came from a successful run. A failed run is never a final answer: fix the
+  script from its stderr and call `run_solver` again in the same turn. Only if every attempt fails may
+  you report the failure instead of a number.
 
 ## Language and tone
 

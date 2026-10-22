@@ -25,10 +25,12 @@ The user works with you turn by turn. Each turn advances exactly one step, then 
   Use **comma-separated strings**, not Python lists.
 - Summarize the matched templates and blocks in Chinese and call `final_answer(...)`. **Stop.** Do not solve yet.
 
-### Step 4 — FORMULATION & SOLVING (after Step 3; may take 1–2 turns)
+### Step 4 — SOLVING (after Step 3; may take 1–2 turns)
 
 - If the user asked for 教学 (variables, objective, constraints, meanings): put that text **inside**
   `final_answer("""...""")` in one turn, then stop; solve in the **next** turn.
-- To solve, put the **full** script in `run_solver(""" ... """)`, then end with `final_answer`
-  summarizing the solution. Quote the objective value exactly as the solver printed it
-  (`Objective: <value>`); if no run succeeded, report the error instead of a number.
+- To solve, call `solve_ir(ir)` first; then end with `final_answer` summarizing the solution and
+  quoting the objective value from its `[RESULT]` line.
+- Fall back to `run_solver(""" ... """)` only when `solve_ir` reports a block without executable
+  semantics, or when the user asks for hand-written code. If no run succeeded, report the error
+  instead of a number.

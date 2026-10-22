@@ -24,7 +24,7 @@ from core.block_model import (
 from core.ir_validate import validate_problem_ir
 from core.problem_ir import READABLE_DATA_KEYS, ProblemIR
 from core.what_if import load_manual, manual_markdown, supported_models
-from tools import SolveIrTool
+from tools import RunSolverTool, SolveIrTool
 
 _BASE = Path(__file__).parent.parent
 
@@ -125,54 +125,58 @@ class TestManual:
 
 
 class TestSolveIrTool:
-    def test_solves_the_baseline_without_a_session(self):
-        output = SolveIrTool().forward(_model_ir("p_median_community"))
+    def test_solves_the_baseline_without_a_session(self, tmp_path):
+        output = SolveIrTool(workspace_dir=tmp_path).forward(_model_ir("p_median_community"))
 
         assert "[RESULT] Objective: 2210" in output
         assert "应用的覆盖：无（基准）" in output
 
-    def test_applies_overrides_written_as_a_python_dict(self):
+    def test_applies_overrides_written_as_a_python_dict(self, tmp_path):
         """代码块里直接传 Python dict 是正常写法，不必先 json.dumps。"""
-        tool = SolveIrTool()
+        tool = SolveIrTool(workspace_dir=tmp_path)
         ir = _model_ir("p_median_community")
 
         assert "[RESULT] Objective: 2400" in tool.forward(ir, {"p": 2})
         assert "[RESULT] Objective: 2050" in tool.forward(ir, {"p": 4})
 
-    def test_accepts_json_strings_for_both_arguments(self):
+    def test_accepts_json_strings_for_both_arguments(self, tmp_path):
         ir = _model_ir("p_median_community")
 
-        output = SolveIrTool().forward(json.dumps(ir), json.dumps({"p": 2}))
+        output = SolveIrTool(workspace_dir=tmp_path).forward(json.dumps(ir), json.dumps({"p": 2}))
 
         assert "[RESULT] Objective: 2400" in output
 
-    def test_matches_the_documented_capacity_sweep(self):
-        tool = SolveIrTool()
+    def test_matches_the_documented_capacity_sweep(self, tmp_path):
+        tool = SolveIrTool(workspace_dir=tmp_path)
         ir = _model_ir("knapsack_gadget")
 
         assert "[RESULT] Objective: 180" in tool.forward(ir, {"capacity": 40})
         assert "[RESULT] Objective: 280" in tool.forward(ir, {"capacity": 60})
 
-    def test_reports_unparsable_json(self):
-        assert "无法解析 ir_json" in SolveIrTool().forward("{not json")
+    def test_reports_unparsable_json(self, tmp_path):
+        assert "无法解析 ir_json" in SolveIrTool(workspace_dir=tmp_path).forward("{not json")
 
-    def test_reports_a_non_object_argument(self):
-        assert "必须是一个对象" in SolveIrTool().forward(json.dumps([1, 2]))
+    def test_reports_a_non_object_argument(self, tmp_path):
+        assert "必须是一个对象" in SolveIrTool(workspace_dir=tmp_path).forward(json.dumps([1, 2]))
 
-    def test_reports_an_unsupported_override_key(self):
-        output = SolveIrTool().forward(_model_ir("p_median_community"), {"nope": 1})
+    def test_reports_an_unsupported_override_key(self, tmp_path):
+        output = SolveIrTool(workspace_dir=tmp_path).forward(
+            _model_ir("p_median_community"), {"nope": 1}
+        )
 
         assert "无法求解" in output
         assert "可覆盖的键" in output
 
-    def test_reports_a_key_this_model_does_not_read(self):
+    def test_reports_a_key_this_model_does_not_read(self, tmp_path):
         """别的模型读的键不能静默放过：p-median 上没有容量块。"""
-        output = SolveIrTool().forward(_model_ir("p_median_community"), {"capacity": 10})
+        output = SolveIrTool(workspace_dir=tmp_path).forward(
+            _model_ir("p_median_community"), {"capacity": 10}
+        )
 
         assert "无法求解" in output
         assert "capacity" in output
 
-    def test_reports_a_block_without_executable_semantics(self):
+    def test_reports_a_block_without_executable_semantics(self, tmp_path):
         """库外目标块要如实报错，agent 才能按 appendix 回退到 run_solver。"""
         ir = {
             "problem_families": [{"id": "p_median"}],
@@ -182,10 +186,27 @@ class TestSolveIrTool:
             "objective": {"block_id": "not_in_the_catalog", "sense": "minimize"},
         }
 
-        output = SolveIrTool().forward(ir)
+        output = SolveIrTool(workspace_dir=tmp_path).forward(ir)
 
         assert "无法求解" in output
         assert "没有可执行语义" in output
+
+    def test_baseline_saves_a_runnable_script(self, tmp_path):
+        """快路径也要留下脚本：与 run_solver 的产物同一条落盘路径，且可回放。"""
+        output = SolveIrTool(workspace_dir=tmp_path).forward(_model_ir("p_median_community"))
+        script = tmp_path / "solver_from_ir.py"
+
+        assert script.is_file()
+        assert "solver_from_ir.py" in output
+        replay = RunSolverTool(workspace_dir=tmp_path).run_file(
+            script.read_text(encoding="utf-8"), "replay.py"
+        )
+        assert "[RESULT] Objective: 2210" in replay
+
+    def test_scenario_solves_do_not_write_scripts(self, tmp_path):
+        SolveIrTool(workspace_dir=tmp_path).forward(_model_ir("p_median_community"), {"p": 2})
+
+        assert not list(tmp_path.glob("solver_*.py"))
 
     def test_registered_on_the_agent(self, monkeypatch):
         monkeypatch.setenv("HAMLET_MODEL_ID", "openai/gpt-4o-mini")
