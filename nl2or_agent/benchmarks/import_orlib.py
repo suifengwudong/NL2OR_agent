@@ -72,6 +72,12 @@ def _pmed_case(instance_id: int, optima: dict[str, float]) -> dict:
     n, m, p = int(tokens[0]), int(tokens[1]), int(tokens[2])
     vals = list(map(int, tokens[3 : 3 + 3 * m]))
     edges = [(vals[3 * i] - 1, vals[3 * i + 1] - 1, vals[3 * i + 2]) for i in range(m)]
+    # 同一对节点在数据里可能出现两次且权重不同。约定「后出现的覆盖前面的」并去重：
+    # 已发表最优值对应这个约定，而题面留下两种权重时模型取较小值会得到另一个最优值。
+    seen: dict[tuple[int, int], int] = {}
+    for i, j, w in edges:
+        seen[(min(i, j), max(i, j))] = w
+    edges = [(i, j, w) for (i, j), w in seen.items()]
 
     published = optima.get(f"pmed{instance_id}")
     if published is None:

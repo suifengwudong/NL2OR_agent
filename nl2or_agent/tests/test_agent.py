@@ -100,6 +100,21 @@ class TestBuildNl2orAgent:
         agent = build_nl2or_agent(verbosity_level=0)
         assert isinstance(agent, CodeAgent)
 
+    def test_reasoning_off_goes_through_extra_body(self, monkeypatch):
+        """思考 token 占 completion 的八成，HAMLET_REASONING=off 时关掉。
+
+        litellm 不认识这个模型 id，reasoning_effort 会在过滤阶段被丢掉，
+        所以只能走 extra_body。
+        """
+        monkeypatch.setenv("HAMLET_REASONING", "off")
+        agent = build_nl2or_agent(verbosity_level=0)
+        assert agent.model.kwargs["extra_body"] == {"reasoning": {"enabled": False}}
+
+    def test_reasoning_left_to_the_provider_by_default(self, monkeypatch):
+        monkeypatch.delenv("HAMLET_REASONING", raising=False)
+        agent = build_nl2or_agent(verbosity_level=0)
+        assert "extra_body" not in agent.model.kwargs
+
     def test_raises_when_no_env(self, monkeypatch):
         monkeypatch.delenv("HAMLET_MODEL_ID", raising=False)
         with pytest.raises(ValueError, match="HAMLET_MODEL_ID"):
