@@ -127,6 +127,15 @@ def normalize_with_context(
     missing = ir.get("missing_data")
     out["missing_data"] = missing if isinstance(missing, list) else []
 
+    report = ir.get("report")
+    if report is None:
+        out["report"] = {}
+    elif isinstance(report, dict):
+        out["report"] = report
+    else:
+        errors.append("report 必须是对象")
+        out["report"] = {}
+
     return out, errors, warnings
 
 
@@ -374,7 +383,7 @@ def _normalize_parameters(params: Any, entities: dict[str, Any]) -> dict[str, An
     if not row_ids or not col_ids:
         return out
 
-    for key in ("distance", "service_cost", "coverage_matrix"):
+    for key in ("distance", "service_cost", "coverage_matrix", "availability"):
         value = out.get(key)
         if not isinstance(value, dict):
             continue
@@ -383,4 +392,13 @@ def _normalize_parameters(params: Any, entities: dict[str, Any]) -> dict[str, An
         except (KeyError, TypeError):
             # Leave malformed input unchanged so validation can report it.
             continue
+
+    value = out.get("facility_distance")
+    if isinstance(value, dict) and col_ids:
+        try:
+            out["facility_distance"] = [
+                [value[row_id][col_id] for col_id in col_ids] for row_id in col_ids
+            ]
+        except (KeyError, TypeError):
+            pass
     return out

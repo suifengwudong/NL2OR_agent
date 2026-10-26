@@ -102,6 +102,11 @@ class TestSearchByKeywords:
         assert len(result) == 1
         assert result[0]["id"] == "match"
 
+    def test_search_fields_flattens_list_values(self):
+        items = [{"id": "x", "keywords": ["p-median", "设施"]}]
+        result = search_by_keywords(items, ["p-median"], search_fields=["keywords"])
+        assert result == items
+
     def test_order_by_score(self):
         items = [
             {"tags": ["a"]},
@@ -233,23 +238,26 @@ class TestModelOfRecord:
 
     def test_save_and_load_model_round_trip(self, tmp_path: Path, monkeypatch):
         session = self._session(tmp_path, monkeypatch)
-        ir = {"constraint_blocks": [{"block_id": "assign_each_demand_once"}]}
-        report = {"valid": True, "errors": [], "warnings": []}
+        report = {
+            "valid": True,
+            "errors": [],
+            "warnings": [],
+            "normalized_ir": {"constraint_blocks": [{"block_id": "assign_each_demand_once"}]},
+        }
 
-        path = session.save_model(ir, report)
+        path = session.save_model(report)
         loaded = session.load_model()
 
         assert path.name == "model.json"
         assert loaded is not None
-        assert loaded["ir"] == ir
         assert loaded["report"] == report
         assert loaded["saved_at"]
 
     def test_save_model_overwrites_previous(self, tmp_path: Path, monkeypatch):
         session = self._session(tmp_path, monkeypatch)
-        session.save_model({"a": 1}, {"valid": True})
+        session.save_model({"valid": True, "normalized_ir": {"a": 1}})
 
-        session.save_model({"b": 2}, {"valid": False})
+        session.save_model({"valid": False, "normalized_ir": {"b": 2}})
 
         loaded = session.load_model()
-        assert loaded is not None and loaded["ir"] == {"b": 2}
+        assert loaded is not None and loaded["report"]["normalized_ir"] == {"b": 2}

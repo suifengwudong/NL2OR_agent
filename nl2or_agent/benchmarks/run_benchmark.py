@@ -37,17 +37,18 @@ sys.path.insert(0, str(_ROOT))
 from dotenv import load_dotenv  # noqa: E402
 
 from core.block_model import SOLVE_STATUSES, objective_close  # noqa: E402
+from utils.contract import OBJECTIVE_LINE_RE  # noqa: E402
 
 load_dotenv(_ROOT / ".env")
 
 CASES_PATH = Path(__file__).parent / "cases.json"
+LOCATION_CASES_PATH = Path(__file__).parent / "location_cases.json"
 ORLIB_DIR = Path(__file__).parent / "orlib_cases"
 SOLVERS_DIR = Path(__file__).parent / "references" / "solvers"
 
 TIERS = ("ir", "solver", "online", "tightness", "what_if")
 SCALES = ("s", "m", "l")
 
-_OBJECTIVE_LINE_RE = re.compile(r"Objective:\s*(-?\d+(?:\.\d+)?)")
 _CONTEXT_RE = re.compile(
     r"(?:目标值|最优值|最优目标|总成本|总价值|最大距离|最小距离|Objective|objective)"
     r"[^\d\n-]{0,16}(-?\d+(?:\.\d+)?)"
@@ -143,9 +144,10 @@ def _normalize_case(raw: dict[str, Any], origin: str) -> dict[str, Any]:
 
 def _load_cases(only: list[str] | None = None) -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
-    with open(CASES_PATH, encoding="utf-8") as f:
-        for raw in json.load(f)["cases"]:
-            cases.append(_normalize_case(raw, CASES_PATH.name))
+    for path in (CASES_PATH, LOCATION_CASES_PATH):
+        with open(path, encoding="utf-8") as f:
+            for raw in json.load(f)["cases"]:
+                cases.append(_normalize_case(raw, path.name))
     if ORLIB_DIR.is_dir():
         for path in sorted(ORLIB_DIR.glob("*.json")):
             with open(path, encoding="utf-8") as f:
@@ -261,12 +263,15 @@ def _score_solver_case(case: dict[str, Any], workspace: Path) -> dict[str, Any]:
     checks: dict[str, bool] = {}
     detail: list[str] = []
 
+    variants = list(case.get("tight_blocks") or []) + list(case.get("nonbinding_blocks") or [])
+    ir = _normalized_ir(case) if not script_path.is_file() or variants else None
+
     if script_path.is_file():
         script = script_path.read_text(encoding="utf-8")
     else:
         from core.block_model import render_script
 
-        script = render_script(_normalized_ir(case))
+        script = render_script(ir)
         detail.append(f"参考脚本由 IR 现场渲染（{script_path.name} 不存在）")
 
     output = _run_script(script, workspace / case_id)
@@ -274,11 +279,9 @@ def _score_solver_case(case: dict[str, Any], workspace: Path) -> dict[str, Any]:
     if not checks["reference"]:
         detail.append(f"参考脚本目标值不等于 {expected}")
 
-    variants = list(case.get("tight_blocks") or []) + list(case.get("nonbinding_blocks") or [])
     if variants:
         from core.block_model import render_script
 
-        ir = _normalized_ir(case)
         for block in case.get("tight_blocks") or []:
             script = render_script(ir, drop=(block,))
             out = _run_script(script, workspace / f"{case_id}__drop_{block}")
@@ -331,7 +334,7 @@ def run_solver(cases: list[dict[str, Any]]) -> dict[str, Any]:
 def _extract_objectives(text: str) -> list[tuple[str, float]]:
     """Ordered objective candidates: the `Objective:` contract first, then labelled numbers."""
     found: list[tuple[str, float]] = []
-    for raw in _OBJECTIVE_LINE_RE.findall(text):
+    for raw in OBJECTIVE_LINE_RE.findall(text):
         found.append(("contract", float(raw)))
     for raw in _CONTEXT_RE.findall(text):
         found.append(("labelled", float(raw)))
@@ -340,7 +343,7 @@ def _extract_objectives(text: str) -> list[tuple[str, float]]:
 
 def _objective_matches(text: str, expected: float, tol: float = 1e-6) -> bool:
     """True if *text* reports *expected* as an objective value."""
-    candidates = [float(raw) for raw in _OBJECTIVE_LINE_RE.findall(text)]
+    candidates = [float(raw) for raw in OBJECTIVE_LINE_RE.findall(text)]
     if not candidates:
         candidates = [float(raw) for raw in _CONTEXT_RE.findall(text)]
     return any(objective_close(value, expected, tol) for value in candidates)

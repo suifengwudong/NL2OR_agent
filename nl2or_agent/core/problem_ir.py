@@ -1,9 +1,9 @@
 """The Problem IR as a value object: parse it, normalize it, read its data.
 
-The wire shape lives in ``schema/problem_ir.py`` (``ProblemIRDict``); this class
-carries the behaviour, so tool arguments, normalization, the executable parameter
-view and parameter overrides all share a single implementation instead of one
-private helper per caller.
+The wire shape is a plain dict; the alias vocabulary lives in
+``schema/problem_ir.py``. This class carries the behaviour, so tool arguments,
+normalization, the executable parameter view and parameter overrides all share a
+single implementation instead of one private helper per caller.
 """
 
 from __future__ import annotations
@@ -31,6 +31,10 @@ READABLE_DATA_KEYS: frozenset[str] = frozenset(
         "coverage_matrix",
         "forced_open",
         "forced_closed",
+        "service_distance_limit",
+        "opening_budget",
+        "availability",
+        "facility_distance",
     }
 )
 

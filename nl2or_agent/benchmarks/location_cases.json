@@ -1,0 +1,1046 @@
+{
+  "_comment": "扩展 location 用例：服务距离上限、禁配、有容量 p-center、开设预算最大覆盖、p-dispersion、预算设施选址。与 cases.json 同一套 schema。",
+  "cases": [
+    {
+      "id": "p_median_service_limit",
+      "name": "带服务距离上限的 P-Median",
+      "family": "p_median_service_limit",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "what_if"
+      ],
+      "problem": "某街道计划在 5 个候选位置 A、B、C、D、E 中开设 3 个社区服务中心。6 个居民区的人口分别为 80、120、100、90、110、70。各居民区到各候选位置的距离矩阵为 [[4,6,9,7,8],[5,3,8,6,7],[9,7,4,5,6],[8,6,5,3,4],[6,5,7,4,3],[7,8,6,5,4]]。每个居民区只能分配到距离不超过 5 的服务中心，恰好开设 3 个。目标是最小化需求加权总距离。",
+      "input_ir": {
+        "problem_families": [
+          {
+            "id": "p_median_service_limit",
+            "confidence": 0.95
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 5,
+            "ids": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E"
+            ]
+          }
+        },
+        "parameters": {
+          "p": 3,
+          "demand": [
+            80,
+            120,
+            100,
+            90,
+            110,
+            70
+          ],
+          "distance": [
+            [
+              4,
+              6,
+              9,
+              7,
+              8
+            ],
+            [
+              5,
+              3,
+              8,
+              6,
+              7
+            ],
+            [
+              9,
+              7,
+              4,
+              5,
+              6
+            ],
+            [
+              8,
+              6,
+              5,
+              3,
+              4
+            ],
+            [
+              6,
+              5,
+              7,
+              4,
+              3
+            ],
+            [
+              7,
+              8,
+              6,
+              5,
+              4
+            ]
+          ],
+          "service_distance_limit": 5
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "assign_each_demand_once",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "link_assignment_to_open",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "cardinality_open_p_facilities",
+            "parameters": {
+              "p": 3
+            },
+            "status": "required"
+          },
+          {
+            "block_id": "assignment_distance_limit",
+            "parameters": {
+              "service_distance_limit": 5
+            },
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "weighted_service_distance_objective",
+          "sense": "minimize"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "families": [
+          "p_median_service_limit"
+        ],
+        "block_ids": [
+          "assign_each_demand_once",
+          "link_assignment_to_open",
+          "cardinality_open_p_facilities",
+          "assignment_distance_limit"
+        ],
+        "objective_block": "weighted_service_distance_objective"
+      },
+      "solver_objective": 2240.0,
+      "scenarios": [
+        {
+          "id": "D=6（放宽到无约束）",
+          "overrides": {
+            "service_distance_limit": 6
+          },
+          "expected_objective": 2210
+        },
+        {
+          "id": "D=4（不可行）",
+          "overrides": {
+            "service_distance_limit": 4
+          },
+          "expected_status": "Infeasible"
+        }
+      ]
+    },
+    {
+      "id": "p_median_availability",
+      "name": "带禁配关系的 P-Median",
+      "family": "p_median_availability",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "what_if"
+      ],
+      "problem": "某街道计划在 5 个候选位置 A、B、C、D、E 中开设 3 个社区服务中心。6 个居民区的人口分别为 80、120、100、90、110、70。各居民区到各候选位置的距离矩阵为 [[4,6,9,7,8],[5,3,8,6,7],[9,7,4,5,6],[8,6,5,3,4],[6,5,7,4,3],[7,8,6,5,4]]。第 2 个居民区不能由位置 B 服务，其余分配不受限制，恰好开设 3 个。目标是最小化需求加权总距离。",
+      "input_ir": {
+        "problem_families": [
+          {
+            "id": "p_median_availability",
+            "confidence": 0.95
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 5,
+            "ids": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E"
+            ]
+          }
+        },
+        "parameters": {
+          "p": 3,
+          "demand": [
+            80,
+            120,
+            100,
+            90,
+            110,
+            70
+          ],
+          "distance": [
+            [
+              4,
+              6,
+              9,
+              7,
+              8
+            ],
+            [
+              5,
+              3,
+              8,
+              6,
+              7
+            ],
+            [
+              9,
+              7,
+              4,
+              5,
+              6
+            ],
+            [
+              8,
+              6,
+              5,
+              3,
+              4
+            ],
+            [
+              6,
+              5,
+              7,
+              4,
+              3
+            ],
+            [
+              7,
+              8,
+              6,
+              5,
+              4
+            ]
+          ],
+          "availability": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "assign_each_demand_once",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "link_assignment_to_open",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "cardinality_open_p_facilities",
+            "parameters": {
+              "p": 3
+            },
+            "status": "required"
+          },
+          {
+            "block_id": "assignment_availability",
+            "parameters": {},
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "weighted_service_distance_objective",
+          "sense": "minimize"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "families": [
+          "p_median_availability"
+        ],
+        "block_ids": [
+          "assign_each_demand_once",
+          "link_assignment_to_open",
+          "cardinality_open_p_facilities",
+          "assignment_availability"
+        ],
+        "objective_block": "weighted_service_distance_objective"
+      },
+      "solver_objective": 2290.0,
+      "scenarios": [
+        {
+          "id": "解除禁配",
+          "overrides": {
+            "availability": [
+              [
+                1,
+                1,
+                1,
+                1,
+                1
+              ],
+              [
+                1,
+                1,
+                1,
+                1,
+                1
+              ],
+              [
+                1,
+                1,
+                1,
+                1,
+                1
+              ],
+              [
+                1,
+                1,
+                1,
+                1,
+                1
+              ],
+              [
+                1,
+                1,
+                1,
+                1,
+                1
+              ],
+              [
+                1,
+                1,
+                1,
+                1,
+                1
+              ]
+            ]
+          },
+          "expected_objective": 2210
+        }
+      ]
+    },
+    {
+      "id": "capacitated_p_center",
+      "name": "有容量 P-Center",
+      "family": "capacitated_p_center",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "what_if"
+      ],
+      "problem": "在 4 个候选位置中选 2 个建设应急点，服务 6 个需求点，每个需求点的需求量为 1。距离矩阵为 [[10,20,30,40],[20,15,25,35],[30,25,12,28],[40,35,28,18],[25,22,20,15],[35,30,25,20]]。设施容量分别为 4、2、2、4，需求分配不能超过容量。目标是最小化最大服务距离。",
+      "input_ir": {
+        "problem_families": [
+          {
+            "id": "capacitated_p_center",
+            "confidence": 0.95
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 4
+          }
+        },
+        "parameters": {
+          "p": 2,
+          "distance": [
+            [
+              10,
+              20,
+              30,
+              40
+            ],
+            [
+              20,
+              15,
+              25,
+              35
+            ],
+            [
+              30,
+              25,
+              12,
+              28
+            ],
+            [
+              40,
+              35,
+              28,
+              18
+            ],
+            [
+              25,
+              22,
+              20,
+              15
+            ],
+            [
+              35,
+              30,
+              25,
+              20
+            ]
+          ],
+          "demand": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "facility_capacity": [
+            4,
+            2,
+            2,
+            4
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "assign_each_demand_once",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "link_assignment_to_open",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "cardinality_open_p_facilities",
+            "parameters": {
+              "p": 2
+            },
+            "status": "required"
+          },
+          {
+            "block_id": "max_service_distance_bound",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "facility_capacity",
+            "parameters": {},
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "minimize_max_distance_objective",
+          "sense": "minimize"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "families": [
+          "capacitated_p_center"
+        ],
+        "block_ids": [
+          "assign_each_demand_once",
+          "link_assignment_to_open",
+          "cardinality_open_p_facilities",
+          "max_service_distance_bound",
+          "facility_capacity"
+        ],
+        "objective_block": "minimize_max_distance_objective"
+      },
+      "solver_objective": 28.0,
+      "scenarios": [
+        {
+          "id": "容量放宽到 3",
+          "overrides": {
+            "facility_capacity": [
+              3,
+              3,
+              3,
+              3
+            ]
+          },
+          "expected_objective": 25
+        },
+        {
+          "id": "容量不足（不可行）",
+          "overrides": {
+            "facility_capacity": [
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          "expected_status": "Infeasible"
+        }
+      ]
+    },
+    {
+      "id": "maximum_covering_budget",
+      "name": "带开设预算的最大覆盖",
+      "family": "maximum_covering_budget",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "what_if"
+      ],
+      "problem": "城市要在 4 个候选位置中建设服务站，固定建设成本分别为 10、12、8、9，预算上限为 20。6 个需求点的权重分别为 10、8、12、6、9、5。覆盖矩阵为 [[1,0,1,0],[1,1,0,0],[0,1,1,0],[0,0,1,1],[0,0,0,1],[1,0,0,1]]。只有当至少一个已建设施覆盖需求点时，该需求点才计入已覆盖。目标是最大化被覆盖需求点的权重之和。",
+      "input_ir": {
+        "problem_families": [
+          {
+            "id": "maximum_covering_budget",
+            "confidence": 0.95
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 4
+          }
+        },
+        "parameters": {
+          "fixed_cost": [
+            10,
+            12,
+            8,
+            9
+          ],
+          "opening_budget": 20,
+          "coverage_matrix": [
+            [
+              1,
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              1
+            ]
+          ],
+          "demand": [
+            10,
+            8,
+            12,
+            6,
+            9,
+            5
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "demand_coverage_activation",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "opening_budget",
+            "parameters": {
+              "opening_budget": 20
+            },
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "covered_demand_objective",
+          "sense": "maximize"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "families": [
+          "maximum_covering_budget"
+        ],
+        "block_ids": [
+          "demand_coverage_activation",
+          "opening_budget"
+        ],
+        "objective_block": "covered_demand_objective"
+      },
+      "solver_objective": 42.0,
+      "scenarios": [
+        {
+          "id": "预算 10",
+          "overrides": {
+            "opening_budget": 10
+          },
+          "expected_objective": 28
+        },
+        {
+          "id": "预算 30（覆盖全部）",
+          "overrides": {
+            "opening_budget": 30
+          },
+          "expected_objective": 50
+        },
+        {
+          "id": "预算 0（不允许开设）",
+          "overrides": {
+            "opening_budget": 0
+          },
+          "expected_objective": 0
+        }
+      ]
+    },
+    {
+      "id": "p_dispersion",
+      "name": "P-Dispersion 设施分散",
+      "family": "p_dispersion",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "what_if"
+      ],
+      "problem": "从 4 个候选位置 A、B、C、D 中选择 2 个建设设施，使任意两个已建设施之间的最小距离尽量大。候选设施之间的距离矩阵为 [[0,10,20,25],[10,0,15,30],[20,15,0,12],[25,30,12,0]]。",
+      "input_ir": {
+        "problem_families": [
+          {
+            "id": "p_dispersion",
+            "confidence": 0.95
+          }
+        ],
+        "entities": {
+          "J": {
+            "size": 4,
+            "ids": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ]
+          }
+        },
+        "parameters": {
+          "p": 2,
+          "facility_distance": [
+            [
+              0,
+              10,
+              20,
+              25
+            ],
+            [
+              10,
+              0,
+              15,
+              30
+            ],
+            [
+              20,
+              15,
+              0,
+              12
+            ],
+            [
+              25,
+              30,
+              12,
+              0
+            ]
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "cardinality_open_p_facilities",
+            "parameters": {
+              "p": 2
+            },
+            "status": "required"
+          },
+          {
+            "block_id": "min_pairwise_distance_bound",
+            "parameters": {},
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "maximize_min_pairwise_distance_objective",
+          "sense": "maximize"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "families": [
+          "p_dispersion"
+        ],
+        "block_ids": [
+          "cardinality_open_p_facilities",
+          "min_pairwise_distance_bound"
+        ],
+        "objective_block": "maximize_min_pairwise_distance_objective"
+      },
+      "solver_objective": 30.0,
+      "scenarios": [
+        {
+          "id": "p=3",
+          "overrides": {
+            "p": 3
+          },
+          "expected_objective": 12
+        },
+        {
+          "id": "p=4",
+          "overrides": {
+            "p": 4
+          },
+          "expected_objective": 10
+        }
+      ]
+    },
+    {
+      "id": "budgeted_facility_location",
+      "name": "带开设预算的设施选址",
+      "family": "budgeted_facility_location",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "what_if"
+      ],
+      "problem": "物流公司在 3 个候选仓库位置中选址，固定开设成本分别为 10、8、12，开设预算上限为 20。5 个需求点的服务成本矩阵为 [[15,20,18],[22,12,25],[18,24,14],[30,16,20],[12,22,19]]。每个需求点必须恰好分配到一个已开设仓库，只有开设的仓库才能接收分配。目标是在预算内最小化服务成本。",
+      "input_ir": {
+        "problem_families": [
+          {
+            "id": "budgeted_facility_location",
+            "confidence": 0.95
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 5
+          },
+          "J": {
+            "size": 3
+          }
+        },
+        "parameters": {
+          "fixed_cost": [
+            10,
+            8,
+            12
+          ],
+          "service_cost": [
+            [
+              15,
+              20,
+              18
+            ],
+            [
+              22,
+              12,
+              25
+            ],
+            [
+              18,
+              24,
+              14
+            ],
+            [
+              30,
+              16,
+              20
+            ],
+            [
+              12,
+              22,
+              19
+            ]
+          ],
+          "opening_budget": 20
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "assign_each_demand_once",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "link_assignment_to_open",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "opening_budget",
+            "parameters": {
+              "opening_budget": 20
+            },
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "service_cost_objective",
+          "sense": "minimize"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "families": [
+          "budgeted_facility_location"
+        ],
+        "block_ids": [
+          "assign_each_demand_once",
+          "link_assignment_to_open",
+          "opening_budget"
+        ],
+        "objective_block": "service_cost_objective"
+      },
+      "solver_objective": 73.0,
+      "scenarios": [
+        {
+          "id": "预算 10",
+          "overrides": {
+            "opening_budget": 10
+          },
+          "expected_objective": 94
+        },
+        {
+          "id": "预算 30（全部可开）",
+          "overrides": {
+            "opening_budget": 30
+          },
+          "expected_objective": 69
+        }
+      ]
+    },
+    {
+      "id": "capacitated_maximum_covering",
+      "name": "有容量最大覆盖",
+      "family": "capacitated_maximum_covering",
+      "scale": "s",
+      "tiers": [
+        "ir",
+        "solver",
+        "what_if"
+      ],
+      "problem": "城市要在 4 个候选位置中建设服务站，4 个站点的容量分别为 20、10、10、20。6 个需求点的需求量分别为 10、8、12、6、9、5，同时作为覆盖权重。覆盖矩阵为 [[1,0,1,0],[1,1,0,0],[0,1,1,0],[0,0,1,1],[0,0,0,1],[1,0,0,1]]。每个需求点必须分配到一个已建设施，分配量不能超过设施容量；需求点只有被分配到的设施覆盖时才计入已覆盖。目标是最大化被覆盖需求点的权重之和。",
+      "input_ir": {
+        "problem_families": [
+          {
+            "id": "capacitated_maximum_covering",
+            "confidence": 0.95
+          }
+        ],
+        "entities": {
+          "I": {
+            "size": 6
+          },
+          "J": {
+            "size": 4
+          }
+        },
+        "parameters": {
+          "demand": [
+            10,
+            8,
+            12,
+            6,
+            9,
+            5
+          ],
+          "facility_capacity": [
+            20,
+            10,
+            10,
+            20
+          ],
+          "coverage_matrix": [
+            [
+              1,
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              1
+            ]
+          ]
+        },
+        "constraint_blocks": [
+          {
+            "block_id": "assign_each_demand_once",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "link_assignment_to_open",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "facility_capacity",
+            "parameters": {},
+            "status": "required"
+          },
+          {
+            "block_id": "assignment_coverage_activation",
+            "parameters": {},
+            "status": "required"
+          }
+        ],
+        "objective": {
+          "block_id": "covered_demand_objective",
+          "sense": "maximize"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "families": [
+          "capacitated_maximum_covering"
+        ],
+        "block_ids": [
+          "assign_each_demand_once",
+          "link_assignment_to_open",
+          "facility_capacity",
+          "assignment_coverage_activation"
+        ],
+        "objective_block": "covered_demand_objective"
+      },
+      "solver_objective": 38.0,
+      "scenarios": [
+        {
+          "id": "容量放宽到 20",
+          "overrides": {
+            "facility_capacity": [
+              20,
+              20,
+              20,
+              20
+            ]
+          },
+          "expected_objective": 50
+        },
+        {
+          "id": "总容量不足（不可行）",
+          "overrides": {
+            "facility_capacity": [
+              10,
+              10,
+              10,
+              10
+            ]
+          },
+          "expected_status": "Infeasible"
+        }
+      ]
+    }
+  ]
+}

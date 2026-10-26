@@ -9,9 +9,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .block_model import readable_keys
 from .ir_catalog import load_block_catalog, load_model_bank
 from .ir_normalize import normalize_with_context
 from .problem_ir import ProblemIR
+from .report import validate_report_spec
 
 
 # ---------------------------------------------------------------------------
@@ -36,11 +38,27 @@ def validate_problem_ir(
         for entry in normalized.get("constraint_blocks", []):
             if entry["block_id"] != bid:
                 continue
+            declared = set(entry.get("parameters") or {}) | set(normalized.get("parameters") or {})
             for pname in required_params:
-                if pname not in entry.get("parameters", {}):
+                if pname not in declared:
                     errors.append(f"块 {bid} 缺少必填参数 '{pname}'")
 
     skeleton = _check_skeleton(normalized, catalog, model_bank, errors, warnings)
+    report_spec, report_errors, report_warnings = validate_report_spec(
+        normalized, normalized.get("report")
+    )
+    errors.extend(report_errors)
+    warnings.extend(report_warnings)
+    normalized["report"] = report_spec
+
+    declared = {
+        key
+        for key, value in (normalized.get("parameters") or {}).items()
+        if not isinstance(value, str)
+    }
+    unread = sorted(declared - readable_keys(normalized))
+    if unread:
+        warnings.append(f"参数 {', '.join(unread)} 未被任何已启用块读取")
 
     return {
         "valid": len(errors) == 0,
@@ -74,7 +92,7 @@ def _required_and_optional_blocks(
         )
     required = list(model_bank.get("effective_blocks", {}).get(model_id, []))
     optional = list(model.get("optional_blocks") or [])
-    family_id = model.get("family")
+    family_id = model.get("inherits") or model.get("family")
     if family_id and family_id in model_bank["by_id"]:
         optional += list(model_bank["by_id"][family_id].get("optional_blocks") or [])
     return required, optional
@@ -109,12 +127,20 @@ def _check_entities(normalized_ir: dict[str, Any], errors: list[str]) -> dict[st
         values = params.get(key)
         if n_j and isinstance(values, list) and len(values) != n_j:
             report(f"参数 {key} 的长度 {len(values)} 与 |J|={n_j} 不符")
-    for key in ("distance", "service_cost", "coverage_matrix"):
+    for key in ("distance", "service_cost", "coverage_matrix", "availability"):
         values = params.get(key)
         if n_i and n_j and isinstance(values, list) and values and isinstance(values[0], list):
             shape = (len(values), len(values[0]))
             if shape != (n_i, n_j):
                 report(f"参数 {key} 的维度 {shape[0]}x{shape[1]} 与 |I|x|J|={n_i}x{n_j} 不符")
+
+    values = params.get("facility_distance")
+    if n_j and isinstance(values, list) and values and isinstance(values[0], list):
+        shape = (len(values), len(values[0]))
+        if shape != (n_j, n_j):
+            report(
+                f"参数 facility_distance 的维度 {shape[0]}x{shape[1]} 与 |J|x|J|={n_j}x{n_j} 不符"
+            )
 
     for key in ("forced_open", "forced_closed"):
         for item in params.get(key) or []:

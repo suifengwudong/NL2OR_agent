@@ -13,6 +13,7 @@ Three views over one session:
 from __future__ import annotations
 
 import threading
+from collections import OrderedDict
 from typing import Any, Callable
 
 import gradio as gr
@@ -56,31 +57,21 @@ footer { display: none !important; }
 _THEME = Soft(primary_hue="indigo", neutral_hue="slate", radius_size="md")
 
 
-def _display_answer(raw: str) -> str:
-    """Render agent output for web display."""
-    return format_agent_output(raw)
-
-
 # Per-session agent cache (sid → agent instance).
-# Evict oldest when exceeding _MAX_AGENTS to prevent memory leaks.
-_agents: dict[str, Any] = {}
-_agent_access_order: list[str] = []
+# Evict the least recently used entry when exceeding _MAX_AGENTS.
+_agents: OrderedDict[str, Any] = OrderedDict()
 _agents_lock = threading.Lock()
 
 
 def _get_or_create_agent(sid: str, agent_factory: Callable[[], Any]) -> Any:
     """Thread-safely get or create an agent instance for *sid*, evicting LRU."""
     with _agents_lock:
-        if sid not in _agents:
-            if len(_agents) >= _MAX_AGENTS:
-                oldest = _agent_access_order.pop(0)
-                _agents.pop(oldest, None)
-            _agents[sid] = agent_factory()
-        if sid in _agent_access_order:
-            _agent_access_order.remove(sid)
-        _agent_access_order.append(sid)
-        if len(_agent_access_order) > _MAX_AGENTS * 2:
-            _agent_access_order[:] = _agent_access_order[-_MAX_AGENTS:]
+        if sid in _agents:
+            _agents.move_to_end(sid)
+            return _agents[sid]
+        if len(_agents) >= _MAX_AGENTS:
+            _agents.popitem(last=False)
+        _agents[sid] = agent_factory()
         return _agents[sid]
 
 
@@ -108,7 +99,7 @@ def run_agent_turn(
         apply_agent_mode(agent, mode)
         session.save_conversation_entry(role="user", content=message.strip())
         result = agent.run(message.strip(), reset=False)
-        answer = _display_answer(result)
+        answer = format_agent_output(result)
         session.save_conversation_entry(role="assistant", content=answer)
         history.append({"role": "user", "content": message})
         history.append({"role": "assistant", "content": answer})

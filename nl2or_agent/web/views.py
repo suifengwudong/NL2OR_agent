@@ -12,6 +12,7 @@ from typing import Any
 
 import gradio as gr
 
+from core.model_document import render_model_document
 from utils.session import Session, resolve_session
 
 
@@ -60,8 +61,8 @@ def render_model_view(payload: dict | None) -> str:
     if not payload:
         return "### 尚未解析\n提交问题后，这里显示归一化后的 Problem IR 与模板要求的对照。"
 
-    ir = payload.get("ir") or {}
     report = payload.get("report") or {}
+    ir = report.get("normalized_ir") or {}
     skeleton = report.get("skeleton") or {}
     families = ir.get("problem_families") or []
     entities = ir.get("entities") or {}
@@ -125,6 +126,16 @@ def render_model_view(payload: dict | None) -> str:
         lines.append(f"- 未绑定参数：{', '.join(unbound)}")
     lines.append("")
 
+    report_spec = ir.get("report") or {}
+    if report_spec:
+        lines.append("**报表规格**")
+        lines.append("")
+        lines.append(f"- 类型：`{report_spec.get('profile') or '未声明'}`")
+        lines.append(
+            "- 表：" + "、".join(f"`{table}`" for table in report_spec.get("tables") or [])
+        )
+        lines.append("")
+
     custom = ir.get("custom_constraints") or []
     missing_data = ir.get("missing_data") or []
     if custom or missing_data:
@@ -145,6 +156,10 @@ def render_model_view(payload: dict | None) -> str:
             lines.append(f"- 错误：{message}")
         for message in warnings:
             lines.append(f"- 提示：{message}")
+        lines.append("")
+
+    if ir:
+        lines.append(render_model_document(ir))
     return "\n".join(lines)
 
 
@@ -152,7 +167,8 @@ def render_model_json(payload: dict | None) -> str:
     """Normalized IR as pretty JSON (the machine-readable model of record)."""
     if not payload:
         return ""
-    return json.dumps(payload.get("ir") or {}, ensure_ascii=False, indent=2)
+    normalized = (payload.get("report") or {}).get("normalized_ir") or {}
+    return json.dumps(normalized, ensure_ascii=False, indent=2)
 
 
 def get_model_state(sid: str) -> tuple[str, str]:

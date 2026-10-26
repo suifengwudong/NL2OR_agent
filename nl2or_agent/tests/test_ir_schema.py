@@ -70,7 +70,7 @@ class TestDataIntegrity:
             path = _BASE / "data" / "model_bank" / name
             with open(path) as f:
                 data = json.load(f)
-            assert data.get("schema_version") == 1, f"{name} missing or incorrect schema_version"
+            assert data.get("schema_version") == 2, f"{name} missing or incorrect schema_version"
 
     def test_objective_blocks_declare_sense(self):
         _, catalog = self._load_both()
@@ -387,6 +387,29 @@ class TestEntityChecks:
         )
         assert not report["valid"]
         assert any("不在设施集合 J 中" in e for e in report["errors"])
+
+    def test_unread_parameter_is_flagged(self):
+        report = validate_problem_ir(
+            {
+                "entities": {"I": {"size": 2}, "J": {"size": 2}},
+                "parameters": {
+                    "p": 1,
+                    "distance": [[1, 2], [2, 1]],
+                    "weight": [10, 20],
+                },
+                "constraint_blocks": [
+                    {"block_id": "assign_each_demand_once"},
+                    {"block_id": "link_assignment_to_open"},
+                    {"block_id": "cardinality_open_p_facilities"},
+                ],
+                "objective": {
+                    "block_id": "weighted_service_distance_objective",
+                    "parameters": {"distance": "给定"},
+                },
+            }
+        )
+        assert report["valid"]
+        assert any("weight" in warning for warning in report["warnings"])
 
     def test_checks_skipped_without_entities(self):
         report = validate_problem_ir(self._ir({}, {"p": 2, "distance": self._DISTANCE}))

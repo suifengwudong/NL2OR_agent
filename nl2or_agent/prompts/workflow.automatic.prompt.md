@@ -29,6 +29,8 @@ exactly one `final_answer`.
 The single `final_answer` must state, in the user's language:
 
 - the recognized problem type and the constraint blocks used;
+- the formal mathematical model returned by `model_math(json.dumps(ir))`, pasted with its `$$...$$`
+  delimiters;
 - the objective value exactly as reported by `solve_ir` / `run_solver` and the decision variables of
   that solution — write the number itself (`Objective: <value>`), never "see the solver output";
 - the assumptions made and the data that was missing or inferred, since the user had no chance to

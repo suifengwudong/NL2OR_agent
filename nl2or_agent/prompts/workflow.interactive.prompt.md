@@ -27,8 +27,9 @@ The user works with you turn by turn. Each turn advances exactly one step, then 
 
 ### Step 4 — SOLVING (after Step 3; may take 1–2 turns)
 
-- If the user asked for 教学 (variables, objective, constraints, meanings): put that text **inside**
-  `final_answer("""...""")` in one turn, then stop; solve in the **next** turn.
+- If the user asked for 教学 (variables, objective, constraints, meanings): call
+  `model_math(json.dumps(ir))`, put the returned Markdown **inside** `final_answer("""...""")`
+  in one turn, then stop; solve in the **next** turn.
 - To solve, call `solve_ir(ir)` first; then end with `final_answer` summarizing the solution and
   quoting the objective value from its `[RESULT]` line. Treat that result as final: do not re-solve it
   with a hand-written script or an enumeration to cross-check.

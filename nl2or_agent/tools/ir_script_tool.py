@@ -14,7 +14,7 @@ from hamlet.core.tools import Tool
 
 from core.block_model import render_script
 from core.problem_ir import ProblemIR
-from tools.solver_tool import RunSolverTool
+from utils.session import get_session, save_code_file
 
 _SCRIPT_NAME = "solver_ir_script.py"
 
@@ -48,5 +48,6 @@ class IrScriptTool(Tool):
         except ValueError as exc:
             return f"无法生成脚本：{exc}"
 
-        path = RunSolverTool(workspace_dir=self._workspace).save_code(script, _SCRIPT_NAME)
+        directory = self._workspace if self._workspace is not None else get_session().code_dir
+        path = save_code_file(directory, script, _SCRIPT_NAME)
         return f"脚本已保存：{path}\n\n```python\n{script}```"

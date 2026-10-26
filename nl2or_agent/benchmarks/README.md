@@ -1,6 +1,6 @@
 # NL2OR Benchmark
 
-评估 NL2OR Agent 的建模与求解能力。所有用例（`cases.json` 与 `orlib_cases/*.json`）使用同一套 schema，五层评测共用同一份加载与报告接口。
+评估 NL2OR Agent 的建模与求解能力。所有用例（`cases.json`、`location_cases.json` 与 `orlib_cases/*.json`）使用同一套 schema，五层评测共用同一份加载与报告接口。
 
 ## 用例 schema
 
@@ -44,7 +44,7 @@
 
 ## 可执行语义（单一实现）
 
-`references/block_model.py` 是块的**可执行语义**：输入归一化后的 IR，输出 PuLP 模型。
+`core/block_model.py` 是块的**可执行语义**：输入归一化后的 IR，输出 PuLP 模型。
 
 ```python
 solve_ir(ir)                  # 求解
@@ -72,6 +72,13 @@ analyze_tightness(ir)         # 逐个去掉约束块，判断是否改变最优
 | 手工 | `p_median_force_closed` 2290 | p_median | s |
 | 手工 | `p_median_force_closed_nonbinding` 2210 | p_median | s |
 | 手工 | `hybrid_p_median_custom`（库外规则，仅 ir 层） | p_median | s |
+| 扩展 | `p_median_service_limit` 2240 | p_median_service_limit | s |
+| 扩展 | `p_median_availability` 2290 | p_median_availability | s |
+| 扩展 | `capacitated_p_center` 28 | capacitated_p_center | s |
+| 扩展 | `maximum_covering_budget` 42 | maximum_covering_budget | s |
+| 扩展 | `capacitated_maximum_covering` 38 | capacitated_maximum_covering | s |
+| 扩展 | `p_dispersion` 30 | p_dispersion | s |
+| 扩展 | `budgeted_facility_location` 73 | budgeted_facility_location | s |
 | 负例 ×8 | 漏块 / 方向冲突 / 依赖未满足 / 未知块 / 库外规则当块 / 维度不符 / p 超限 / 强制设施越界 | — | s |
 | 提示类 ×3 | 库外目标不被替换 / 缺目标只提示 / 目标与声明的族不一致 | — | s |
 | OR-Library | `pmed_1..pmed_5`（n=100，已发表最优） | p_median | m |
@@ -152,7 +159,7 @@ uv run python benchmarks/run_benchmark.py --mode what_if --cases p_median_commun
 
 每个声明了 `scenarios` 的用例：先解基准（并与 `solver_objective` 核对），再逐个应用 `overrides` 求解，断言目标值等于 `expected_objective`，或状态等于 `expected_status`（用来锁住"不可行不被跳过"）。`overrides` 走的是与 `solve_ir` 工具同一套校验（`block_model.prepare_overrides`）：键必须由该用例启用的块读取，值的长度与维度必须与实体规模一致，写错键名或写错长度都不会静默放过；单条情景或单个用例求解失败只记为不通过，不会中断整层。
 
-目前 12 个用例共 29 个情景，覆盖：设施数量扫描（p=1/2/4/5）、越界不可行（p=6，|J|=5）、最大化方向的饱和（容量 60 起不再变化）、成本矩阵覆盖关系（改小成本但覆盖不到某需求点则不变）、强制开设（置空回到无约束最优、强制最优解本身不变、强制非最优解变差）、OR-Library 实例上的固定成本置零与容量减半（`cappmed_1/2/3`、`cflp_cap61`、`uflp_cap71/101`，其中 p=4 与容量减半锁住不可行）。
+目前 19 个用例共 43 个情景，覆盖：设施数量扫描（p=1/2/4/5）、越界不可行（p=6，|J|=5）、最大化方向的饱和（容量 60 起不再变化）、成本矩阵覆盖关系（改小成本但覆盖不到某需求点则不变）、强制开设（置空回到无约束最优、强制最优解本身不变、强制非最优解变差）、服务距离上限的放宽与收紧、禁配解除、容量放宽与容量不足、有容量覆盖的容量放宽与总容量不足、开设预算扫描（0/10/20/30）、p-dispersion 的设施数量扫描、OR-Library 实例上的固定成本置零与容量减半（`cappmed_1/2/3`、`cflp_cap61`、`uflp_cap71/101`，其中 p=4 与容量减半锁住不可行）。
 
 ## 报告
 

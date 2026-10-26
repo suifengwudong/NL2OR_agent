@@ -33,8 +33,12 @@ _X2_BLOCKS = {
     "link_assignment_to_open",
     "facility_capacity",
     "max_service_distance_bound",
+    "assignment_distance_limit",
+    "assignment_availability",
+    "assignment_coverage_activation",
     "weighted_service_distance_objective",
     "fixed_plus_service_cost_objective",
+    "service_cost_objective",
 }
 _Y_BLOCKS = {
     "link_assignment_to_open",
@@ -45,11 +49,19 @@ _Y_BLOCKS = {
     "cover_each_demand_at_least_once",
     "demand_coverage_activation",
     "facility_capacity",
+    "opening_budget",
+    "min_pairwise_distance_bound",
     "facility_opening_cost_objective",
     "fixed_plus_service_cost_objective",
+    "maximize_min_pairwise_distance_objective",
 }
-_Z_BLOCKS = {"demand_coverage_activation", "covered_demand_objective"}
+_Z_BLOCKS = {
+    "demand_coverage_activation",
+    "assignment_coverage_activation",
+    "covered_demand_objective",
+}
 _W_BLOCKS = {"max_service_distance_bound", "minimize_max_distance_objective"}
+_DMIN_BLOCKS = {"min_pairwise_distance_bound", "maximize_min_pairwise_distance_objective"}
 _X1_BLOCKS = {"knapsack_capacity", "total_value_objective"}
 
 _STATUS_TEXT = {
@@ -62,7 +74,13 @@ _STATUS_TEXT = {
 
 SOLVE_STATUSES: frozenset[str] = frozenset(_STATUS_TEXT)
 
-_VARIABLE_LABELS = {"y": "开设", "z": "覆盖需求", "x2": "分配", "x1": "选中"}
+_VARIABLE_LABELS = {
+    "y": "开设",
+    "z": "覆盖需求",
+    "x2": "分配",
+    "x1": "选中",
+    "dmin": "最小设施间距",
+}
 
 
 @dataclass
@@ -94,6 +112,16 @@ class ModelContext:
         ):
             return [[float(v) for v in row] for row in raw]
         raise ValueError(f"参数 {key!r} 缺失或维度不是 {self.n_i}x{self.n_j}")
+
+    def facility_matrix(self, key: str) -> list[list[float]]:
+        raw = self.data.get(key)
+        if (
+            isinstance(raw, list)
+            and len(raw) == self.n_j
+            and all(isinstance(row, list) and len(row) == self.n_j for row in raw)
+        ):
+            return [[float(v) for v in row] for row in raw]
+        raise ValueError(f"参数 {key!r} 缺失或维度不是 {self.n_j}x{self.n_j}")
 
     def indices(self, key: str) -> list[int]:
         raw = self.data.get(key) or []
@@ -155,6 +183,38 @@ def _facility_capacity(ctx: ModelContext) -> None:
         ctx.prob += pulp.lpSum(demand[i] * x[i][j] for i in range(ctx.n_i)) <= capacity[j] * y[j]
 
 
+def _assignment_distance_limit(ctx: ModelContext) -> None:
+    x, d = ctx.var["x2"], ctx.matrix("distance")
+    limit = float(ctx.data.get("service_distance_limit"))
+    for i in range(ctx.n_i):
+        for j in range(ctx.n_j):
+            if d[i][j] > limit:
+                ctx.prob += x[i][j] == 0
+
+
+def _assignment_availability(ctx: ModelContext) -> None:
+    x, a = ctx.var["x2"], ctx.matrix("availability")
+    for i in range(ctx.n_i):
+        for j in range(ctx.n_j):
+            ctx.prob += x[i][j] <= a[i][j]
+
+
+def _opening_budget(ctx: ModelContext) -> None:
+    y = ctx.var["y"]
+    fixed = ctx.list_value("fixed_cost", ctx.n_j)
+    budget = float(ctx.data.get("opening_budget"))
+    ctx.prob += pulp.lpSum(fixed[j] * y[j] for j in range(ctx.n_j)) <= budget
+
+
+def _min_pairwise_distance_bound(ctx: ModelContext) -> None:
+    y, dmin = ctx.var["y"], ctx.var["dmin"]
+    distance = ctx.facility_matrix("facility_distance")
+    big_m = max(max(row) for row in distance) if distance else 0.0
+    for j in range(ctx.n_j):
+        for k in range(j + 1, ctx.n_j):
+            ctx.prob += dmin <= distance[j][k] + big_m * (2 - y[j] - y[k])
+
+
 def _knapsack_capacity(ctx: ModelContext) -> None:
     x1 = ctx.var["x1"]
     weight = ctx.list_value("weight", ctx.n_i)
@@ -172,6 +232,12 @@ def _coverage_activation(ctx: ModelContext) -> None:
     y, z, a = ctx.var["y"], ctx.var["z"], ctx.matrix("coverage_matrix")
     for i in range(ctx.n_i):
         ctx.prob += z[i] <= pulp.lpSum(a[i][j] * y[j] for j in range(ctx.n_j))
+
+
+def _assignment_coverage_activation(ctx: ModelContext) -> None:
+    x, z, a = ctx.var["x2"], ctx.var["z"], ctx.matrix("coverage_matrix")
+    for i in range(ctx.n_i):
+        ctx.prob += z[i] <= pulp.lpSum(a[i][j] * x[i][j] for j in range(ctx.n_j))
 
 
 def _max_service_distance_bound(ctx: ModelContext) -> None:
@@ -209,6 +275,12 @@ def _objective_fixed_plus_service_cost(ctx: ModelContext) -> None:
     )
 
 
+def _objective_service_cost(ctx: ModelContext) -> None:
+    x = ctx.var["x2"]
+    service = ctx.matrix("service_cost")
+    ctx.prob += pulp.lpSum(service[i][j] * x[i][j] for i in range(ctx.n_i) for j in range(ctx.n_j))
+
+
 def _objective_covered_demand(ctx: ModelContext) -> None:
     z = ctx.var["z"]
     demand = ctx.list_value("demand", ctx.n_i)
@@ -217,6 +289,10 @@ def _objective_covered_demand(ctx: ModelContext) -> None:
 
 def _objective_minimize_max_distance(ctx: ModelContext) -> None:
     ctx.prob += ctx.var["w"]
+
+
+def _objective_max_min_pairwise_distance(ctx: ModelContext) -> None:
+    ctx.prob += ctx.var["dmin"]
 
 
 def _objective_total_value(ctx: ModelContext) -> None:
@@ -233,6 +309,11 @@ CONSTRAINT_BUILDERS: dict[str, ConstraintBuilder] = {
     "force_facility_open": _force_open,
     "force_facility_closed": _force_closed,
     "facility_capacity": _facility_capacity,
+    "assignment_distance_limit": _assignment_distance_limit,
+    "assignment_availability": _assignment_availability,
+    "assignment_coverage_activation": _assignment_coverage_activation,
+    "opening_budget": _opening_budget,
+    "min_pairwise_distance_bound": _min_pairwise_distance_bound,
     "knapsack_capacity": _knapsack_capacity,
     "cover_each_demand_at_least_once": _cover_each_demand,
     "demand_coverage_activation": _coverage_activation,
@@ -244,8 +325,10 @@ OBJECTIVE_BUILDERS: dict[str, ConstraintBuilder] = {
     "total_service_distance_objective": _objective_total_service_distance,
     "facility_opening_cost_objective": _objective_facility_opening_cost,
     "fixed_plus_service_cost_objective": _objective_fixed_plus_service_cost,
+    "service_cost_objective": _objective_service_cost,
     "covered_demand_objective": _objective_covered_demand,
     "minimize_max_distance_objective": _objective_minimize_max_distance,
+    "maximize_min_pairwise_distance_objective": _objective_max_min_pairwise_distance,
     "total_value_objective": _objective_total_value,
 }
 
@@ -265,6 +348,11 @@ READ_BLOCK_KEYS: dict[str, tuple[str, ...]] = {
     "force_facility_open": ("forced_open",),
     "force_facility_closed": ("forced_closed",),
     "facility_capacity": ("demand", "facility_capacity"),
+    "assignment_distance_limit": ("distance", "service_distance_limit"),
+    "assignment_availability": ("availability",),
+    "assignment_coverage_activation": ("coverage_matrix",),
+    "opening_budget": ("fixed_cost", "opening_budget"),
+    "min_pairwise_distance_bound": ("facility_distance",),
     "knapsack_capacity": ("capacity", "weight"),
     "cover_each_demand_at_least_once": ("coverage_matrix",),
     "demand_coverage_activation": ("coverage_matrix",),
@@ -273,10 +361,29 @@ READ_BLOCK_KEYS: dict[str, tuple[str, ...]] = {
     "total_service_distance_objective": ("distance",),
     "facility_opening_cost_objective": ("fixed_cost",),
     "fixed_plus_service_cost_objective": ("fixed_cost", "service_cost"),
+    "service_cost_objective": ("service_cost",),
     "covered_demand_objective": ("demand",),
     "minimize_max_distance_objective": (),
+    "maximize_min_pairwise_distance_objective": (),
     "total_value_objective": ("value",),
 }
+
+
+def active_variable_names(ir: dict[str, Any]) -> list[str]:
+    """Variable roles the active blocks and objective actually use."""
+    active = set(constraint_block_ids(ir)) | {objective_block_id(ir)}
+    names: list[str] = []
+    for name, blocks in (
+        ("y", _Y_BLOCKS),
+        ("x2", _X2_BLOCKS),
+        ("z", _Z_BLOCKS),
+        ("w", _W_BLOCKS),
+        ("dmin", _DMIN_BLOCKS),
+        ("x1", _X1_BLOCKS),
+    ):
+        if active & blocks:
+            names.append(name)
+    return names
 
 
 def readable_keys(ir: dict[str, Any]) -> frozenset[str]:
@@ -302,7 +409,7 @@ def _check_override_value(key: str, value: Any, n_i: int, n_j: int) -> None:
         if not _is_number(value) or value < 0 or float(value) != int(value):
             fail("非负整数")
         return
-    if key == "capacity":
+    if key in {"capacity", "service_distance_limit", "opening_budget"}:
         if not _is_number(value) or value < 0:
             fail("非负数")
         return
@@ -321,7 +428,7 @@ def _check_override_value(key: str, value: Any, n_i: int, n_j: int) -> None:
         ):
             fail(f"长度 {length} 的数值列表")
         return
-    if key in {"distance", "service_cost", "coverage_matrix"}:
+    if key in {"distance", "service_cost", "coverage_matrix", "availability"}:
         shaped = (
             isinstance(value, list)
             and len(value) == n_i
@@ -332,6 +439,18 @@ def _check_override_value(key: str, value: Any, n_i: int, n_j: int) -> None:
         )
         if not shaped:
             fail(f" {n_i}x{n_j} 的数值矩阵")
+        return
+    if key == "facility_distance":
+        shaped = (
+            isinstance(value, list)
+            and len(value) == n_j
+            and all(
+                isinstance(row, list) and len(row) == n_j and all(_is_number(v) for v in row)
+                for row in value
+            )
+        )
+        if not shaped:
+            fail(f" {n_j}x{n_j} 的数值矩阵")
         return
     fail("块模型可读取的值")
 
@@ -451,12 +570,20 @@ def _sizes(ir: dict[str, Any]) -> tuple[int, int]:
         if isinstance(value, list) and value:
             n_j = len(value)
             break
-    for key in ("distance", "service_cost", "coverage_matrix"):
+    for key in ("distance", "service_cost", "coverage_matrix", "availability"):
         value = data.get(key)
         if isinstance(value, list) and value and isinstance(value[0], list):
             n_i, n_j = len(value), len(value[0])
             break
+    value = data.get("facility_distance")
+    if isinstance(value, list) and value and isinstance(value[0], list):
+        n_j = len(value)
     return n_i, n_j
+
+
+def model_sizes(ir: dict[str, Any]) -> tuple[int, int]:
+    """Public size view used by the report renderer."""
+    return _sizes(ir)
 
 
 def build_model(
@@ -486,6 +613,8 @@ def build_model(
         ctx.var["z"] = pulp.LpVariable.dicts("z", range(n_i), cat=pulp.LpBinary)
     if active & _W_BLOCKS:
         ctx.var["w"] = pulp.LpVariable("w", lowBound=0)
+    if active & _DMIN_BLOCKS:
+        ctx.var["dmin"] = pulp.LpVariable("dmin", lowBound=0)
     if active & _X1_BLOCKS:
         ctx.var["x1"] = pulp.LpVariable.dicts("x", range(n_i), cat=pulp.LpBinary)
 

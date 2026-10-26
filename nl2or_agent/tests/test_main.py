@@ -85,7 +85,7 @@ class TestRunCli:
 
         monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         session = session_mod.get_session()
-        session.save_model({"objective": {}}, {"valid": True})
+        session.save_model({"valid": True})
         session.save_code("print('Objective: 1')", "solve.py")
 
         from main import _run_cli
@@ -103,8 +103,12 @@ class TestRunCli:
         ):
             _run_cli()
 
-        assert any("[产物]" in message and "模型：已生成" in message for message in printed_messages)
-        assert any("[代码文件]" in message and "solve.py" in message for message in printed_messages)
+        assert any(
+            "[产物]" in message and "模型：已生成" in message for message in printed_messages
+        )
+        assert any(
+            "[代码文件]" in message and "solve.py" in message for message in printed_messages
+        )
 
     def test_cli_intercepts_invalid_final_answer_format(self):
         from main import _run_cli
@@ -200,14 +204,14 @@ class TestRunWeb:
 
 class TestDisplayAnswer:
     def test_passes_through_plain_answer(self):
-        from web.app import _display_answer
+        from core.output_format import format_agent_output as _display_answer
 
         result = _display_answer("请确认：\n已解析为 p-中位问题，p=2")
         assert "请确认" in result
         assert "p-中位问题" in result
 
     def test_fallback_on_invalid_format(self):
-        from web.app import _display_answer
+        from core.output_format import format_agent_output as _display_answer
 
         raw = "Thought: let me think\nCode: print('hi')\n```\nsome code```\nraw output"
         result = _display_answer(raw)
@@ -215,7 +219,7 @@ class TestDisplayAnswer:
         assert "raw output" in result
 
     def test_empty_fallback(self):
-        from web.app import _display_answer
+        from core.output_format import format_agent_output as _display_answer
 
         result = _display_answer("")
         assert isinstance(result, str)
@@ -342,7 +346,7 @@ def _model_payload() -> dict:
         },
     }
     report = validate_problem_ir(ir)
-    return {"ir": report["normalized_ir"], "report": report}
+    return {"report": report}
 
 
 class TestModelView:
@@ -376,8 +380,30 @@ class TestModelView:
         payload = _model_payload()
         rendered = json.loads(render_model_json(payload))
 
-        assert rendered == payload["ir"]
+        assert rendered == payload["report"]["normalized_ir"]
         assert render_model_json(None) == ""
+
+
+def test_agent_cache_evicts_the_least_recently_used(monkeypatch):
+    from collections import OrderedDict
+
+    import web.app as app
+
+    monkeypatch.setattr(app, "_MAX_AGENTS", 2)
+    monkeypatch.setattr(app, "_agents", OrderedDict())
+
+    def factory():
+        return object()
+
+    first = app._get_or_create_agent("a", factory)
+    second = app._get_or_create_agent("b", factory)
+    assert app._get_or_create_agent("a", factory) is first
+    third = app._get_or_create_agent("c", factory)
+
+    assert list(app._agents) == ["a", "c"]
+    assert first is app._agents["a"]
+    assert third is app._agents["c"]
+    assert second not in app._agents.values()
 
 
 class TestModelStateFromSession:
@@ -387,7 +413,7 @@ class TestModelStateFromSession:
 
         monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         payload = _model_payload()
-        session_mod.Session(session_id="web01").save_model(payload["ir"], payload["report"])
+        session_mod.Session(session_id="web01").save_model(payload["report"])
 
         view, raw = get_model_state("web01")
 
@@ -417,7 +443,7 @@ class TestAgentSessionBinding:
 
         def run_agent(*_args, **_kwargs):
             current = session_mod.get_session()
-            current.save_model({"objective": {}}, {"valid": True})
+            current.save_model({"valid": True})
             current.save_code("print('Objective: 1')", "solve.py")
             return "模型求解完成"
 

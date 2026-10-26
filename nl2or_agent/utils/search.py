@@ -6,7 +6,6 @@ files or paths.  Each tool loads its own data and hands it to these helpers.
 
 from __future__ import annotations
 
-import ast
 from typing import Any
 
 
@@ -74,21 +73,17 @@ def search_by_keywords(
 
     scored: list[tuple[int, dict[str, Any]]] = []
     for item in items:
-        if search_fields is not None:
-            haystack = [str(item.get(f, "")) for f in search_fields if f in item]
-        else:
-            haystack = [str(v) for v in item.values() if isinstance(v, (str, list))]
-            # flatten lists of strings
-            flat: list[str] = []
-            for h in haystack:
-                if h.startswith("[") and h.endswith("]"):
-                    try:
-                        flat.extend(str(x) for x in ast.literal_eval(h))
-                        continue
-                    except (ValueError, SyntaxError):
-                        pass
-                flat.append(h)
-            haystack = flat
+        values = (
+            [item.get(field) for field in search_fields]
+            if search_fields is not None
+            else list(item.values())
+        )
+        haystack: list[str] = []
+        for value in values:
+            if isinstance(value, list):
+                haystack.extend(str(entry) for entry in value)
+            elif value is not None:
+                haystack.append(str(value))
 
         s = score_keywords(keywords, haystack)
         if s > 0:

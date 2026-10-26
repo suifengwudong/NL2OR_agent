@@ -1,30 +1,15 @@
-"""Problem IR schema — TypedDict definitions, alias maps, and constants.
-
-Processing logic (normalization, validation) lives in ``core/``.
-"""
+"""Problem IR vocabulary — alias maps and validation constants."""
 
 from .problem_ir import (
-    BlockCatalog,
-    ConstraintBlock,
     FAMILY_ID_ALIASES,
     FORBIDDEN_AS_BLOCK,
     OBJECTIVE_BLOCK_ALIASES,
-    ObjectiveBlock,
-    ProblemFamily,
-    ProblemIRDict,
     VALID_STATUS,
-    ValidationReport,
 )
 
 __all__ = [
-    "BlockCatalog",
-    "ConstraintBlock",
     "FAMILY_ID_ALIASES",
     "FORBIDDEN_AS_BLOCK",
     "OBJECTIVE_BLOCK_ALIASES",
-    "ObjectiveBlock",
-    "ProblemFamily",
-    "ProblemIRDict",
     "VALID_STATUS",
-    "ValidationReport",
 ]

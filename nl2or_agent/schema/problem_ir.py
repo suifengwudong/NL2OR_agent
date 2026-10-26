@@ -1,85 +1,18 @@
-"""Canonical Problem IR — TypedDict definitions, alias maps, and constants.
+"""Problem IR vocabulary: alias maps and constants.
 
-Processing logic (normalization, validation) lives in ``core/``.
+The IR is a plain dict at the wire boundary; the behaviour lives in
+``core/problem_ir.py``.
 """
 
 from __future__ import annotations
 
-from typing import TypedDict
-
-
-# ---------------------------------------------------------------------------
-# TypedDict data structures
-# ---------------------------------------------------------------------------
-
-
-class ProblemFamily(TypedDict, total=False):
-    id: str
-    name: str
-    confidence: str
-    notes: str
-
-
-class ConstraintBlock(TypedDict, total=False):
-    block_id: str
-    category: str
-    name: str
-    parameters: dict[str, object]
-    status: str
-    natural_language: str
-
-
-class ObjectiveBlock(TypedDict, total=False):
-    block_id: str
-    sense: str
-    expression: str
-    natural_language: str
-    parameters: dict[str, object]
-
-
-class EntitySet(TypedDict, total=False):
-    size: int
-    ids: list[str]
-
-
-class ProblemIRDict(TypedDict, total=False):
-    problem_families: list[ProblemFamily]
-    is_hybrid: bool
-    hybrid_notes: str
-    entities: dict[str, EntitySet]
-    parameters: dict[str, object]
-    decision_variables: list[object]
-    objective: ObjectiveBlock
-    constraint_blocks: list[ConstraintBlock]
-    custom_constraints: list[str]
-    missing_data: list[str]
-
-
-class ValidationReport(TypedDict):
-    valid: bool
-    normalized_ir: ProblemIRDict
-    errors: list[str]
-    warnings: list[str]
-    catalog_block_ids: list[str]
-    catalog_objective_ids: list[str]
-    skeleton: dict[str, object]
-
-
-class BlockCatalog(TypedDict):
-    blocks: list[dict[str, object]]
-    by_id: dict[str, dict[str, object]]
-    alias_to_id: dict[str, str]
-    block_ids: list[str]
-    objective_block_ids: list[str]
-
-
-# ---------------------------------------------------------------------------
-# Aliases and constants
-# ---------------------------------------------------------------------------
 OBJECTIVE_BLOCK_ALIASES: dict[str, str] = {
     "minimize_total_weighted_distance": "weighted_service_distance_objective",
     "weighted_distance": "weighted_service_distance_objective",
     "min_sum_weighted_distance": "weighted_service_distance_objective",
+    "minimize_service_cost": "service_cost_objective",
+    "max_min_distance": "maximize_min_pairwise_distance_objective",
+    "maximize_min_distance": "maximize_min_pairwise_distance_objective",
 }
 
 FAMILY_ID_ALIASES: dict[str, str] = {
@@ -87,6 +20,15 @@ FAMILY_ID_ALIASES: dict[str, str] = {
     "p median": "p_median",
     "facility location": "facility_location",
     "facility_location_problem": "facility_location",
+    "p-dispersion": "p_dispersion",
+    "p dispersion": "p_dispersion",
+    "capacitated p-center": "capacitated_p_center",
+    "capacitated p center": "capacitated_p_center",
+    "p-median with distance limit": "p_median_service_limit",
+    "p median with distance limit": "p_median_service_limit",
+    "p-median with forbidden assignments": "p_median_availability",
+    "maximum covering with budget": "maximum_covering_budget",
+    "budgeted facility location": "budgeted_facility_location",
 }
 
 FORBIDDEN_AS_BLOCK = frozenset({"custom_constraints", "custom", "objective"})

@@ -9,6 +9,7 @@ from hamlet.core.tools import Tool
 
 from core.ir_catalog import load_block_catalog
 from core.ir_validate import validate_problem_ir
+from core.model_document import render_model_document
 from core.problem_ir import ProblemIR
 from utils.session import get_session, write_model_of_record
 
@@ -94,4 +95,31 @@ class ValidateProblemIrTool(Tool):
     def _save_model(self, report: dict) -> None:
         """记录本次校验的模型：IR 是内容的载体，前端与后续对照都以它为准。"""
         target = self._workspace if self._workspace is not None else get_session().workspace
-        write_model_of_record(target / "model.json", report["normalized_ir"], report)
+        write_model_of_record(target / "model.json", report)
+
+
+class ModelMathTool(Tool):
+    """Render the validated Problem IR as a Markdown + LaTeX model document."""
+
+    name = "model_math"
+    description = (
+        "Render the Problem IR as a complete mathematical model in Markdown with LaTeX: "
+        "index sets, parameters, decision variables, objective and every constraint. "
+        "Call it after validate_problem_ir and include the returned document in the "
+        "formal-model section of the final answer. Input: ir_json (the Problem IR dict "
+        "or its JSON string)."
+    )
+    inputs = {
+        "ir_json": {
+            "type": "string",
+            "description": "JSON string of the Problem IR dict (from json.dumps(ir)).",
+        }
+    }
+    output_type = "string"
+
+    def forward(self, ir_json: str | dict) -> str:
+        try:
+            ir = ProblemIR.parse(ir_json).normalized
+        except ValueError as exc:
+            return f"无法生成数学模型：{exc}"
+        return render_model_document(ir.data)

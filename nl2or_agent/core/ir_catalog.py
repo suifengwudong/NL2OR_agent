@@ -16,7 +16,7 @@ from typing import Any
 from ._defaults import BLOCKS_CATALOG_PATH as _BLOCKS_PATH
 from ._defaults import MODEL_BANK_PATH as _MODELS_PATH
 
-_SUPPORTED_SCHEMA_VERSION = 1
+_SUPPORTED_SCHEMA_VERSION = 2
 _CACHE_SIZE = 8
 
 
@@ -44,7 +44,7 @@ def _model_bank_at(path_str: str, _mtime_ns: int, _size: int) -> dict[str, Any]:
     for m in models:
         if m.get("is_family"):
             continue
-        family_name = m.get("family")
+        family_name = m.get("inherits") or m.get("family")
         blocks = list(m.get("blocks") or [])
         if family_name and family_name in by_id:
             base = by_id[family_name].get("base_blocks") or []

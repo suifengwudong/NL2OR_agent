@@ -21,7 +21,7 @@ from tools import QueryModelLibraryTool, RunSolverTool
 def tmp_model_bank(tmp_path: Path) -> Path:
     """Create a minimal model bank JSON for testing."""
     bank = {
-        "schema_version": 1,
+        "schema_version": 2,
         "models": [
             {
                 "id": "knapsack",
@@ -128,7 +128,7 @@ class TestQueryModelLibraryTool:
     def test_forward_returns_at_most_3_results(self, tmp_path: Path):
         """Ensure no more than 3 results are returned."""
         bank = {
-            "schema_version": 1,
+            "schema_version": 2,
             "models": [
                 {
                     "id": f"model_{i}",

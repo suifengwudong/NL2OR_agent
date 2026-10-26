@@ -1,21 +1,29 @@
 # Issues
 
 ## 说明
-...（略）...
+
+只保留仍在跟踪的问题。已完成的问题按主题归档在下方，详细过程见 git 历史。
 
 ## Issue 列表
 
 | 编号 | 标题 | 标签 | 优先级 | 状态 |
 |------|------|------|--------|------|
-| 001 | Web 会话状态泄漏 | bug, web | 🔴 High | ✅ Fixed |
-| 002 | 正则提取 final_answer 脆弱 | bug, web | 🟡 Medium | ✅ Fixed |
-| 003 | Session 单例非线程安全 | bug, concurrency | 🔴 High | ✅ Fixed |
-| 004 | 文件面板只显示最新会话 | ux, web | 🟢 Low | ✅ Fixed |
-| 005 | _compact_model 重复加载 bank | performance | 🟢 Low | ✅ Fixed |
-| 006 | model_library_tool 与 search 功能重复 | refactor, DRY | 🔴 High | ✅ Fixed |
-| 007 | ir_processor 单一文件过重 | refactor | 🔴 High | ✅ Fixed |
-| 008 | ir_validator 薄封装可合并 | refactor | 🟡 Medium | ✅ Won't Fix |
-| 009 | prompt_loader 依赖 ir_processor | refactor | 🟡 Medium | ✅ Fixed |
-| 010 | model_library 直读 JSON 不复用 core | refactor | 🟡 Medium | ✅ Fixed |
-| 011 | TypedDict 与常量同文件 | refactor | 🟢 Low | ✅ Fixed |
-| 012 | _compact_model 无保护的 fallback | refactor | 🟢 Low | ✅ Fixed |
+| 001 | 数学模型输出与 LaTeX 渲染 | feature, ir, prompt | 🔴 High | ✅ Fixed |
+| 002 | 报表类型严格映射 | feature, report, validation | 🔴 High | ✅ Fixed |
+| 003 | `weight` 参数声明与可执行语义脱节 | bug, ir, model-bank | 🔴 High | ✅ Fixed |
+| 004 | `solve_ir` 单次输出重复状态与目标值 | duplication, report, solve | 🟡 Medium | ✅ Fixed |
+| 005 | 校验报告载荷重复 | duplication, ir, session | 🟡 Medium | ✅ Fixed |
+| 006 | 模型库查询双份数学文本 | duplication, model-library, prompt | 🟡 Medium | ✅ Fixed |
+| 007 | 文档漂移 | docs, drift | 🟡 Medium | ✅ Fixed |
+| 008 | 零散赘余清单 | cleanup, redundancy | 🟢 Low | ✅ Fixed |
+
+## 已完成归档
+
+| 主题 | 内容 | 结果 |
+|------|------|------|
+| 模型库 v2 与 location 扩展 | `class`/`inherits` 分离；新增 p-median 距离上限、禁配、有容量 p-center、预算最大覆盖、有容量最大覆盖、p-dispersion、预算设施选址；新增距离、禁配、预算、容量覆盖与设施分散块 | 已完成，334 项测试通过 |
+| 数学模型与报表 | `model_document`、`model_math`、报表 profile 与表渲染、`solve_ir` 结果报表 | 已完成，337 项测试通过 |
+| reviewer 清理 | `weight` 死声明、`solve_ir` 重复输出、校验载荷三处双写、模型库查询重复公式、文档漂移、零散赘余 | 已完成，337 项测试通过 |
+| 求解与校验链路 | `solve_ir` 快路径、块语义统一、what-if 参数情景、顶层参数校验、OR-Library 用例 | 已完成 |
+| Web 与会话 | 会话隔离、文件面板、模型视图、代码重跑 | 已完成 |
+| 重构与清理 | `ir_processor` 拆分、TypedDict 与常量分离、模型库查询复用、`_compact_model` 加载路径 | 已完成 |

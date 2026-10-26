@@ -19,10 +19,10 @@ def test_model_bank_builds_family_indices(tmp_path: Path):
     bank = _write(
         tmp_path / "models.json",
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "models": [
                 {"id": "location_problem", "is_family": True, "base_blocks": ["assign"]},
-                {"id": "p_median", "family": "location_problem", "blocks": ["cardinality"]},
+                {"id": "p_median", "inherits": "location_problem", "blocks": ["cardinality"]},
             ],
         },
     )
@@ -37,7 +37,7 @@ def test_block_catalog_builds_lookup_indices(tmp_path: Path):
     catalog = _write(
         tmp_path / "constraint_blocks.json",
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "blocks": [
                 {
                     "id": "assign_each_demand_once",
@@ -63,7 +63,7 @@ def test_block_catalog_builds_lookup_indices(tmp_path: Path):
 
 def test_repeated_loads_are_equal_but_independent(tmp_path: Path):
     """缓存命中时也必须交出独立副本，否则一个调用方的改动会污染别人。"""
-    bank = _write(tmp_path / "models.json", {"schema_version": 1, "models": [{"id": "m"}]})
+    bank = _write(tmp_path / "models.json", {"schema_version": 2, "models": [{"id": "m"}]})
 
     first = load_model_bank(bank)
     second = load_model_bank(bank)
@@ -74,10 +74,10 @@ def test_repeated_loads_are_equal_but_independent(tmp_path: Path):
 
 
 def test_editing_the_file_invalidates_the_cache(tmp_path: Path):
-    bank = _write(tmp_path / "models.json", {"schema_version": 1, "models": [{"id": "first"}]})
+    bank = _write(tmp_path / "models.json", {"schema_version": 2, "models": [{"id": "first"}]})
     assert "first" in load_model_bank(bank)["by_id"]
 
-    _write(bank, {"schema_version": 1, "models": [{"id": "second_longer"}]})
+    _write(bank, {"schema_version": 2, "models": [{"id": "second_longer"}]})
 
     assert "second_longer" in load_model_bank(bank)["by_id"]
 

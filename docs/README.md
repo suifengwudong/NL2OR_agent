@@ -109,3 +109,24 @@
   ]
 },
 ```
+
+### TODOs
+
+1. 定位：
+   1. 用户是谁？正常交流
+      1. USER_CASE
+      2. order winners & order qualifiers
+   2. scope objective
+   3. PPT（showcasting）
+   4. 再拆下 modeling。“从零开始”（from-zero）test
+   5. solving + modeling + what-if analysis
+   6. 可视化（人的感受） + argumentation
+   7. 标准化、结构化
+2. 微软 + what-if analysis
+   1. 第一公里 + 最后一公里    Problem-solving + Decision-making
+   2. capacitated fix charge
+   3. imbalance -> 新约束
+3. 需求
+   1. 写出数学模型（敬畏`:)`）的形式 ✅
+      1. 公式渲染 ✅
+   2. 报表类型的严格映射 ✅

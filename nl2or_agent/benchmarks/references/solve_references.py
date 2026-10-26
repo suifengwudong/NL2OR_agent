@@ -10,13 +10,16 @@ Run:  uv run python benchmarks/references/solve_references.py
 
 from __future__ import annotations
 
-import re
 import subprocess
 import sys
 from pathlib import Path
 
+_ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(_ROOT))
+
+from utils.contract import OBJECTIVE_LINE_RE  # noqa: E402
+
 SOLVERS_DIR = Path(__file__).parent / "solvers"
-_OBJ_RE = re.compile(r"Objective:\s*(-?\d+(?:\.\d+)?)")
 
 
 def run_solver_script(path: Path) -> float:
@@ -27,7 +30,7 @@ def run_solver_script(path: Path) -> float:
         text=True,
         timeout=120,
     )
-    match = _OBJ_RE.search(result.stdout)
+    match = OBJECTIVE_LINE_RE.search(result.stdout)
     if not match:
         raise RuntimeError(
             f"{path.name}: no objective in output:\n{result.stdout}\n{result.stderr}"

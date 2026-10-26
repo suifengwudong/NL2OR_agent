@@ -3,20 +3,16 @@
 from __future__ import annotations
 
 import os
-import re
 import subprocess
 import sys
-import uuid
 from pathlib import Path
 
 from hamlet.core.tools import Tool
-from utils.session import get_session
+from utils.contract import OBJECTIVE_LINE_RE
+from utils.session import get_session, save_code_file
 
 
 _TIMEOUT_SECONDS = 60
-
-# 结果契约：脚本按此格式打印目标值，评测与答复都以它为准
-_OBJECTIVE_LINE_RE = re.compile(r"Objective:\s*(-?\d+(?:\.\d+)?)")
 
 # 观测里的 stdout 只保留尾部这些行：求解器的过程日志会随步数反复重发，撑大上下文
 _STDOUT_TAIL_LINES = 40
@@ -79,14 +75,8 @@ class RunSolverTool(Tool):
         If a custom workspace was set at construction time, files go there
         (test mode).  Otherwise they are stored under the current session.
         """
-        if self._workspace is not None:
-            self._workspace.mkdir(parents=True, exist_ok=True)
-            fname = filename or f"solver_{uuid.uuid4().hex[:8]}.py"
-            path = self._workspace / fname
-            path.write_text(code, encoding="utf-8")
-            return path
-        session = get_session()
-        return session.save_code(code, filename)
+        directory = self._workspace if self._workspace is not None else get_session().code_dir
+        return save_code_file(directory, code, filename)
 
     # ------------------------------------------------------------------
     # Tool entry point
@@ -127,7 +117,7 @@ class RunSolverTool(Tool):
         output_parts: list[str] = []
         objective_line = ""
         if result.stdout:
-            match = _OBJECTIVE_LINE_RE.search(result.stdout)
+            match = OBJECTIVE_LINE_RE.search(result.stdout)
             if match:
                 objective_line = match.group(0).strip()
             output_parts.append(f"[STDOUT]\n{_tail(result.stdout)}")

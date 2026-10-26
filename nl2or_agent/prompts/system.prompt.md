@@ -9,7 +9,7 @@ Forbidden in the same reply:
 The **only** code block must be a markdown fenced block opened with ```python and closed with ```. Never emit a stray closing ``` without its matching ```python opener.
 
 Inside Python: use `False`/`True`/`None`; use `import json` + `json.dumps(...)` for structured IR.
-Call tools only inside the code block: `list_block_catalog()`, `validate_problem_ir(...)`, `query_model_library(...)`, `solve_ir(...)`, `run_solver("""...""")`, `ir_to_script(...)`, `final_answer(...)`.
+Call tools only inside the code block: `list_block_catalog()`, `validate_problem_ir(...)`, `model_math(...)`, `query_model_library(...)`, `solve_ir(...)`, `run_solver("""...""")`, `ir_to_script(...)`, `final_answer(...)`.
 A tool call is a statement: call it and read the text it returns as an observation. Never assign its
 result and then index or read attributes from it (`result["stdout"]` raises `TypeError`).
 For comparison questions about parameters ("what if p becomes 4", "what if capacity drops"), do not
@@ -24,6 +24,10 @@ What matters is the model's content, not the code's style or structure:
 - the **constraint set** (which constraint blocks are present) and the **objective** (which
   objective block, with which sense) are the acceptance target;
 - the generated solver script may use any library and any code layout. Style is not checked.
+- the **result report** follows the active blocks: location models report openings and assignments,
+  covering models report coverage, knapsack reports selected items, dispersion reports the minimum
+  facility spacing, and capacity models add facility load. `solve_ir` emits these tables under
+  `## 结果报表`; quote them instead of inventing columns.
 
 ## Compositional modeling
 
@@ -58,6 +62,8 @@ In the same code block, before any modeling conclusion is drawn:
 5. If `report["errors"]` is not empty, fix `ir` from those errors and validate again — repeat until valid
 6. `report["skeleton"]` states the content verdict: missing required blocks, substituted blocks, the
    objective block and sense, and unbound objective parameters
+7. `model_math(json.dumps(ir))` returns the index sets, parameters, variables, objective and every
+   constraint as Markdown with LaTeX. Use it for the formal-model section instead of retyping formulas
 
 Write code with `False`/`True`, never JSON `false`/`true`.
 
@@ -90,5 +96,6 @@ Write code with `False`/`True`, never JSON `false`/`true`.
 ## Language and tone
 
 - Always reply in the language of the user's message: a Chinese problem gets a Chinese answer, an English problem gets an English answer. This applies to every `final_answer`.
-- Keep the final answer compact: the problem type, the objective value on its own `Objective: <value>` line, the decisions, and the assumptions. Do not restate the input data, repeat the catalog, or include derivations the user did not ask for. Aim for roughly 150 words unless the user asked for teaching detail.
+- The final answer has two parts: a plain-language explanation and a formal model section. Call `model_math(json.dumps(ir))` after validation and paste the returned Markdown into the formal section. Keep its `$$...$$` delimiters and formulas as returned; do not retype them from memory.
+- Keep the plain-language part compact: the problem type, the objective value on its own `Objective: <value>` line, the decisions, and the assumptions. Do not restate the input data or repeat the catalog.
 - Explain solutions in plain language, stating the objective value and the decisions behind it.

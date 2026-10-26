@@ -9,11 +9,8 @@ from typing import Any
 from hamlet.core.tools import Tool
 
 from core._defaults import BLOCKS_CATALOG_PATH, MODEL_BANK_PATH
-from core.ir_catalog import load_model_bank
+from core.ir_catalog import load_block_catalog, load_model_bank
 from utils.search import parse_keywords, search_by_keywords
-
-_DEFAULT_BANK_PATH = MODEL_BANK_PATH
-_DEFAULT_BLOCKS_PATH = BLOCKS_CATALOG_PATH
 
 
 def _search_models(
@@ -53,14 +50,10 @@ def _compact_model(
     }
     if "variables" in m:
         out["variables"] = m["variables"]
-    if "objective" in m:
-        out["objective"] = m["objective"]
-    if "constraints" in m:
-        out["constraints"] = m["constraints"]
-    if "solver_hint" in m:
-        out["solver_hint"] = m["solver_hint"]
-    if m.get("family"):
-        out["family"] = m["family"]
+    if m.get("class"):
+        out["class"] = m["class"]
+    if m.get("inherits"):
+        out["inherits"] = m["inherits"]
     if m.get("is_family"):
         out["is_family"] = True
         out["base_blocks"] = m.get("base_blocks", [])
@@ -79,7 +72,7 @@ def _compact_model(
         all_ids = list(m.get("blocks") or [])
     if all_ids:
         out["blocks"] = all_ids
-        by_id = {b["id"]: b for b in blocks_bank.get("blocks", [])}
+        by_id = blocks_bank.get("by_id") or {}
         resolved = [by_id[bid] for bid in all_ids if bid in by_id]
         if resolved:
             out["block_details"] = [
@@ -144,8 +137,8 @@ class QueryModelLibraryTool(Tool):
         blocks_path: str | Path | None = None,
     ) -> None:
         super().__init__()
-        self._bank_path = Path(bank_path) if bank_path else _DEFAULT_BANK_PATH
-        self._blocks_path = Path(blocks_path) if blocks_path else _DEFAULT_BLOCKS_PATH
+        self._bank_path = Path(bank_path) if bank_path else MODEL_BANK_PATH
+        self._blocks_path = Path(blocks_path) if blocks_path else BLOCKS_CATALOG_PATH
 
     def forward(
         self,
@@ -153,10 +146,7 @@ class QueryModelLibraryTool(Tool):
         block_keywords: str | list[str] | None = "",
     ) -> str:
         bank = load_model_bank(self._bank_path)
-        blocks_bank: dict[str, Any] = {"blocks": []}
-        if self._blocks_path.is_file():
-            with open(self._blocks_path, encoding="utf-8") as f:
-                blocks_bank = json.load(f)
+        blocks_bank = load_block_catalog(self._blocks_path)
 
         template_kws = parse_keywords(keywords)
         block_kws = parse_keywords(block_keywords)

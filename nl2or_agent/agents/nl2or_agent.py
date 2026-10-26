@@ -22,6 +22,7 @@ from core.prompt_loader import load_system_prompt
 from tools import (
     IrScriptTool,
     ListBlockCatalogTool,
+    ModelMathTool,
     QueryModelLibraryTool,
     RunSolverTool,
     SolveIrTool,
@@ -144,6 +145,7 @@ def build_nl2or_agent(
     tools = [
         ListBlockCatalogTool(),
         ValidateProblemIrTool(workspace_dir=workspace_dir),
+        ModelMathTool(),
         QueryModelLibraryTool(),
         RunSolverTool(workspace_dir=workspace_dir),
         SolveIrTool(workspace_dir=workspace_dir),

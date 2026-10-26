@@ -22,20 +22,29 @@ _SESSIONS_ROOT = _WORKSPACE_ROOT / "sessions"
 _write_lock = threading.Lock()
 
 
-def write_model_of_record(path: Path, ir: dict, report: dict) -> Path:
-    """Persist a validated IR and its report to *path* (the model of record).
+def write_model_of_record(path: Path, report: dict) -> Path:
+    """Persist a validation report to *path* (the model of record).
 
-    Single writer for ``model.json``: both the session and any explicit workspace
-    go through here, so the payload shape cannot drift between callers.
+    The normalized IR lives inside ``report["normalized_ir"]``; storing it twice
+    made ``model.json`` roughly twice as large as it needed to be.
     """
     payload = {
         "saved_at": datetime.now(timezone.utc).isoformat(),
-        "ir": ir,
         "report": report,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     with _write_lock:
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def save_code_file(directory: Path, code: str, filename: str | None = None) -> Path:
+    """Write solver code into *directory*; one implementation for every caller."""
+    directory.mkdir(parents=True, exist_ok=True)
+    fname = filename or f"solver_{uuid.uuid4().hex[:8]}.py"
+    path = directory / fname
+    with _write_lock:
+        path.write_text(code, encoding="utf-8")
     return path
 
 
@@ -73,9 +82,9 @@ class Session:
     # Model of record
     # ----------------------------------------------------------------
 
-    def save_model(self, ir: dict, report: dict) -> Path:
-        """Persist the validated Problem IR and its validation report."""
-        return write_model_of_record(self.model_file, ir, report)
+    def save_model(self, report: dict) -> Path:
+        """Persist the validation report (its normalized IR included)."""
+        return write_model_of_record(self.model_file, report)
 
     def load_model(self) -> dict | None:
         """Load the last validated model of record, or None if none was saved."""
@@ -90,11 +99,7 @@ class Session:
 
     def save_code(self, code: str, filename: str | None = None) -> Path:
         """Write solver code to the session code directory."""
-        fname = filename or f"solver_{uuid.uuid4().hex[:8]}.py"
-        path = self.code_dir / fname
-        with _write_lock:
-            path.write_text(code, encoding="utf-8")
-        return path
+        return save_code_file(self.code_dir, code, filename)
 
     # ----------------------------------------------------------------
     # Conversation history persistence

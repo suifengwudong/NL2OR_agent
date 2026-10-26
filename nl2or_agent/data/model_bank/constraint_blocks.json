@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "blocks": [
     {
       "id": "assign_each_demand_once",
@@ -19,7 +19,12 @@
       "typical_models": [
         "p_median",
         "p_center",
-        "facility_location"
+        "facility_location",
+        "p_median_service_limit",
+        "p_median_availability",
+        "capacitated_p_center",
+        "capacitated_maximum_covering",
+        "budgeted_facility_location"
       ],
       "description": "每个需求点 i 恰好分配给一个设施",
       "math": "\\sum_{j \\in J} x_{ij} = 1, \\quad \\forall i \\in I",
@@ -44,7 +49,12 @@
       "typical_models": [
         "p_median",
         "p_center",
-        "facility_location"
+        "facility_location",
+        "p_median_service_limit",
+        "p_median_availability",
+        "capacitated_p_center",
+        "capacitated_maximum_covering",
+        "budgeted_facility_location"
       ],
       "description": "只有开设的设施才能接收分配",
       "math": "x_{ij} \\leq y_j, \\quad \\forall i \\in I, j \\in J",
@@ -72,7 +82,11 @@
       "typical_models": [
         "p_median",
         "p_center",
-        "maximum_covering"
+        "maximum_covering",
+        "p_median_service_limit",
+        "p_median_availability",
+        "capacitated_p_center",
+        "p_dispersion"
       ],
       "description": "恰好开设 p 个设施",
       "math": "\\sum_{j \\in J} y_j = p",
@@ -187,18 +201,15 @@
         "需求加权距离"
       ],
       "typical_models": [
-        "p_median"
+        "p_median",
+        "p_median_service_limit",
+        "p_median_availability"
       ],
       "description": "最小化需求加权总服务距离",
       "math": "\\min \\sum_{i \\in I}\\sum_{j \\in J} h_i d_{ij} x_{ij}",
       "parameters": [
         {
           "name": "demand",
-          "type": "dict",
-          "required": false
-        },
-        {
-          "name": "weight",
           "type": "dict",
           "required": false
         },
@@ -262,7 +273,8 @@
         "无容量设施选址"
       ],
       "typical_models": [
-        "facility_location"
+        "facility_location",
+        "budgeted_facility_location"
       ],
       "description": "最小化设施固定开设成本与需求服务成本之和",
       "math": "\\min \\sum_{j \\in J} f_j y_j + \\sum_{i \\in I}\\sum_{j \\in J} c_{ij} x_{ij}",
@@ -327,13 +339,15 @@
         "被覆盖需求"
       ],
       "typical_models": [
-        "maximum_covering"
+        "maximum_covering",
+        "maximum_covering_budget"
       ],
       "description": "只有当至少一个可覆盖需求点 i 的设施被开设时，需求点 i 才能被计为已覆盖",
       "math": "z_i \\leq \\sum_{j \\in J} a_{ij} y_j, \\quad \\forall i \\in I",
       "requires_one_of": [
         "cardinality_open_p_facilities",
-        "cardinality_open_at_most_p_facilities"
+        "cardinality_open_at_most_p_facilities",
+        "opening_budget"
       ],
       "parameters": [
         {
@@ -362,7 +376,9 @@
         "covered demands"
       ],
       "typical_models": [
-        "maximum_covering"
+        "maximum_covering",
+        "maximum_covering_budget",
+        "capacitated_maximum_covering"
       ],
       "description": "最大化被覆盖需求点的需求量或权重之和",
       "math": "\\max \\sum_{i \\in I} h_i z_i",
@@ -393,7 +409,8 @@
         "p中心"
       ],
       "typical_models": [
-        "p_center"
+        "p_center",
+        "capacitated_p_center"
       ],
       "description": "最小化所有需求点到其服务设施距离中的最大值",
       "math": "\\min w",
@@ -417,7 +434,8 @@
         "服务距离上界"
       ],
       "typical_models": [
-        "p_center"
+        "p_center",
+        "capacitated_p_center"
       ],
       "description": "用辅助变量 w 约束所有实际分配的服务距离，确保 w 不小于任一被选择分配边的距离",
       "math": "d_{ij} x_{ij} \\leq w, \\quad \\forall i \\in I, j \\in J",
@@ -534,7 +552,9 @@
       ],
       "typical_models": [
         "capacitated_facility_location",
-        "capacitated_p_median"
+        "capacitated_p_median",
+        "capacitated_p_center",
+        "capacitated_maximum_covering"
       ],
       "description": "分配给某设施的需求量之和不超过该设施容量，未开设的设施容量为 0；与 knapsack_capacity（单背包总重量不超过容量）语义不同",
       "math": "\\sum_{i \\in I} d_i x_{ij} \\leq Q_j y_j, \\quad \\forall j \\in J",
@@ -551,6 +571,229 @@
         }
       ],
       "template_snippet": "for j in facilities:\n    m.addConstr(gp.quicksum(demand[i] * x[i, j] for i in demand_points) <= facility_capacity[j] * y[j], name=f'capacity_{j}')"
+    },
+    {
+      "id": "assignment_distance_limit",
+      "name": "分配距离上限",
+      "category": "distance",
+      "aliases": [
+        "distance_limit",
+        "service_distance_limit",
+        "max_assignment_distance"
+      ],
+      "keywords": [
+        "service distance limit",
+        "maximum distance",
+        "distance limit",
+        "服务距离上限",
+        "最大服务距离",
+        "距离上限"
+      ],
+      "typical_models": [
+        "p_median_service_limit"
+      ],
+      "description": "需求点只能分配给服务距离不超过上限的设施；超出上限的分配边固定为 0",
+      "math": "x_{ij} = 0, \\quad \\forall (i,j): d_{ij} > D",
+      "parameters": [
+        {
+          "name": "distance",
+          "type": "dict",
+          "required": true
+        },
+        {
+          "name": "service_distance_limit",
+          "type": "number",
+          "required": true
+        }
+      ],
+      "template_snippet": "for i in demand_points:\n    for j in facilities:\n        if distance[i, j] > service_distance_limit:\n            m.addConstr(x[i, j] == 0, name=f'distance_limit_{i}_{j}')"
+    },
+    {
+      "id": "assignment_availability",
+      "name": "分配可用性",
+      "category": "assignment",
+      "aliases": [
+        "availability",
+        "forbidden_assignment",
+        "allowed_assignment"
+      ],
+      "keywords": [
+        "availability",
+        "forbidden assignment",
+        "allowed assignment",
+        "禁配",
+        "不可分配",
+        "可用分配"
+      ],
+      "typical_models": [
+        "p_median_availability"
+      ],
+      "description": "用 0-1 可用矩阵限制哪些需求点可以由哪些设施服务",
+      "math": "x_{ij} \\leq a_{ij}, \\quad \\forall i \\in I, j \\in J",
+      "parameters": [
+        {
+          "name": "availability",
+          "type": "dict",
+          "required": true
+        }
+      ],
+      "template_snippet": "for i in demand_points:\n    for j in facilities:\n        m.addConstr(x[i, j] <= availability[i, j], name=f'availability_{i}_{j}')"
+    },
+    {
+      "id": "opening_budget",
+      "name": "开设预算约束",
+      "category": "budget",
+      "aliases": [
+        "budget",
+        "budget_constraint",
+        "opening_cost_budget"
+      ],
+      "keywords": [
+        "budget",
+        "opening budget",
+        "固定成本预算",
+        "开设预算",
+        "预算上限"
+      ],
+      "typical_models": [
+        "maximum_covering_budget",
+        "budgeted_facility_location"
+      ],
+      "description": "已开设设施的固定成本之和不超过预算上限",
+      "math": "\\sum_{j \\in J} f_j y_j \\leq B",
+      "parameters": [
+        {
+          "name": "fixed_cost",
+          "type": "dict",
+          "required": true
+        },
+        {
+          "name": "opening_budget",
+          "type": "number",
+          "required": true
+        }
+      ],
+      "template_snippet": "m.addConstr(gp.quicksum(fixed_cost[j] * y[j] for j in facilities) <= opening_budget, name='opening_budget')"
+    },
+    {
+      "id": "min_pairwise_distance_bound",
+      "name": "设施最小间距约束",
+      "category": "dispersion",
+      "aliases": [
+        "dispersion",
+        "max_min_distance",
+        "pairwise_distance"
+      ],
+      "keywords": [
+        "p-dispersion",
+        "dispersion",
+        "max min distance",
+        "设施分散",
+        "最小间距",
+        "最大最小距离"
+      ],
+      "typical_models": [
+        "p_dispersion"
+      ],
+      "description": "用辅助变量 D 约束任意两个已开设设施之间的距离，使 D 不大于最小设施间距；M 为足够大的常数",
+      "math": "D \\leq d_{jk} + M\\,(2 - y_j - y_k), \\quad \\forall j < k",
+      "parameters": [
+        {
+          "name": "facility_distance",
+          "type": "dict",
+          "required": true
+        }
+      ],
+      "template_snippet": "for j in facilities:\n    for k in facilities:\n        if j < k:\n            m.addConstr(dmin <= facility_distance[j, k] + big_m * (2 - y[j] - y[k]), name=f'pairwise_{j}_{k}')"
+    },
+    {
+      "id": "assignment_coverage_activation",
+      "name": "分配覆盖状态联动",
+      "category": "coverage",
+      "aliases": [
+        "assignment_coverage",
+        "covered_by_assignment"
+      ],
+      "keywords": [
+        "capacitated maximum covering",
+        "assignment coverage",
+        "有容量最大覆盖",
+        "分配覆盖",
+        "覆盖状态"
+      ],
+      "typical_models": [
+        "capacitated_maximum_covering"
+      ],
+      "description": "需求点 i 被计为覆盖，当且仅当它被分配到的设施能够覆盖它",
+      "math": "z_i \\leq \\sum_{j \\in J} a_{ij} x_{ij}, \\quad \\forall i \\in I",
+      "requires_one_of": [
+        "assign_each_demand_once"
+      ],
+      "parameters": [
+        {
+          "name": "coverage_matrix",
+          "type": "dict",
+          "required": true
+        }
+      ],
+      "template_snippet": "for i in demand_points:\n    m.addConstr(z[i] <= gp.quicksum(coverage_matrix[i, j] * x[i, j] for j in facilities), name=f'assignment_coverage_{i}')"
+    },
+    {
+      "id": "service_cost_objective",
+      "name": "服务成本目标",
+      "category": "objective",
+      "sense": "minimize",
+      "aliases": [
+        "minimize_service_cost",
+        "service_cost",
+        "assignment_cost_objective"
+      ],
+      "keywords": [
+        "service cost",
+        "assignment cost",
+        "服务成本",
+        "分配成本",
+        "最小服务成本"
+      ],
+      "typical_models": [
+        "budgeted_facility_location"
+      ],
+      "description": "最小化需求分配到设施的服务成本之和，不含设施固定成本",
+      "math": "\\min \\sum_{i \\in I}\\sum_{j \\in J} c_{ij} x_{ij}",
+      "parameters": [
+        {
+          "name": "service_cost",
+          "type": "dict",
+          "required": true
+        }
+      ],
+      "template_snippet": "m.setObjective(gp.quicksum(service_cost[i, j] * x[i, j] for i in demand_points for j in facilities), GRB.MINIMIZE)"
+    },
+    {
+      "id": "maximize_min_pairwise_distance_objective",
+      "name": "最大化最小设施间距目标",
+      "category": "objective",
+      "sense": "maximize",
+      "aliases": [
+        "max_min_distance",
+        "p_dispersion_objective",
+        "maximize_min_distance"
+      ],
+      "keywords": [
+        "p-dispersion",
+        "max min distance",
+        "maximize minimum distance",
+        "最大最小距离",
+        "设施分散",
+        "设施间距最大"
+      ],
+      "typical_models": [
+        "p_dispersion"
+      ],
+      "description": "最大化任意两个已开设设施之间的最小距离",
+      "math": "\\max D",
+      "parameters": [],
+      "template_snippet": "m.setObjective(dmin, GRB.MAXIMIZE)"
     }
   ]
 }

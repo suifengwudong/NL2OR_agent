@@ -4,6 +4,26 @@
 
 ---
 
+## 更新日志 (2026-10-26)
+
+### location 模型扩展
+
+- **新增模型**：`p_median_service_limit`（带服务距离上限的 P-Median）、`p_median_availability`（带禁配关系的 P-Median）、`capacitated_p_center`（有容量 P-Center）、`maximum_covering_budget`（带开设预算的最大覆盖）、`capacitated_maximum_covering`（有容量最大覆盖）、`p_dispersion`（P-Dispersion 设施分散）、`budgeted_facility_location`（带开设预算的设施选址）
+- **新增块**：`assignment_distance_limit`、`assignment_availability`、`assignment_coverage_activation`、`opening_budget`、`min_pairwise_distance_bound`、`service_cost_objective`、`maximize_min_pairwise_distance_objective`
+- **模型库 schema_version 2**：模型条目的 `class` 负责分类，`inherits` 负责骨架继承；覆盖类与分散类模型可以归入 `location_problem` 分类而不继承 assignment 与 linking
+- **必填参数检查**：`validate_problem_ir` 同时接受顶层 `parameters` 与块内 `parameters`，与 `problem_ir_format` 的说明一致
+- **benchmark**：新增 `benchmarks/location_cases.json`，扩展 7 个用例与 14 个参数情景，覆盖服务距离上限、禁配、容量、开设预算、设施分散与容量覆盖
+
+### 数学模型与结果报表
+
+- **`core/model_document.py`**：由 IR 组装索引集合、参数、决策变量、目标函数与逐条约束，公式使用 LaTeX；库外目标回退到 `expression` 或自然语言
+- **`model_math` 工具**：输入 IR，按需返回 Markdown + LaTeX 文档；校验报告只保留结构化数据，Web 视图在展示时渲染文档
+- **`core/report.py`**：按块结构推导 `location`、`set_covering`、`covering`、`knapsack`、`dispersion`、`capacity`、`covering_capacity`、`general` 八类报表，必需表自动补齐，非法表名与错误 profile 被拒绝
+- **`solve_ir`**：在 `[RESULT]` 与决策摘要之后追加 `## 结果报表`，开设设施、分配关系、覆盖状态、设施负荷、选中物品、最小设施间距与目标项按模型类型渲染
+- **Web 模型视图**：展示报表规格与数学模型文档，Gradio Markdown 按 LaTeX 渲染
+
+---
+
 ## 更新日志 (2026-10-22)
 
 ### 求解默认走确定性快路径
@@ -197,16 +217,7 @@ uv run python main.py --mode web
 
 ## Benchmark 评测
 
-`benchmarks/` 提供五层评测，T1、T2、T4、T5 不依赖 LLM：
-
-| 层 | 命令 | 走 agent | 走求解 | 内容 |
-|----|------|---------|--------|------|
-| T1 IR 判定 | `uv run python benchmarks/run_benchmark.py` | 否 | 否 | 手工用例 + 负例 + OR-Library 用例的判定断言 |
-| T2 求解执行 | `uv run python benchmarks/run_benchmark.py --mode solver` | 否 | 是（`RunSolverTool`） | 参考脚本 + 紧约束变体对照 |
-| T3 端到端 | `uv run python benchmarks/run_benchmark.py --mode online` | 是 | 是 | 需 `OPENROUTER_API_KEY`；答复与产物双重校验，支持 `--repeats`、`--agent-mode` 与预算 |
-| T4 紧约束 | `uv run python benchmarks/run_benchmark.py --mode tightness --write` | 否 | 是 | 计算并写回紧/非紧块元数据与参考脚本 |
-
-块的语义只有一处实现（`core/block_model.py`）：导入真值、参考脚本、紧约束分析与变体对照都走它。最优值来自独立求解与 OR-Library 的已发表值。用例 schema、五层细节与外部 benchmark 调研见 `benchmarks/README.md`。
+`benchmarks/` 提供五层评测：T1 IR 判定、T2 求解执行、T3 端到端、T4 紧约束、T5 情景对比；T1、T2、T4、T5 不依赖 LLM。块的语义只有一处实现（`core/block_model.py`），最优值来自独立求解与 OR-Library 的已发表值。用例 schema、命令与外部 benchmark 调研见 `benchmarks/README.md`。
 
 ---
 
@@ -229,19 +240,22 @@ nl2or_agent/
 │   ├── block_model.py      # 可执行块语义：IR → PuLP，求解与结果渲染
 │   ├── ir_catalog.py       # 模型库/积木块目录加载（按文件状态缓存）
 │   ├── ir_normalize.py     # Problem IR 归一化
-│   ├── ir_validate.py      # 骨架与维度校验
+│   ├── ir_validate.py      # 骨架、维度与报表规格校验
+│   ├── model_document.py   # IR → 数学模型文档（Markdown + LaTeX）
 │   ├── output_format.py    # agent 输出清洗
 │   ├── problem_ir.py       # ProblemIR 值对象：解析 / 归一化视图 / 参数覆盖
 │   ├── prompt_loader.py    # 提示词加载
+│   ├── report.py           # 报表类型派生、校验与渲染
 │   └── what_if.py          # what_if skill：manual 渲染 + 可算模型表
 │
 ├── schema/
 │   ├── __init__.py
-│   └── problem_ir.py       # TypedDict 数据定义（ProblemIRDict 等）+ 常量别名
+│   └── problem_ir.py       # IR 别名映射与校验常量
 │
 ├── tools/
 │   ├── __init__.py
-│   ├── ir_tools.py             # ListBlockCatalogTool / ValidateProblemIrTool
+│   ├── ir_tools.py             # ListBlockCatalogTool / ValidateProblemIrTool / ModelMathTool
+│   ├── ir_script_tool.py       # IrScriptTool — 按 IR 渲染可读求解脚本
 │   ├── model_library_tool.py   # QueryModelLibraryTool — 查询 OR 模型模板库
 │   ├── solver_tool.py          # RunSolverTool — 执行生成的求解代码
 │   └── solve_ir_tool.py        # SolveIrTool — 按 IR 求解单个情景
@@ -257,8 +271,9 @@ nl2or_agent/
 │
 ├── utils/
 │   ├── __init__.py
+│   ├── contract.py         # 求解器输出契约（Objective: <值>）
 │   ├── search.py           # 关键词搜索工具
-│   └── session.py          # 会话工作区、会话与模型产物（model.json）
+│   └── session.py          # 会话工作区、模型产物与求解脚本存盘
 │
 ├── web/
 │   ├── __init__.py
@@ -283,9 +298,10 @@ nl2or_agent/
 | 交互核心 | `CodeAgent` | `agents/nl2or_agent.py` 中的 `build_nl2or_agent()` |
 | LLM | `LiteLLMModel` | 通过 `HAMLET_MODEL_ID` 环境变量切换提供商 |
 | 模型库接口 | `Tool` 子类 | `tools/model_library_tool.py` — `QueryModelLibraryTool` |
-| IR 校验接口 | `Tool` 子类 | `tools/ir_tools.py` — `ListBlockCatalogTool` / `ValidateProblemIrTool` |
+| IR 校验接口 | `Tool` 子类 | `tools/ir_tools.py` — `ListBlockCatalogTool` / `ValidateProblemIrTool` / `ModelMathTool` |
 | 求解器接口 | `Tool` 子类 | `tools/solver_tool.py` — `RunSolverTool` |
 | 情景求解接口 | `Tool` 子类 | `tools/solve_ir_tool.py` — `SolveIrTool`（按 IR 求解单个情景，不写脚本） |
+| 脚本渲染接口 | `Tool` 子类 | `tools/ir_script_tool.py` — `IrScriptTool`（按 IR 渲染脚本） |
 | 代码生成器 | `CodeAgent` 内置 | CodeAgent 自带 Python 代码生成与执行能力 |
 | 本地存储 | 文件系统 | `data/workspace/` 目录，求解脚本按 UUID 命名存储 |
 | 用户界面 | Gradio | `web/app.py` — 自建 Gradio 聊天界面 + `main.py --mode web` |
@@ -303,14 +319,19 @@ graph TD
         T2[ValidateProblemIrTool]
         T3[QueryModelLibraryTool]
         T4[RunSolverTool]
+        T5[SolveIrTool]
+        T6[ModelMathTool]
+        T7[IrScriptTool]
     end
 
     subgraph "core/ (处理引擎层)"
         C1["ir_catalog.py<br/>目录加载（缓存）"]
         C2["ir_normalize.py<br/>归一化"]
-        C2b["ir_validate.py<br/>校验"]
-        C3["output_format.py<br/>结构化输出"]
+        C2b["ir_validate.py<br/>骨架、维度与报表校验"]
+        C3["output_format.py<br/>输出清洗"]
         C4["prompt_loader.py<br/>提示词加载"]
+        C5["model_document.py<br/>数学模型文档"]
+        C6["report.py<br/>报表派生与渲染"]
     end
 
     subgraph "schema/ (数据定义层)"
@@ -327,11 +348,12 @@ graph TD
         W2["views.py"]
     end
 
-    A -->|组装 tools| T1 & T2 & T3 & T4
+    A -->|组装 tools| T1 & T2 & T3 & T4 & T5 & T6 & T7
     A -->|系统 prompt| C4
-    T1 & T2 -->|调用| C1 & C2 & C2b
+    T1 & T2 & T6 -->|调用| C1 & C2 & C2b & C5
     T3 -->|搜索| U1
-    T4 -->|存储| U2
+    T4 & T5 & T7 -->|存储| U2
+    T5 -->|求解与报表| C1 & C2 & C6
     C1 & C2 & C2b -->|引用常量| S1
     C4 -->|catalog| C1
     W1 -->|格式化输出| C3
@@ -341,7 +363,7 @@ graph TD
 | 模块 | 职责 | 内容 |
 |------|------|------|
 | `schema/` | 数据定义层 | `problem_ir.py`（TypedDict + 常量别名） |
-| `core/` | 处理引擎层 | `ir_catalog.py`（目录加载，按文件状态缓存）、`ir_normalize.py`（归一化）、`ir_validate.py`（骨架与维度校验）、`problem_ir.py`（IR 值对象）、`block_model.py`（可执行块语义）、`output_format.py`（输出清洗）、`prompt_loader.py`（按模式组装提示词） |
+| `core/` | 处理引擎层 | `ir_catalog.py`（目录加载，按文件状态缓存）、`ir_normalize.py`（归一化）、`ir_validate.py`（骨架、维度与报表校验）、`model_document.py`（数学模型文档）、`report.py`（报表派生与渲染）、`problem_ir.py`（IR 值对象）、`block_model.py`（可执行块语义）、`output_format.py`（输出清洗）、`prompt_loader.py`（按模式组装提示词） |
 | `tools/` | Agent 接口层 | HAMLET Tool 子类，薄封装调用 `core/` 函数 |
 | `utils/` | 基础设施层 | `search.py`（关键词检索）、`session.py`（会话管理） |
 | `web/` | 表现层 | `app.py`（界面接线、对话轮次与 Agent 缓存）、`views.py`（会话视图取值与渲染） |
@@ -418,8 +440,14 @@ class MyTool(Tool):
 编辑 `data/model_bank/models.json`，按现有格式添加新条目。字段说明：
 
 - `id`: 唯一标识符
+- `class`: 问题分类，如 `location_problem`、`knapsack`、`general`
+- `inherits`: 需要继承骨架时填写父族 id，如 `location_problem`
+- `blocks`: 该模型自身的约束块 id 列表
+- `objective_block`: 目标块 id
+- `parameters`: 参数名、类型与是否必填
 - `keywords`: 检索关键词列表（中英文均可）
-- `template_code`: 可直接适配的 gurobipy 代码骨架
+
+约束块的数学形式、参数与可执行语义分别登记在 `constraint_blocks.json` 与 `core/block_model.py`。
 
 ### 使用 Gradio GUI
 
@@ -450,75 +478,3 @@ Web 界面支持聊天交互、求解器文件列表查看与会话级隔离（�
 
 > 结构实现可以参考 `../docs/DESIGN.md` 中的设计方案（由于由大模型生成，不保证对），具体细节可根据实际开发进度进行调整与优化。
 >
-
-## 二、主循环简易开发文档
-
-> 说明：AI 生成，仅供参考
-
-### 1. 核心目标
-实现 `用户 ↔ NL2OR 系统 ↔ LLM` 的对话闭环，完成自然语言问题到中间表示（IR）的解析、确认与修正。
-
-### 2. 主循环状态机（精炼）
-
-- **PARSING**：接收用户输入 → 调用 LLM 生成 IR → 校验 → 追问确认 → 转 **CONFIRMING**
-- **CONFIRMING**：用户回复  
-  - “确认” → 结束循环（后续转求解）  
-  - “修改” → 调用 LLM 矫正 IR → 重新追问 → 保持 **CONFIRMING**
-
-### 3. 技术栈（仅主循环）
-
-| 组件 | 技术 | 说明 |
-|------|------|------|
-| 交互入口 | CLI (`argparse`+`input`) / FastAPI | CLI 调试，Web 供普通用户 |
-| 统一 LLM 接口 | `litellm` | 通过环境变量切换模型（DeepSeek/OpenAI/通义等） |
-| IR 校验 | Pydantic | 强制 schema，自动类型转换 |
-| 会话状态 | 内存字典 + 可选 SQLite | 存储状态、IR、对话历史 |
-| 配置 | `python-dotenv` | `LLM_MODEL`, `API_KEY` 等 |
-| 日志 | `structlog`（可选） | 记录 token 数、延迟 |
-
-### 4. 持久化方案（会话级数据存储）
-
-> 将用户上传的数据文件、对话历史、中间表示、生成代码等统一按会话存储。
-
-**目录结构**（轻量方案）：
-```
-workspace/session_{id}/
-├── chat_history.json   # 对话记录、IR、确认状态
-├── data/               # 用户上传的 Excel/CSV
-├── generated/          # 生成的求解代码
-└── outputs/            # 求解结果（可选）
-```
-
-**关键操作**：
-- 用户上传文件 → 存入 `data/`，系统自动生成摘要（列名、前几行）并记录到 `chat_history.json`
-- LLM 生成代码时直接引用文件路径（如 `pd.read_excel("data/input.xlsx")`）
-- 会话可整体导出/导入
-
-**扩展建议**：后续可升级为 SQLite + 对象存储（MinIO），但初期文件系统足够。
-
-### 5. 核心数据流（图文简洁版）
-
-```
-用户输入 → 系统(PARSING) → litellm(LLM) → IR(JSON) → Pydantic校验 
-→ 追问 → 用户确认 → 进入 CONFIRMING
-   ├─ 确认 → 结束主循环（输出最终 IR）
-   └─ 修改 → litellm 矫正 → 重新追问
-```
-
-- 所有中间数据（IR、历史、文件摘要）实时写入 `workspace/session_{id}/chat_history.json`
-- 主循环不涉及求解器，只负责生成经过用户确认的 IR。
-
-### 6. 开发顺序（最小可行）
-
-1. **CLI 版状态机**：内存存储，无持久化，调试 LLM 解析与确认流程。
-2. **加入持久化**：按会话 ID 读写 JSON 文件，支持断点恢复。
-3. **加入文件上传**（Web 模式）：接收 Excel/CSV，存入 `data/`，生成摘要。
-4. **Web 封装**：FastAPI 提供 `/chat` 和 `/upload` 端点。
-
-### 7. 注意事项
-
-- **LLM 输出要求**：通过 system prompt 强制输出合法 JSON，若校验失败则自动重试。
-- **文件安全**：限制上传大小（如 10MB），对 Excel 用 `pandas` 读取前 5 行做摘要，不全文塞入 LLM。
-- **会话清理**：定期删除超过 7 天未活动的会话目录（可配置）。
-
----
