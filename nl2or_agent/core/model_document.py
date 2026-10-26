@@ -124,7 +124,7 @@ def _render_variables(ir: dict[str, Any], entries: list[dict[str, Any]]) -> list
     variables: list[dict[str, Any]] = []
     seen: set[str] = set()
     for model in entries:
-        declared = model.get("variables") or model.get("decision_variables") or []
+        declared = model.get("variables") or []
         for variable in declared:
             symbol = str(variable.get("symbol") or "")
             if not symbol or symbol in seen:

@@ -99,7 +99,7 @@ def _pmed_case(instance_id: int, optima: dict[str, float]) -> dict:
         "source": f"OR-Library p-median pmed{instance_id}（已发表最优 {published}）",
         "problem": _pmed_problem(n, p, edges),
         "input_ir": {
-            "problem_families": [{"id": "p_median", "confidence": 0.95}],
+            "problem_families": [{"id": "p_median"}],
             "entities": {"I": {"size": n}, "J": {"size": n}},
             "parameters": {"p": p},
             "constraint_blocks": [
@@ -160,7 +160,7 @@ def _warehouse_case(kind: str, instance_id: int, data: str, optima: dict[str, fl
     model_id = "capacitated_facility_location" if kind == "cflp" else "facility_location"
     objective_block = "fixed_plus_service_cost_objective"
     input_ir = {
-        "problem_families": [{"id": model_id, "confidence": 0.95}],
+        "problem_families": [{"id": model_id}],
         "entities": {"I": {"size": n}, "J": {"size": m}},
         "parameters": {
             "fixed_cost": fixed_cost,
@@ -249,7 +249,7 @@ def _cappmed_case(problem_index: int, data: str) -> dict:
         for a in customers
     ]
     input_ir = {
-        "problem_families": [{"id": "capacitated_p_median", "confidence": 0.95}],
+        "problem_families": [{"id": "capacitated_p_median"}],
         "entities": {"I": {"size": n}, "J": {"size": n}},
         "parameters": {
             "p": p,

@@ -126,16 +126,6 @@ def render_model_view(payload: dict | None) -> str:
         lines.append(f"- 未绑定参数：{', '.join(unbound)}")
     lines.append("")
 
-    report_spec = ir.get("report") or {}
-    if report_spec:
-        lines.append("**报表规格**")
-        lines.append("")
-        lines.append(f"- 类型：`{report_spec.get('profile') or '未声明'}`")
-        lines.append(
-            "- 表：" + "、".join(f"`{table}`" for table in report_spec.get("tables") or [])
-        )
-        lines.append("")
-
     custom = ir.get("custom_constraints") or []
     missing_data = ir.get("missing_data") or []
     if custom or missing_data:

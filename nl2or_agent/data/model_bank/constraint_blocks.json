@@ -10,12 +10,6 @@
         "demand_assignment",
         "unique_assignment"
       ],
-      "keywords": [
-        "assignment",
-        "分配",
-        "唯一分配",
-        "服务一次"
-      ],
       "typical_models": [
         "p_median",
         "p_center",
@@ -39,12 +33,6 @@
         "linking",
         "capacity_link",
         "assignment_open_link"
-      ],
-      "keywords": [
-        "linking",
-        "联动",
-        "开设后才能服务",
-        "facility opening"
       ],
       "typical_models": [
         "p_median",
@@ -70,14 +58,6 @@
         "p_facility",
         "select_p",
         "open_exactly_p"
-      ],
-      "keywords": [
-        "p-median",
-        "p-center",
-        "maximum covering",
-        "cardinality",
-        "恰好P个",
-        "开设P个"
       ],
       "typical_models": [
         "p_median",
@@ -108,13 +88,6 @@
         "at_most_p_facilities",
         "maximum_number_of_facilities"
       ],
-      "keywords": [
-        "最多P个",
-        "不超过P个",
-        "maximum number of facilities",
-        "at most p",
-        "maximum covering"
-      ],
       "typical_models": [
         "maximum_covering"
       ],
@@ -138,12 +111,6 @@
         "forcing_open",
         "must_open"
       ],
-      "keywords": [
-        "forcing open",
-        "must open",
-        "强制开设",
-        "必须开设"
-      ],
       "description": "强制开设指定设施",
       "math": "y_j = 1, \\quad \\forall j \\in J^{open}",
       "parameters": [
@@ -164,12 +131,6 @@
         "forcing_closed",
         "must_close",
         "force_closed"
-      ],
-      "keywords": [
-        "forcing closed",
-        "禁止开设",
-        "不能开设",
-        "must close"
       ],
       "description": "禁止开设指定设施",
       "math": "y_j = 0, \\quad \\forall j \\in J^{closed}",
@@ -192,13 +153,6 @@
         "minimize_weighted_distance",
         "service_distance",
         "p_median_objective"
-      ],
-      "keywords": [
-        "weighted distance",
-        "p-median",
-        "加权距离",
-        "总距离最小",
-        "需求加权距离"
       ],
       "typical_models": [
         "p_median",
@@ -232,14 +186,6 @@
         "set_covering_objective",
         "minimize_facility_cost"
       ],
-      "keywords": [
-        "set covering",
-        "facility cost",
-        "opening cost",
-        "固定成本",
-        "设施成本",
-        "集合覆盖"
-      ],
       "typical_models": [
         "set_covering"
       ],
@@ -263,14 +209,6 @@
         "fixed_plus_service",
         "facility_location_objective",
         "uflp_objective"
-      ],
-      "keywords": [
-        "facility location",
-        "fixed cost",
-        "service cost",
-        "固定成本",
-        "服务成本",
-        "无容量设施选址"
       ],
       "typical_models": [
         "facility_location",
@@ -301,13 +239,6 @@
         "cover_all_demands",
         "at_least_one_cover"
       ],
-      "keywords": [
-        "set covering",
-        "cover all",
-        "覆盖所有需求",
-        "每个需求点至少覆盖",
-        "100%覆盖"
-      ],
       "typical_models": [
         "set_covering"
       ],
@@ -330,13 +261,6 @@
         "coverage_activation",
         "max_covering_constraint",
         "covered_if_open_nearby"
-      ],
-      "keywords": [
-        "maximum covering",
-        "coverage activation",
-        "最大覆盖",
-        "覆盖状态",
-        "被覆盖需求"
       ],
       "typical_models": [
         "maximum_covering",
@@ -368,13 +292,6 @@
         "maximum_covering_objective",
         "covered_demand"
       ],
-      "keywords": [
-        "maximum covering",
-        "maximize covered demand",
-        "最大覆盖",
-        "覆盖需求最大",
-        "covered demands"
-      ],
       "typical_models": [
         "maximum_covering",
         "maximum_covering_budget",
@@ -401,13 +318,6 @@
         "minimize_max_distance",
         "minimax_distance"
       ],
-      "keywords": [
-        "p-center",
-        "minimize maximum distance",
-        "最小化最大距离",
-        "最大距离最小",
-        "p中心"
-      ],
       "typical_models": [
         "p_center",
         "capacitated_p_center"
@@ -425,13 +335,6 @@
         "p_center_distance_bound",
         "max_distance_bound",
         "minimax_bound"
-      ],
-      "keywords": [
-        "p-center",
-        "max distance",
-        "maximum distance",
-        "最大距离",
-        "服务距离上界"
       ],
       "typical_models": [
         "p_center",
@@ -455,10 +358,6 @@
       "aliases": [
         "knapsack"
       ],
-      "keywords": [
-        "knapsack",
-        "capacity"
-      ],
       "description": "总重量不超过容量",
       "math": "\\sum_i w_i x_i \\leq W",
       "parameters": [
@@ -480,13 +379,6 @@
         "maximize_value",
         "maximize_total_value",
         "total_value"
-      ],
-      "keywords": [
-        "knapsack",
-        "maximize value",
-        "价值最大",
-        "总价值最大",
-        "背包目标"
       ],
       "typical_models": [
         "knapsack"
@@ -512,13 +404,6 @@
         "minimize_total_distance",
         "sum_distance_objective"
       ],
-      "keywords": [
-        "total distance",
-        "总距离",
-        "距离之和",
-        "不加权距离",
-        "capacitated clustering"
-      ],
       "typical_models": [
         "capacitated_p_median"
       ],
@@ -541,14 +426,6 @@
         "facility_capacity_constraint",
         "warehouse_capacity",
         "capacity_limit"
-      ],
-      "keywords": [
-        "capacity",
-        "容量",
-        "设施容量",
-        "仓库容量",
-        "容量限制",
-        "需求不超过容量"
       ],
       "typical_models": [
         "capacitated_facility_location",
@@ -581,14 +458,6 @@
         "service_distance_limit",
         "max_assignment_distance"
       ],
-      "keywords": [
-        "service distance limit",
-        "maximum distance",
-        "distance limit",
-        "服务距离上限",
-        "最大服务距离",
-        "距离上限"
-      ],
       "typical_models": [
         "p_median_service_limit"
       ],
@@ -617,14 +486,6 @@
         "forbidden_assignment",
         "allowed_assignment"
       ],
-      "keywords": [
-        "availability",
-        "forbidden assignment",
-        "allowed assignment",
-        "禁配",
-        "不可分配",
-        "可用分配"
-      ],
       "typical_models": [
         "p_median_availability"
       ],
@@ -647,13 +508,6 @@
         "budget",
         "budget_constraint",
         "opening_cost_budget"
-      ],
-      "keywords": [
-        "budget",
-        "opening budget",
-        "固定成本预算",
-        "开设预算",
-        "预算上限"
       ],
       "typical_models": [
         "maximum_covering_budget",
@@ -684,14 +538,6 @@
         "max_min_distance",
         "pairwise_distance"
       ],
-      "keywords": [
-        "p-dispersion",
-        "dispersion",
-        "max min distance",
-        "设施分散",
-        "最小间距",
-        "最大最小距离"
-      ],
       "typical_models": [
         "p_dispersion"
       ],
@@ -713,13 +559,6 @@
       "aliases": [
         "assignment_coverage",
         "covered_by_assignment"
-      ],
-      "keywords": [
-        "capacitated maximum covering",
-        "assignment coverage",
-        "有容量最大覆盖",
-        "分配覆盖",
-        "覆盖状态"
       ],
       "typical_models": [
         "capacitated_maximum_covering"
@@ -748,13 +587,6 @@
         "service_cost",
         "assignment_cost_objective"
       ],
-      "keywords": [
-        "service cost",
-        "assignment cost",
-        "服务成本",
-        "分配成本",
-        "最小服务成本"
-      ],
       "typical_models": [
         "budgeted_facility_location"
       ],
@@ -778,14 +610,6 @@
         "max_min_distance",
         "p_dispersion_objective",
         "maximize_min_distance"
-      ],
-      "keywords": [
-        "p-dispersion",
-        "max min distance",
-        "maximize minimum distance",
-        "最大最小距离",
-        "设施分散",
-        "设施间距最大"
       ],
       "typical_models": [
         "p_dispersion"

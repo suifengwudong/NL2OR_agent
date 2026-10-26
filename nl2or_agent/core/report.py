@@ -1,9 +1,9 @@
 """Strict mapping from the model structure to the result tables.
 
 The block set decides which tables a model can produce. ``resolve_report_profile``
-names the profile, ``validate_report_spec`` rejects a spec that asks for another
-profile's tables, and ``render_report`` renders the declared tables from one
-solve result.
+names the profile, ``default_report_spec`` lists its required tables, and
+``render_report`` renders them from one solve result. There is no agent-writable
+spec: the profile always follows the active blocks.
 """
 
 from __future__ import annotations
@@ -51,7 +51,6 @@ TABLE_TITLES = {
     "objective_breakdown": "目标项",
 }
 
-AUDIENCES = frozenset({"learner", "engineer"})
 MAX_ROWS = 40
 _SENSE_TEXT = {"minimize": "最小化", "maximize": "最大化"}
 
@@ -97,52 +96,7 @@ def resolve_report_profile(ir: dict[str, Any]) -> str:
 
 def default_report_spec(ir: dict[str, Any]) -> dict[str, Any]:
     profile = resolve_report_profile(ir)
-    return {"profile": profile, "tables": list(PROFILES[profile]), "audience": "learner"}
-
-
-def validate_report_spec(
-    ir: dict[str, Any], spec: Any = None
-) -> tuple[dict[str, Any], list[str], list[str]]:
-    """Validate a report spec; return (normalized spec, errors, warnings)."""
-    errors: list[str] = []
-    warnings: list[str] = []
-    derived = resolve_report_profile(ir)
-    if spec is None:
-        spec = {}
-    if not isinstance(spec, dict):
-        return default_report_spec(ir), ["report 必须是对象"], warnings
-
-    profile = str(spec.get("profile") or derived)
-    if profile not in PROFILES:
-        errors.append(f"未知报表类型 '{profile}'；可选 {', '.join(sorted(PROFILES))}")
-        profile = derived
-    elif profile != derived:
-        errors.append(f"报表类型 {profile} 与模型结构推导出的 {derived} 不一致")
-
-    required = list(PROFILES[derived])
-    allowed = set(required)
-    requested = spec.get("tables")
-    if requested is None:
-        tables = required
-    elif not isinstance(requested, list):
-        errors.append("report.tables 必须是字符串列表")
-        tables = required
-    else:
-        tables = [str(item) for item in requested]
-        unknown = [item for item in tables if item not in allowed]
-        if unknown:
-            errors.append(f"报表 {derived} 不允许的表: {', '.join(unknown)}")
-        missing = [item for item in required if item not in tables]
-        if missing:
-            warnings.append(f"报表 {derived} 自动补齐必需表: {', '.join(missing)}")
-        tables = list(dict.fromkeys([*required, *tables]))
-
-    audience = str(spec.get("audience") or "learner")
-    if audience not in AUDIENCES:
-        warnings.append(f"未知报表读者 '{audience}'，已改为 learner")
-        audience = "learner"
-
-    return {"profile": derived, "tables": tables, "audience": audience}, errors, warnings
+    return {"profile": profile, "tables": list(PROFILES[profile])}
 
 
 def render_report(
@@ -151,14 +105,14 @@ def render_report(
     *,
     spec: dict[str, Any] | None = None,
 ) -> str:
-    """Render the declared report tables for one solve result."""
+    """Render the derived report tables for one solve result."""
     if spec is None:
-        spec, _, _ = validate_report_spec(ir, ir.get("report"))
+        spec = default_report_spec(ir)
     lines = ["## 结果报表"]
     tables = list(spec["tables"])
     if result.status != "Optimal":
         lines.append("")
-        lines.append("该情景没有最优解，以下只保留目标项。")
+        lines.append("以下只保留目标项。")
         tables = [table for table in tables if table == "objective_breakdown"]
     for table in tables:
         rendered = _TABLE_RENDERERS[table](ir, result)
@@ -338,5 +292,4 @@ __all__ = [
     "default_report_spec",
     "render_report",
     "resolve_report_profile",
-    "validate_report_spec",
 ]

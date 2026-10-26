@@ -85,7 +85,7 @@ class TestRunCli:
 
         monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         session = session_mod.get_session()
-        session.save_model({"valid": True})
+        session_mod.write_model_of_record(session.model_file, {"valid": True})
         session.save_code("print('Objective: 1')", "solve.py")
 
         from main import _run_cli
@@ -413,7 +413,8 @@ class TestModelStateFromSession:
 
         monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         payload = _model_payload()
-        session_mod.Session(session_id="web01").save_model(payload["report"])
+        session = session_mod.Session(session_id="web01")
+        session_mod.write_model_of_record(session.model_file, payload["report"])
 
         view, raw = get_model_state("web01")
 
@@ -443,7 +444,7 @@ class TestAgentSessionBinding:
 
         def run_agent(*_args, **_kwargs):
             current = session_mod.get_session()
-            current.save_model({"valid": True})
+            session_mod.write_model_of_record(current.model_file, {"valid": True})
             current.save_code("print('Objective: 1')", "solve.py")
             return "模型求解完成"
 

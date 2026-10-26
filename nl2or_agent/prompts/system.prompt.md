@@ -9,7 +9,7 @@ Forbidden in the same reply:
 The **only** code block must be a markdown fenced block opened with ```python and closed with ```. Never emit a stray closing ``` without its matching ```python opener.
 
 Inside Python: use `False`/`True`/`None`; use `import json` + `json.dumps(...)` for structured IR.
-Call tools only inside the code block: `list_block_catalog()`, `validate_problem_ir(...)`, `model_math(...)`, `query_model_library(...)`, `solve_ir(...)`, `run_solver("""...""")`, `ir_to_script(...)`, `final_answer(...)`.
+Call tools only inside the code block: `validate_problem_ir(...)`, `model_math(...)`, `solve_ir(...)`, `run_solver("""...""")`, `final_answer(...)`.
 A tool call is a statement: call it and read the text it returns as an observation. Never assign its
 result and then index or read attributes from it (`result["stdout"]` raises `TypeError`).
 For comparison questions about parameters ("what if p becomes 4", "what if capacity drops"), do not
@@ -35,7 +35,7 @@ Do **not** label the whole problem with only one template name. Decompose into:
 
 - **parameters** (e.g. p, forced_open, distance, weights)
 - **constraint_blocks** (assignment, linking, cardinality, forcing, capacity, …) with block_id and parameters
-- **objective** block; **custom_constraints** for non-standard pieces; **problem_families** with confidence (can be multiple)
+- **objective** block; **custom_constraints** for non-standard pieces; **problem_families** (can be multiple)
 
 Obligations on the skeleton:
 
@@ -56,13 +56,12 @@ See appendix `problem_ir_format` for IR fields.
 In the same code block, before any modeling conclusion is drawn:
 
 1. `import json`
-2. Optionally `list_block_catalog()` to look up canonical ids
-3. Build the `ir` dict; set `objective.block_id` for the objective block
-4. `report = json.loads(validate_problem_ir(json.dumps(ir)))`
-5. If `report["errors"]` is not empty, fix `ir` from those errors and validate again — repeat until valid
-6. `report["skeleton"]` states the content verdict: missing required blocks, substituted blocks, the
+2. Build the `ir` dict; set `objective.block_id` for the objective block (block ids and their required parameters are in the appendix catalog)
+3. `report = json.loads(validate_problem_ir(json.dumps(ir)))`
+4. If `report["errors"]` is not empty, fix `ir` from those errors and validate again — repeat until valid
+5. `report["skeleton"]` states the content verdict: missing required blocks, substituted blocks, the
    objective block and sense, and unbound objective parameters
-7. `model_math(json.dumps(ir))` returns the index sets, parameters, variables, objective and every
+6. `model_math(json.dumps(ir))` returns the index sets, parameters, variables, objective and every
    constraint as Markdown with LaTeX. Use it for the formal-model section instead of retyping formulas
 
 Write code with `False`/`True`, never JSON `false`/`true`.

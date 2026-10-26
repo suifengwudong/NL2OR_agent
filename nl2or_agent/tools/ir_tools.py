@@ -1,4 +1,4 @@
-"""Tools for Problem IR validation and block-catalog alignment."""
+"""Tool: validate and persist the Problem IR, plus the math document renderer."""
 
 from __future__ import annotations
 
@@ -7,51 +7,10 @@ from pathlib import Path
 
 from hamlet.core.tools import Tool
 
-from core.ir_catalog import load_block_catalog
 from core.ir_validate import validate_problem_ir
 from core.model_document import render_model_document
 from core.problem_ir import ProblemIR
 from utils.session import get_session, write_model_of_record
-
-
-class ListBlockCatalogTool(Tool):
-    """List canonical constraint/objective block ids from the library."""
-
-    name = "list_block_catalog"
-    description = (
-        "Return the canonical block_id list and parameter requirements from "
-        "constraint_blocks.json. Call before building Problem IR in Step 1."
-    )
-    inputs = {}
-    output_type = "string"
-
-    def forward(self) -> str:
-        catalog = load_block_catalog()
-        payload = {
-            "block_ids": catalog["block_ids"],
-            "objective_block_ids": catalog["objective_block_ids"],
-            "objective_sense": catalog["objective_sense"],
-            "blocks": [
-                {
-                    "block_id": b["id"],
-                    "category": b.get("category"),
-                    "name": b.get("name"),
-                    "required_parameters": [
-                        p["name"] for p in b.get("parameters", []) if p.get("required")
-                    ],
-                    "requires_one_of": b.get("requires_one_of", []),
-                    "aliases": b.get("aliases", []),
-                }
-                for b in catalog["blocks"]
-            ],
-            "usage": (
-                "In Problem IR use exact block_id values. "
-                "Put non-library rules in custom_constraints, not in constraint_blocks. "
-                "objective.block_id must be one of objective_block_ids, and objective.sense "
-                "must match objective_sense."
-            ),
-        }
-        return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
 class ValidateProblemIrTool(Tool):

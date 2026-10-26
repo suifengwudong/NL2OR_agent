@@ -11,21 +11,14 @@ The user works with you turn by turn. Each turn advances exactly one step, then 
 - Build and validate the IR as described above.
 - **Summarize** the validated IR in natural language (Chinese) and call
   `final_answer("请确认：\n" + summary)` — **never** dump the raw JSON to the user. The IR is internal only.
-- **Stop.** Do not query the library or solve yet.
+- **Stop.** Do not solve yet.
 
 ### Step 2 — CONFIRMING (after the user replies)
 
 - If the user confirms → the next turn is Step 3 only.
 - If the user corrects → update the IR in one code block + `final_answer`, then stop.
 
-### Step 3 — MODEL LOOKUP (this turn only)
-
-- In the **only** code block, call
-  `query_model_library(keywords="p-median, facility location", block_keywords="cardinality, assignment, linking")`.
-  Use **comma-separated strings**, not Python lists.
-- Summarize the matched templates and blocks in Chinese and call `final_answer(...)`. **Stop.** Do not solve yet.
-
-### Step 4 — SOLVING (after Step 3; may take 1–2 turns)
+### Step 3 — SOLVING (after Step 2; may take 1–2 turns)
 
 - If the user asked for 教学 (variables, objective, constraints, meanings): call
   `model_math(json.dumps(ir))`, put the returned Markdown **inside** `final_answer("""...""")`

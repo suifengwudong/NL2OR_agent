@@ -1,4 +1,4 @@
-"""Strict report mapping: profile, required tables, and rendering."""
+"""Strict report mapping: profile derivation from blocks and table rendering."""
 
 from __future__ import annotations
 
@@ -8,13 +8,11 @@ import pytest
 
 from benchmarks.run_benchmark import _load_cases, _normalized_ir
 from core.block_model import SolveResult, solve_ir
-from core.ir_validate import validate_problem_ir
 from core.report import (
     PROFILES,
     default_report_spec,
     render_report,
     resolve_report_profile,
-    validate_report_spec,
 )
 from tools import SolveIrTool
 
@@ -47,43 +45,6 @@ def test_default_spec_lists_the_required_tables(cases):
     spec = default_report_spec(ir)
     assert spec["profile"] == "location"
     assert spec["tables"] == list(PROFILES["location"])
-
-
-def test_wrong_profile_is_rejected(cases):
-    ir = _normalized_ir(cases["p_median_community"])
-    spec, errors, _ = validate_report_spec(ir, {"profile": "covering"})
-    assert spec["profile"] == "location"
-    assert any("不一致" in error for error in errors)
-
-
-def test_unknown_table_is_rejected(cases):
-    ir = _normalized_ir(cases["p_median_community"])
-    _, errors, _ = validate_report_spec(ir, {"tables": ["bogus_table"]})
-    assert any("bogus_table" in error for error in errors)
-
-
-def test_missing_required_table_is_added(cases):
-    ir = _normalized_ir(cases["p_median_community"])
-    spec, errors, warnings = validate_report_spec(ir, {"tables": ["opened_facilities"]})
-    assert not errors
-    assert any("补齐" in warning for warning in warnings)
-    assert spec["tables"] == list(PROFILES["location"])
-
-
-def test_validate_report_fills_the_normalized_report(cases):
-    case = cases["p_median_community"]
-    report = validate_problem_ir(dict(case["input_ir"]))
-    assert report["valid"]
-    assert report["normalized_ir"]["report"]["profile"] == "location"
-    assert report["normalized_ir"]["report"]["tables"] == list(PROFILES["location"])
-
-
-def test_validate_report_rejects_an_invalid_profile(cases):
-    ir = dict(cases["p_median_community"]["input_ir"])
-    ir["report"] = {"profile": "covering"}
-    report = validate_problem_ir(ir)
-    assert not report["valid"]
-    assert any("不一致" in error for error in report["errors"])
 
 
 def test_p_median_report_has_openings_assignments_and_objective(cases):
@@ -137,7 +98,7 @@ def test_covering_capacity_report_has_coverage_and_load(cases):
 def test_infeasible_report_does_not_invent_rows(cases):
     ir = _normalized_ir(cases["capacitated_p_center"])
     text = render_report(ir, SolveResult(objective=None, status="Infeasible"))
-    assert "没有最优解" in text
+    assert "只保留目标项" in text
     assert "**目标值**：" not in text
     assert "设施负荷" not in text
 
@@ -159,11 +120,3 @@ def test_solve_ir_tool_appends_the_report(cases, tmp_path):
     assert "[RESULT] Objective: 2210" in output
     assert "## 结果报表" in output
     assert "开设设施" in output
-
-
-def test_solve_ir_tool_rejects_a_wrong_report_profile(cases, tmp_path):
-    ir = dict(cases["p_median_community"]["input_ir"])
-    ir["report"] = {"profile": "covering"}
-    output = SolveIrTool(workspace_dir=tmp_path).forward(json.dumps(ir), None)
-    assert output.startswith("无法求解")
-    assert "不一致" in output

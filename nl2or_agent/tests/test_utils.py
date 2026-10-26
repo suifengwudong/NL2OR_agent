@@ -1,4 +1,4 @@
-"""Tests for utils/search.py, utils/session.py, web/app.py."""
+"""Tests for utils/session.py and web/app.py."""
 
 from __future__ import annotations
 
@@ -7,114 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from utils.search import (
-    parse_keywords,
-    score_keywords,
-    search_by_keywords,
-)
-from utils.session import Session, get_session, reset_session
-
-
-# ---------------------------------------------------------------------------
-# parse_keywords
-# ---------------------------------------------------------------------------
-
-
-class TestParseKeywords:
-    def test_none(self):
-        assert parse_keywords(None) == []
-
-    def test_empty_string(self):
-        assert parse_keywords("") == []
-
-    def test_whitespace_string(self):
-        assert parse_keywords("  , , ") == []
-
-    def test_single(self):
-        assert parse_keywords("hello") == ["hello"]
-
-    def test_comma_separated(self):
-        assert parse_keywords("a, b, c") == ["a", "b", "c"]
-
-    def test_list_input(self):
-        assert parse_keywords(["A", "B"]) == ["a", "b"]
-
-    def test_tuple_input(self):
-        assert parse_keywords(("X", "Y")) == ["x", "y"]
-
-
-# ---------------------------------------------------------------------------
-# score_keywords
-# ---------------------------------------------------------------------------
-
-
-class TestScoreKeywords:
-    def test_no_match(self):
-        assert score_keywords(["abc"], ["xyz"]) == 0
-
-    def test_exact_match(self):
-        assert score_keywords(["knapsack"], ["knapsack", "other"]) == 1
-
-    def test_substring_match(self):
-        assert score_keywords(["knap"], ["knapsack"]) == 1
-
-    def test_partial_reverse(self):
-        assert score_keywords(["knapsack"], ["knap"]) == 1
-
-    def test_multiple_keywords(self):
-        assert score_keywords(["a", "b"], ["a", "b", "c"]) == 2
-
-    def test_case_insensitive(self):
-        assert score_keywords(["abc"], ["ABC"]) == 1
-
-    def test_case_insensitive_reverse(self):
-        # haystack is already lower-cased internally, keywords are lower-cased by parse_keywords
-        assert score_keywords(parse_keywords("ABC"), ["abc"]) == 1
-
-
-# ---------------------------------------------------------------------------
-# search_by_keywords
-# ---------------------------------------------------------------------------
-
-
-class TestSearchByKeywords:
-    def test_empty_keywords(self):
-        items = [{"id": "x"}]
-        assert search_by_keywords(items, []) == []
-
-    def test_single_match(self):
-        # "knap" is substring of "knapsack" → 1 match
-        items = [{"id": "knapsack", "name": "Knap"}, {"id": "other", "name": "other"}]
-        result = search_by_keywords(items, ["knap"])
-        assert len(result) == 1  # only "knapsack" id/name contain "knap"
-
-    def test_limit(self):
-        items = [{"id": f"item_{i}", "name": "match"} for i in range(10)]
-        result = search_by_keywords(items, ["match"], limit=3)
-        assert len(result) == 3
-
-    def test_search_specific_fields(self):
-        items = [
-            {"id": "match", "name": "no"},
-            {"id": "no", "name": "match"},
-        ]
-        result = search_by_keywords(items, ["match"], search_fields=["id"])
-        assert len(result) == 1
-        assert result[0]["id"] == "match"
-
-    def test_search_fields_flattens_list_values(self):
-        items = [{"id": "x", "keywords": ["p-median", "设施"]}]
-        result = search_by_keywords(items, ["p-median"], search_fields=["keywords"])
-        assert result == items
-
-    def test_order_by_score(self):
-        items = [
-            {"tags": ["a"]},
-            {"tags": ["a", "b"]},
-        ]
-        result = search_by_keywords(items, ["a", "b"])
-        # item with two matches should come first
-        assert len(result[0]["tags"]) == 2
+from utils.session import Session, get_session, reset_session, write_model_of_record
 
 
 # ---------------------------------------------------------------------------
@@ -245,7 +138,7 @@ class TestModelOfRecord:
             "normalized_ir": {"constraint_blocks": [{"block_id": "assign_each_demand_once"}]},
         }
 
-        path = session.save_model(report)
+        path = write_model_of_record(session.model_file, report)
         loaded = session.load_model()
 
         assert path.name == "model.json"
@@ -253,11 +146,11 @@ class TestModelOfRecord:
         assert loaded["report"] == report
         assert loaded["saved_at"]
 
-    def test_save_model_overwrites_previous(self, tmp_path: Path, monkeypatch):
+    def test_model_of_record_overwrites_previous(self, tmp_path: Path, monkeypatch):
         session = self._session(tmp_path, monkeypatch)
-        session.save_model({"valid": True, "normalized_ir": {"a": 1}})
+        write_model_of_record(session.model_file, {"valid": True, "normalized_ir": {"a": 1}})
 
-        session.save_model({"valid": False, "normalized_ir": {"b": 2}})
+        write_model_of_record(session.model_file, {"valid": False, "normalized_ir": {"b": 2}})
 
         loaded = session.load_model()
         assert loaded is not None and loaded["report"]["normalized_ir"] == {"b": 2}

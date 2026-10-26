@@ -13,7 +13,6 @@ from .block_model import readable_keys
 from .ir_catalog import load_block_catalog, load_model_bank
 from .ir_normalize import normalize_with_context
 from .problem_ir import ProblemIR
-from .report import validate_report_spec
 
 
 # ---------------------------------------------------------------------------
@@ -44,12 +43,6 @@ def validate_problem_ir(
                     errors.append(f"块 {bid} 缺少必填参数 '{pname}'")
 
     skeleton = _check_skeleton(normalized, catalog, model_bank, errors, warnings)
-    report_spec, report_errors, report_warnings = validate_report_spec(
-        normalized, normalized.get("report")
-    )
-    errors.extend(report_errors)
-    warnings.extend(report_warnings)
-    normalized["report"] = report_spec
 
     declared = {
         key

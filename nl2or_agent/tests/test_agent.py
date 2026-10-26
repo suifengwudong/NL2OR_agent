@@ -92,8 +92,14 @@ class TestBuildNl2orAgent:
     def test_tools_loaded(self):
         agent = build_nl2or_agent(verbosity_level=0)
         tool_names = [t.name for t in agent.tools.values()]
-        assert "query_model_library" in tool_names
-        assert "run_solver" in tool_names
+        # 四个项目工具 + HAMLET 自带的 final_answer
+        assert sorted(tool_names) == [
+            "final_answer",
+            "model_math",
+            "run_solver",
+            "solve_ir",
+            "validate_problem_ir",
+        ]
 
     def test_model_id_from_env(self, monkeypatch):
         monkeypatch.setenv("HAMLET_MODEL_ID", "openai/gpt-4o-mini")

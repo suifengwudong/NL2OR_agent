@@ -10,11 +10,9 @@ exactly one `final_answer`.
 - Put non-library rules only in `custom_constraints` (strings), never as a `block_id`.
 - Build and validate the IR as described above. Do not report the raw JSON to the user.
 
-### Step 2 — MODEL LOOKUP AND SOLVING
+### Step 2 — SOLVING
 
-- If you need the library template, call `query_model_library(keywords="...", block_keywords="...")`
-  with **comma-separated strings**; the catalog in the appendix is usually enough.
-- Then call `solve_ir(ir)` **in the same step**. It builds the model from the library's block
+- Call `solve_ir(ir)`. It builds the model from the library's block
   semantics and prints the objective on a `[RESULT]` line, plus the decisions and the script it saved.
 - That result is final: do not re-solve it with a hand-written script or a brute-force enumeration to
   cross-check, and do not spend further steps on a second solver. The final answer must still quote the

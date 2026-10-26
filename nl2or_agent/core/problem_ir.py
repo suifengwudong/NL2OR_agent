@@ -1,9 +1,9 @@
 """The Problem IR as a value object: parse it, normalize it, read its data.
 
-The wire shape is a plain dict; the alias vocabulary lives in
-``schema/problem_ir.py``. This class carries the behaviour, so tool arguments,
-normalization, the executable parameter view and parameter overrides all share a
-single implementation instead of one private helper per caller.
+The wire shape is a plain dict; this module owns the executable parameter
+vocabulary. Tool arguments, normalization, the executable parameter view and
+parameter overrides all share this single implementation instead of one private
+helper per caller.
 """
 
 from __future__ import annotations

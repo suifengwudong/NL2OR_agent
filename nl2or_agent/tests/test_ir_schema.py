@@ -8,7 +8,7 @@ from pathlib import Path
 from core.ir_catalog import load_block_catalog, load_model_bank
 from core.ir_normalize import normalize_problem_ir
 from core.ir_validate import validate_problem_ir
-from tools import ListBlockCatalogTool, ValidateProblemIrTool
+from tools import ValidateProblemIrTool
 
 _BASE = Path(__file__).parent.parent
 
@@ -92,7 +92,7 @@ class TestDataIntegrity:
 class TestNormalizeProblemIr:
     def test_alias_block_ids_normalized(self):
         ir = {
-            "problem_families": [{"id": "p-median", "confidence": 0.9}],
+            "problem_families": [{"id": "p-median"}],
             "parameters": {"p": 3},
             "constraint_blocks": [
                 {"block_id": "assignment", "parameters": {}, "status": "required"},
@@ -133,11 +133,11 @@ class TestNormalizeProblemIr:
         assert block["block_id"] == "force_facility_open"
         assert block["parameters"]["forced_open"] == ["B"]
 
-    def test_hybrid_emergency_problem(self):
+    def test_multi_family_with_custom_constraints(self):
         ir = {
             "problem_families": [
-                {"name": "facility_location", "confidence": 0.9},
-                {"name": "p-median", "confidence": 0.8},
+                {"name": "facility_location"},
+                {"name": "p-median"},
             ],
             "parameters": {"p": 2},
             "constraint_blocks": [
@@ -152,7 +152,6 @@ class TestNormalizeProblemIr:
         report = validate_problem_ir(ir)
         assert report["valid"]
         n = report["normalized_ir"]
-        assert n["is_hybrid"] is True
         ids = {b["block_id"] for b in n["constraint_blocks"]}
         assert "force_facility_open" in ids
         assert "force_facility_closed" in ids
@@ -172,12 +171,6 @@ class TestIrTools:
         assert out["valid"]
         assert "normalized_ir" in out
         assert "skeleton" in out
-
-    def test_list_block_catalog(self):
-        tool = ListBlockCatalogTool()
-        data = json.loads(tool.forward())
-        assert "assign_each_demand_once" in data["block_ids"]
-        assert data["objective_sense"]["covered_demand_objective"] == "maximize"
 
 
 # ---------------------------------------------------------------------------

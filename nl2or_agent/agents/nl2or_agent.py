@@ -20,10 +20,7 @@ from hamlet.core import CodeAgent, LiteLLMModel
 
 from core.prompt_loader import load_system_prompt
 from tools import (
-    IrScriptTool,
-    ListBlockCatalogTool,
     ModelMathTool,
-    QueryModelLibraryTool,
     RunSolverTool,
     SolveIrTool,
     ValidateProblemIrTool,
@@ -143,13 +140,10 @@ def build_nl2or_agent(
     model = LiteLLMModel(model_id=resolved_model_id, api_key=_or_key, **_reasoning_kwargs())
 
     tools = [
-        ListBlockCatalogTool(),
         ValidateProblemIrTool(workspace_dir=workspace_dir),
         ModelMathTool(),
-        QueryModelLibraryTool(),
         RunSolverTool(workspace_dir=workspace_dir),
         SolveIrTool(workspace_dir=workspace_dir),
-        IrScriptTool(workspace_dir=workspace_dir),
     ]
 
     system_prompt = load_system_prompt(mode)

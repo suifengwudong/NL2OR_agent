@@ -9,14 +9,40 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from schema.problem_ir import (
-    FAMILY_ID_ALIASES,
-    FORBIDDEN_AS_BLOCK,
-    OBJECTIVE_BLOCK_ALIASES,
-    VALID_STATUS,
-)
-
 from .ir_catalog import load_block_catalog, load_model_bank
+
+# ---------------------------------------------------------------------------
+# IR 词汇表：别名映射与校验常量（归一化的唯一消费者）
+# ---------------------------------------------------------------------------
+
+OBJECTIVE_BLOCK_ALIASES: dict[str, str] = {
+    "minimize_total_weighted_distance": "weighted_service_distance_objective",
+    "weighted_distance": "weighted_service_distance_objective",
+    "min_sum_weighted_distance": "weighted_service_distance_objective",
+    "minimize_service_cost": "service_cost_objective",
+    "max_min_distance": "maximize_min_pairwise_distance_objective",
+    "maximize_min_distance": "maximize_min_pairwise_distance_objective",
+}
+
+FAMILY_ID_ALIASES: dict[str, str] = {
+    "p-median": "p_median",
+    "p median": "p_median",
+    "facility location": "facility_location",
+    "facility_location_problem": "facility_location",
+    "p-dispersion": "p_dispersion",
+    "p dispersion": "p_dispersion",
+    "capacitated p-center": "capacitated_p_center",
+    "capacitated p center": "capacitated_p_center",
+    "p-median with distance limit": "p_median_service_limit",
+    "p median with distance limit": "p_median_service_limit",
+    "p-median with forbidden assignments": "p_median_availability",
+    "maximum covering with budget": "maximum_covering_budget",
+    "budgeted facility location": "budgeted_facility_location",
+}
+
+FORBIDDEN_AS_BLOCK = frozenset({"custom_constraints", "custom", "objective"})
+
+VALID_STATUS = frozenset({"required", "optional", "user_specified"})
 
 _SENSE_ALIASES: dict[str, str] = {
     "min": "minimize",
@@ -75,21 +101,10 @@ def normalize_with_context(
         families = []
     out["problem_families"] = [_normalize_family(f, catalog, model_ids) for f in families]
 
-    out["is_hybrid"] = bool(
-        ir.get("is_hybrid", len(out["problem_families"]) > 1 or ir.get("custom_constraints"))
-    )
-    out["hybrid_notes"] = ir.get("hybrid_notes") or (
-        "组合多个问题族或含自定义约束" if out["is_hybrid"] else ""
-    )
-
     out["entities"] = _normalize_entities(ir.get("entities"))
 
     params = ir.get("parameters")
     out["parameters"] = _normalize_parameters(params, out["entities"])
-
-    out["decision_variables"] = (
-        ir.get("decision_variables") if isinstance(ir.get("decision_variables"), list) else []
-    )
 
     out["objective"] = _normalize_objective(ir.get("objective"), catalog, errors, warnings)
 
@@ -127,15 +142,6 @@ def normalize_with_context(
     missing = ir.get("missing_data")
     out["missing_data"] = missing if isinstance(missing, list) else []
 
-    report = ir.get("report")
-    if report is None:
-        out["report"] = {}
-    elif isinstance(report, dict):
-        out["report"] = report
-    else:
-        errors.append("report 必须是对象")
-        out["report"] = {}
-
     return out, errors, warnings
 
 
@@ -169,37 +175,14 @@ def _normalize_entities(value: Any) -> dict[str, Any]:
     return out
 
 
-def _normalize_confidence(val: Any) -> str:
-    if isinstance(val, (int, float)):
-        if val >= 0.8:
-            return "high"
-        if val >= 0.5:
-            return "medium"
-        return "low"
-    if isinstance(val, str):
-        low = val.strip().lower()
-        if low in {"high", "medium", "low"}:
-            return low
-        try:
-            return _normalize_confidence(float(low))
-        except ValueError:
-            pass
-    return "medium"
-
-
 def _normalize_family(fam: Any, catalog: dict[str, Any], model_ids: set[str]) -> dict[str, Any]:
     if not isinstance(fam, dict):
-        return {"id": "unknown", "name": str(fam), "confidence": "medium", "notes": ""}
+        return {"id": "unknown"}
     raw_id = (fam.get("id") or fam.get("name") or "unknown").strip().lower()
     fam_id = FAMILY_ID_ALIASES.get(raw_id, raw_id.replace(" ", "_").replace("-", "_"))
     if fam_id not in model_ids and raw_id in model_ids:
         fam_id = raw_id
-    return {
-        "id": fam_id,
-        "name": fam.get("name") or fam_id,
-        "confidence": _normalize_confidence(fam.get("confidence", "medium")),
-        "notes": fam.get("notes") or "",
-    }
+    return {"id": fam_id}
 
 
 def _normalize_objective(

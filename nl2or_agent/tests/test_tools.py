@@ -1,62 +1,14 @@
-"""Tests for QueryModelLibraryTool and RunSolverTool."""
+"""Tests for RunSolverTool."""
 
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from tools import QueryModelLibraryTool, RunSolverTool
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture()
-def tmp_model_bank(tmp_path: Path) -> Path:
-    """Create a minimal model bank JSON for testing."""
-    bank = {
-        "schema_version": 2,
-        "models": [
-            {
-                "id": "knapsack",
-                "name": "背包问题",
-                "type": "integer_programming",
-                "keywords": ["knapsack", "背包", "binary", "capacity"],
-                "description": "经典0-1背包问题",
-                "variables": ["x_i: 二进制变量，表示物品i是否被选取"],
-                "objective": "max sum(v_i * x_i)",
-                "constraints": ["sum(w_i * x_i) <= W", "x_i in {0,1}"],
-                "solver_hint": "gurobipy with GRB.BINARY",
-                "template_code": "# knapsack template",
-            },
-            {
-                "id": "lp_general",
-                "name": "通用线性规划",
-                "type": "linear_programming",
-                "keywords": ["linear programming", "LP", "maximize", "minimize"],
-                "description": "标准线性规划",
-                "variables": ["x_i: 连续变量"],
-                "objective": "min/max sum(c_i * x_i)",
-                "constraints": ["sum(a_ij * x_j) <= b_i", "x_i >= 0"],
-                "solver_hint": "gurobipy Model",
-                "template_code": "# LP template",
-            },
-        ],
-    }
-    bank_file = tmp_path / "models.json"
-    bank_file.write_text(json.dumps(bank, ensure_ascii=False), encoding="utf-8")
-    return bank_file
-
-
-@pytest.fixture()
-def query_tool(tmp_model_bank: Path) -> QueryModelLibraryTool:
-    return QueryModelLibraryTool(bank_path=tmp_model_bank)
+from tools import RunSolverTool
 
 
 @pytest.fixture()
@@ -64,104 +16,6 @@ def solver_tool(tmp_path: Path) -> RunSolverTool:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     return RunSolverTool(workspace_dir=workspace)
-
-
-# ---------------------------------------------------------------------------
-# QueryModelLibraryTool tests
-# ---------------------------------------------------------------------------
-
-
-class TestQueryModelLibraryTool:
-    def test_initialization_default_path(self):
-        tool = QueryModelLibraryTool()
-        assert tool.name == "query_model_library"
-        assert tool._bank_path.name == "models.json"
-
-    def test_initialization_custom_path(self, tmp_model_bank: Path):
-        tool = QueryModelLibraryTool(bank_path=tmp_model_bank)
-        assert tool._bank_path == tmp_model_bank
-
-    def test_forward_matching_keyword(self, query_tool: QueryModelLibraryTool):
-        result = query_tool.forward("knapsack")
-        data = json.loads(result)
-        assert data["templates"][0]["id"] == "knapsack"
-
-    def test_forward_multiple_keywords(self, query_tool: QueryModelLibraryTool):
-        result = query_tool.forward("knapsack, binary, capacity")
-        data = json.loads(result)
-        assert data["templates"][0]["id"] == "knapsack"
-
-    def test_forward_lp_keyword(self, query_tool: QueryModelLibraryTool):
-        result = query_tool.forward("linear programming")
-        data = json.loads(result)
-        assert any(m["id"] == "lp_general" for m in data["templates"])
-
-    def test_forward_no_match_returns_message(self, query_tool: QueryModelLibraryTool):
-        result = query_tool.forward("nonexistent_keyword_xyz")
-        data = json.loads(result)
-        assert "message" in data
-
-    def test_forward_empty_keyword(self, query_tool: QueryModelLibraryTool):
-        result = query_tool.forward("   ")
-        data = json.loads(result)
-        assert "message" in data
-
-    def test_forward_results_contain_required_fields(self, query_tool: QueryModelLibraryTool):
-        result = query_tool.forward("knapsack")
-        data = json.loads(result)
-        minimal_fields = {"id", "name", "description"}
-        for model in data["templates"]:
-            assert minimal_fields.issubset(model.keys())
-
-    def test_forward_block_keywords_real_bank(self):
-        bank = Path(__file__).parent.parent / "data" / "model_bank" / "models.json"
-        blocks = Path(__file__).parent.parent / "data" / "model_bank" / "constraint_blocks.json"
-        tool = QueryModelLibraryTool(bank_path=bank, blocks_path=blocks)
-        result = tool.forward(
-            keywords="p-median",
-            block_keywords="cardinality, linking, forcing",
-        )
-        data = json.loads(result)
-        assert any(m["id"] == "p_median" for m in data["templates"])
-        assert any(b["id"] == "cardinality_open_p_facilities" for b in data["blocks"])
-
-    def test_forward_returns_at_most_3_results(self, tmp_path: Path):
-        """Ensure no more than 3 results are returned."""
-        bank = {
-            "schema_version": 2,
-            "models": [
-                {
-                    "id": f"model_{i}",
-                    "name": f"Model {i}",
-                    "type": "lp",
-                    "keywords": ["shared_keyword"],
-                    "description": "",
-                    "variables": [],
-                    "objective": "",
-                    "constraints": [],
-                    "solver_hint": "",
-                    "template_code": "",
-                }
-                for i in range(5)
-            ],
-        }
-        bank_file = tmp_path / "big_bank.json"
-        bank_file.write_text(json.dumps(bank), encoding="utf-8")
-        tool = QueryModelLibraryTool(bank_path=bank_file)
-        result = tool.forward("shared_keyword")
-        data = json.loads(result)
-        assert len(data["templates"]) <= 3
-
-    def test_forward_partial_keyword_match(self, query_tool: QueryModelLibraryTool):
-        """Test that partial matches also work (e.g. 'knap' matches 'knapsack')."""
-        result = query_tool.forward("knap")
-        data = json.loads(result)
-        assert "templates" in data
-
-
-# ---------------------------------------------------------------------------
-# RunSolverTool tests
-# ---------------------------------------------------------------------------
 
 
 class TestRunSolverTool:

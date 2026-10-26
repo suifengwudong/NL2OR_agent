@@ -26,7 +26,7 @@
         "opening_budget",
         "min_pairwise_distance_bound"
       ],
-      "decision_variables": [
+      "variables": [
         {
           "symbol": "y_j",
           "type": "binary",
@@ -47,14 +47,6 @@
           "type": "continuous",
           "meaning": "最大服务距离；用于 P-Center 模型"
         }
-      ],
-      "keywords": [
-        "选址",
-        "location",
-        "facility",
-        "设施",
-        "覆盖",
-        "服务距离"
       ]
     },
     {
@@ -98,18 +90,6 @@
           "required": false,
           "description": "h_i，需求点 i 的需求权重；若未给出可默认为 1"
         }
-      ],
-      "keywords": [
-        "P-Median",
-        "p-median",
-        "p median",
-        "p中位",
-        "p中位数",
-        "中位选址",
-        "加权距离",
-        "总距离最小",
-        "average distance",
-        "minimize total demand-weighted distance"
       ]
     },
     {
@@ -153,19 +133,6 @@
           "required": false,
           "description": "d_ij，需求点 i 到候选设施 j 的距离"
         }
-      ],
-      "keywords": [
-        "Set Covering",
-        "set covering",
-        "集合覆盖",
-        "覆盖选址",
-        "全覆盖",
-        "100%覆盖",
-        "coverage distance",
-        "覆盖距离",
-        "覆盖半径",
-        "每个需求点至少覆盖",
-        "minimize facility cost"
       ]
     },
     {
@@ -224,18 +191,6 @@
           "required": false,
           "description": "d_ij，需求点 i 到候选设施 j 的距离"
         }
-      ],
-      "keywords": [
-        "Maximum Covering",
-        "maximum covering",
-        "max covering",
-        "最大覆盖",
-        "最大覆盖选址",
-        "覆盖需求最大",
-        "有限设施",
-        "P个设施",
-        "maximize covered demand",
-        "covered demands"
       ]
     },
     {
@@ -279,19 +234,6 @@
           "required": true,
           "description": "d_ij，需求点 i 到候选设施 j 的距离"
         }
-      ],
-      "keywords": [
-        "P-Center",
-        "p-center",
-        "p center",
-        "p中心",
-        "中心选址",
-        "最大距离最小",
-        "最坏距离",
-        "最小化最大距离",
-        "minimize maximum distance",
-        "max distance",
-        "fairness"
       ]
     },
     {
@@ -327,17 +269,6 @@
           "required": true,
           "description": "c_ij，需求点 i 由设施 j 服务的分配成本（总量，不乘需求量）"
         }
-      ],
-      "keywords": [
-        "选址",
-        "facility location",
-        "uncapacitated facility location",
-        "UFLP",
-        "无容量设施选址",
-        "固定成本",
-        "fixed charge",
-        "固定费用",
-        "服务成本"
       ]
     },
     {
@@ -361,11 +292,6 @@
           "type": "list",
           "required": true
         }
-      ],
-      "keywords": [
-        "线性规划",
-        "LP",
-        "连续变量"
       ]
     },
     {
@@ -389,11 +315,6 @@
           "type": "list",
           "required": true
         }
-      ],
-      "keywords": [
-        "整数规划",
-        "ILP",
-        "binary"
       ]
     },
     {
@@ -417,11 +338,6 @@
           "type": "dict",
           "required": true
         }
-      ],
-      "keywords": [
-        "运输",
-        "transportation",
-        "供需"
       ]
     },
     {
@@ -435,11 +351,6 @@
           "type": "dict",
           "required": true
         }
-      ],
-      "keywords": [
-        "指派",
-        "assignment",
-        "匹配"
       ]
     },
     {
@@ -470,10 +381,6 @@
           "required": true,
           "description": "W，背包容量"
         }
-      ],
-      "keywords": [
-        "背包",
-        "knapsack"
       ]
     },
     {
@@ -523,14 +430,6 @@
           "required": true,
           "description": "d_i，需求点 i 的需求量"
         }
-      ],
-      "keywords": [
-        "capacitated facility location",
-        "有容量设施选址",
-        "仓库容量",
-        "cflp",
-        "capacity location",
-        "容量约束选址"
       ]
     },
     {
@@ -581,12 +480,6 @@
           "required": true,
           "description": "d_i，需求点 i 的需求量"
         }
-      ],
-      "keywords": [
-        "capacitated p-median",
-        "有容量p中位",
-        "容量聚类",
-        "capacitated clustering"
       ]
     },
     {
@@ -637,14 +530,6 @@
           "required": true,
           "description": "D，允许的最大服务距离"
         }
-      ],
-      "keywords": [
-        "p-median with distance limit",
-        "distance constrained p-median",
-        "服务距离上限",
-        "最大服务距离",
-        "p中位距离约束",
-        "带距离约束的选址"
       ]
     },
     {
@@ -695,15 +580,6 @@
           "required": true,
           "description": "a_ij，允许分配为 1，禁止分配为 0"
         }
-      ],
-      "keywords": [
-        "p-median with forbidden assignments",
-        "forbidden assignment",
-        "allowed assignment",
-        "禁配",
-        "不可分配",
-        "可用分配",
-        "带禁配的选址"
       ]
     },
     {
@@ -760,13 +636,6 @@
           "required": true,
           "description": "Q_j，设施 j 的容量"
         }
-      ],
-      "keywords": [
-        "capacitated p-center",
-        "capacity constrained p-center",
-        "有容量p中心",
-        "容量约束最大距离",
-        "容量中心选址"
       ]
     },
     {
@@ -816,13 +685,6 @@
           "required": false,
           "description": "h_i，需求点 i 的需求量或权重；若未给出可默认为 1"
         }
-      ],
-      "keywords": [
-        "maximum covering with budget",
-        "budget constrained maximum covering",
-        "预算最大覆盖",
-        "开设预算覆盖",
-        "固定成本预算覆盖"
       ]
     },
     {
@@ -860,15 +722,6 @@
           "required": true,
           "description": "d_jk，候选设施 j 与 k 之间的距离，J x J 矩阵"
         }
-      ],
-      "keywords": [
-        "p-dispersion",
-        "p dispersion",
-        "max-min distance",
-        "facility dispersion",
-        "设施分散",
-        "最大最小距离",
-        "设施间距最大"
       ]
     },
     {
@@ -912,13 +765,6 @@
           "required": true,
           "description": "B，固定成本预算上限"
         }
-      ],
-      "keywords": [
-        "budgeted facility location",
-        "budget constrained facility location",
-        "预算设施选址",
-        "固定成本预算",
-        "预算约束选址"
       ]
     },
     {
@@ -968,13 +814,6 @@
           "required": true,
           "description": "a_ij，设施 j 能否覆盖需求点 i"
         }
-      ],
-      "keywords": [
-        "capacitated maximum covering",
-        "capacity constrained maximum covering",
-        "有容量最大覆盖",
-        "容量约束覆盖",
-        "分配覆盖"
       ]
     }
   ]

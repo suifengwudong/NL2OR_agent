@@ -82,10 +82,6 @@ class Session:
     # Model of record
     # ----------------------------------------------------------------
 
-    def save_model(self, report: dict) -> Path:
-        """Persist the validation report (its normalized IR included)."""
-        return write_model_of_record(self.model_file, report)
-
     def load_model(self) -> dict | None:
         """Load the last validated model of record, or None if none was saved."""
         if not self.model_file.is_file():

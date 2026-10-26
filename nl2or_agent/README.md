@@ -240,23 +240,17 @@ nl2or_agent/
 │   ├── block_model.py      # 可执行块语义：IR → PuLP，求解与结果渲染
 │   ├── ir_catalog.py       # 模型库/积木块目录加载（按文件状态缓存）
 │   ├── ir_normalize.py     # Problem IR 归一化
-│   ├── ir_validate.py      # 骨架、维度与报表规格校验
+│   ├── ir_validate.py      # 骨架与维度校验
 │   ├── model_document.py   # IR → 数学模型文档（Markdown + LaTeX）
 │   ├── output_format.py    # agent 输出清洗
-│   ├── problem_ir.py       # ProblemIR 值对象：解析 / 归一化视图 / 参数覆盖
+│   ├── problem_ir.py       # ProblemIR 值对象与 IR 词汇表（解析 / 参数覆盖）
 │   ├── prompt_loader.py    # 提示词加载
-│   ├── report.py           # 报表类型派生、校验与渲染
+│   ├── report.py           # 报表类型派生与渲染
 │   └── what_if.py          # what_if skill：manual 渲染 + 可算模型表
-│
-├── schema/
-│   ├── __init__.py
-│   └── problem_ir.py       # IR 别名映射与校验常量
 │
 ├── tools/
 │   ├── __init__.py
-│   ├── ir_tools.py             # ListBlockCatalogTool / ValidateProblemIrTool / ModelMathTool
-│   ├── ir_script_tool.py       # IrScriptTool — 按 IR 渲染可读求解脚本
-│   ├── model_library_tool.py   # QueryModelLibraryTool — 查询 OR 模型模板库
+│   ├── ir_tools.py             # ValidateProblemIrTool / ModelMathTool
 │   ├── solver_tool.py          # RunSolverTool — 执行生成的求解代码
 │   └── solve_ir_tool.py        # SolveIrTool — 按 IR 求解单个情景
 │
@@ -272,7 +266,6 @@ nl2or_agent/
 ├── utils/
 │   ├── __init__.py
 │   ├── contract.py         # 求解器输出契约（Objective: <值>）
-│   ├── search.py           # 关键词搜索工具
 │   └── session.py          # 会话工作区、模型产物与求解脚本存盘
 │
 ├── web/
@@ -297,11 +290,9 @@ nl2or_agent/
 |-----------|-------------|-----------|
 | 交互核心 | `CodeAgent` | `agents/nl2or_agent.py` 中的 `build_nl2or_agent()` |
 | LLM | `LiteLLMModel` | 通过 `HAMLET_MODEL_ID` 环境变量切换提供商 |
-| 模型库接口 | `Tool` 子类 | `tools/model_library_tool.py` — `QueryModelLibraryTool` |
-| IR 校验接口 | `Tool` 子类 | `tools/ir_tools.py` — `ListBlockCatalogTool` / `ValidateProblemIrTool` / `ModelMathTool` |
+| IR 校验接口 | `Tool` 子类 | `tools/ir_tools.py` — `ValidateProblemIrTool` / `ModelMathTool` |
 | 求解器接口 | `Tool` 子类 | `tools/solver_tool.py` — `RunSolverTool` |
 | 情景求解接口 | `Tool` 子类 | `tools/solve_ir_tool.py` — `SolveIrTool`（按 IR 求解单个情景，不写脚本） |
-| 脚本渲染接口 | `Tool` 子类 | `tools/ir_script_tool.py` — `IrScriptTool`（按 IR 渲染脚本） |
 | 代码生成器 | `CodeAgent` 内置 | CodeAgent 自带 Python 代码生成与执行能力 |
 | 本地存储 | 文件系统 | `data/workspace/` 目录，求解脚本按 UUID 命名存储 |
 | 用户界面 | Gradio | `web/app.py` — 自建 Gradio 聊天界面 + `main.py --mode web` |
@@ -315,31 +306,24 @@ graph TD
     end
 
     subgraph "tools/ (Agent 接口层)"
-        T1[ListBlockCatalogTool]
-        T2[ValidateProblemIrTool]
-        T3[QueryModelLibraryTool]
+        T1[ValidateProblemIrTool]
+        T2[ModelMathTool]
+        T3[SolveIrTool]
         T4[RunSolverTool]
-        T5[SolveIrTool]
-        T6[ModelMathTool]
-        T7[IrScriptTool]
     end
 
     subgraph "core/ (处理引擎层)"
         C1["ir_catalog.py<br/>目录加载（缓存）"]
         C2["ir_normalize.py<br/>归一化"]
-        C2b["ir_validate.py<br/>骨架、维度与报表校验"]
+        C2b["ir_validate.py<br/>骨架与维度校验"]
         C3["output_format.py<br/>输出清洗"]
         C4["prompt_loader.py<br/>提示词加载"]
         C5["model_document.py<br/>数学模型文档"]
         C6["report.py<br/>报表派生与渲染"]
     end
 
-    subgraph "schema/ (数据定义层)"
-        S1["problem_ir.py<br/>TypedDicts + 常量"]
-    end
-
     subgraph "utils/ (基础设施层)"
-        U1["search.py"]
+        U1["contract.py"]
         U2["session.py"]
     end
 
@@ -348,13 +332,13 @@ graph TD
         W2["views.py"]
     end
 
-    A -->|组装 tools| T1 & T2 & T3 & T4 & T5 & T6 & T7
+    A -->|组装 tools| T1 & T2 & T3 & T4
     A -->|系统 prompt| C4
-    T1 & T2 & T6 -->|调用| C1 & C2 & C2b & C5
-    T3 -->|搜索| U1
-    T4 & T5 & T7 -->|存储| U2
-    T5 -->|求解与报表| C1 & C2 & C6
-    C1 & C2 & C2b -->|引用常量| S1
+    T1 -->|归一化与校验| C1 & C2 & C2b
+    T2 -->|数学模型文档| C5
+    T3 -->|求解与报表| C1 & C2 & C6
+    T3 & T4 -->|存储| U2
+    T4 -->|输出契约| U1
     C4 -->|catalog| C1
     W1 -->|格式化输出| C3
     W1 -->|取值与渲染| W2
@@ -362,43 +346,36 @@ graph TD
 
 | 模块 | 职责 | 内容 |
 |------|------|------|
-| `schema/` | 数据定义层 | `problem_ir.py`（TypedDict + 常量别名） |
-| `core/` | 处理引擎层 | `ir_catalog.py`（目录加载，按文件状态缓存）、`ir_normalize.py`（归一化）、`ir_validate.py`（骨架、维度与报表校验）、`model_document.py`（数学模型文档）、`report.py`（报表派生与渲染）、`problem_ir.py`（IR 值对象）、`block_model.py`（可执行块语义）、`output_format.py`（输出清洗）、`prompt_loader.py`（按模式组装提示词） |
+| `core/` | 处理引擎层 | `ir_catalog.py`（目录加载，按文件状态缓存）、`ir_normalize.py`（归一化）、`ir_validate.py`（骨架与维度校验）、`model_document.py`（数学模型文档）、`report.py`（报表派生与渲染）、`problem_ir.py`（IR 值对象与词汇表）、`block_model.py`（可执行块语义）、`output_format.py`（输出清洗）、`prompt_loader.py`（按模式组装提示词） |
 | `tools/` | Agent 接口层 | HAMLET Tool 子类，薄封装调用 `core/` 函数 |
-| `utils/` | 基础设施层 | `search.py`（关键词检索）、`session.py`（会话管理） |
+| `utils/` | 基础设施层 | `contract.py`（求解器输出契约）、`session.py`（会话管理） |
 | `web/` | 表现层 | `app.py`（界面接线、对话轮次与 Agent 缓存）、`views.py`（会话视图取值与渲染） |
 | `agents/` | 入口层 | `nl2or_agent.py`（组装 CodeAgent） |
 
-### Agent 工作流（对应 docs/flowchart.md 活动图）
+### Agent 工作流
 
-下图是 `interactive` 模式：每个步骤占用一个用户轮次，PARSING 与 MODEL LOOKUP 之后都要等用户回复。
-`automatic` 模式把 PARSING、MODEL LOOKUP、CODE GENERATION、SOLVING 压缩在同一轮内连续执行，只在最后给出一个 `final_answer`。
+下图是 `interactive` 模式：解析与确认各占一个用户轮次，确认后进入求解。
+`automatic` 模式在单轮内连续完成解析、校验与求解，只在最后给出一个 `final_answer`。
 
 ```
 用户输入自然语言问题
         │
         ▼
   PARSING（CodeAgent 调用 LLM）
-   ├─ 提取：问题类型 / 决策变量 / 目标函数 / 约束 / 参数
-   └─ 追问用户确认
+   ├─ 提取：问题类型 / 约束块 / 目标函数 / 参数
+   └─ validate_problem_ir 归一与校验，追问用户确认
         │
         ▼
   CONFIRMING（用户确认或修改）
-   ├─ 确认 ──► 进入 MODEL LOOKUP
+   ├─ 确认 ──► 进入 SOLVING
    └─ 修改 ──► 返回 PARSING
         │
         ▼
-  MODEL LOOKUP（QueryModelLibraryTool）
-   └─ 从 data/model_bank/models.json 检索匹配模板
+  SOLVING（SolveIrTool 按块语义求解）
+   └─ 库外规则或用户要求手写代码时改用 RunSolverTool
         │
         ▼
-  CODE GENERATION（CodeAgent 生成 gurobipy 脚本）
-        │
-        ▼
-  SOLVING（RunSolverTool 执行代码，返回求解结果）
-        │
-        ▼
-  返回自然语言解释结果给用户
+  返回自然语言解释与数学模型
 ```
 
 ### 自定义 Tool 开发指南
@@ -445,7 +422,6 @@ class MyTool(Tool):
 - `blocks`: 该模型自身的约束块 id 列表
 - `objective_block`: 目标块 id
 - `parameters`: 参数名、类型与是否必填
-- `keywords`: 检索关键词列表（中英文均可）
 
 约束块的数学形式、参数与可执行语义分别登记在 `constraint_blocks.json` 与 `core/block_model.py`。
 
