@@ -18,10 +18,14 @@ class TestFormatAgentOutput:
         assert "Thought:" not in result
         assert "```" not in result
 
-    def test_keeps_tail_of_long_reply(self):
+    def test_preserves_complete_long_reply(self):
         result = format_agent_output("\n".join(f"第 {i} 行" for i in range(40)))
         assert "第 39 行" in result
-        assert "第 0 行" not in result
+        assert "第 0 行" in result
+
+    def test_preserves_math_sections_and_spacing(self):
+        raw = "**符号说明**\n\n- $h_i$：需求量\n\n**目标函数**\n\n$$\n\\min h_i\n$$"
+        assert format_agent_output(raw) == raw
 
     def test_empty_output_returns_empty_string(self):
         assert format_agent_output("") == ""

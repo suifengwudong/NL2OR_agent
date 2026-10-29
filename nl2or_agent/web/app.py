@@ -55,6 +55,10 @@ footer { display: none !important; }
 """
 
 _THEME = Soft(primary_hue="indigo", neutral_hue="slate", radius_size="md")
+_LATEX_DELIMITERS = [
+    {"left": "$$", "right": "$$", "display": True},
+    {"left": "$", "right": "$", "display": False},
+]
 
 
 # Per-session agent cache (sid → agent instance).
@@ -134,7 +138,7 @@ def create_ui(agent_factory: Callable[[], Any], default_mode: str = "interactive
             with gr.Tab("对话"):
                 with gr.Row():
                     with gr.Column(scale=7):
-                        chatbot = gr.Chatbot(label="对话", height=460)
+                        chatbot = gr.Chatbot(label="对话", height=460, latex_delimiters=_LATEX_DELIMITERS)
                         msg = gr.Textbox(
                             label="输入运筹学问题",
                             placeholder=(
@@ -171,7 +175,7 @@ def create_ui(agent_factory: Callable[[], Any], default_mode: str = "interactive
                 )
                 with gr.Row():
                     with gr.Column(scale=3):
-                        model_view = gr.Markdown(render_model_view(None))
+                        model_view = gr.Markdown(render_model_view(None), latex_delimiters=_LATEX_DELIMITERS)
                     with gr.Column(scale=2):
                         model_json = gr.Code(
                             label="归一化 Problem IR", language="json", lines=28, interactive=False
