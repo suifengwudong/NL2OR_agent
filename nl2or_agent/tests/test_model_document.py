@@ -29,12 +29,16 @@ def test_p_median_document_has_sets_variables_and_all_blocks(cases):
     assert "$|J| = 5$" in document
     assert "$x_{ij} \\in \\{0,1\\}$" in document
     assert "\\min \\sum" in document
+    assert document.index("**符号说明**") < document.index("**目标函数")
+    assert "$h_i$：需求点 i 的需求量或权重" in document
+    assert "$d_{ij}$：" in document
     for block_id in (
         "assign_each_demand_once",
         "link_assignment_to_open",
         "cardinality_open_p_facilities",
     ):
-        assert f"`{block_id}`" in document
+        assert block_id not in document
+    assert "weighted_service_distance_objective" not in document
     assert document.count("$$") % 2 == 0
 
 
@@ -43,7 +47,15 @@ def test_dispersion_document_uses_the_big_m_form(cases):
 
     assert "$D \\ge 0$" in document
     assert "D \\leq d_{jk} + M" in document
-    assert "`min_pairwise_distance_bound`" in document
+    assert "min_pairwise_distance_bound" not in document
+
+
+def test_weighted_objective_defines_default_demand_symbol(cases):
+    ir = _normalized_ir(cases["p_median_community"])
+    ir["parameters"].pop("demand", None)
+    document = render_model_document(ir)
+    assert "$h_i$：" in document
+    assert "默认 1" in document
 
 
 def test_knapsack_document_derives_its_variable_without_a_model_entry(cases):
@@ -51,7 +63,7 @@ def test_knapsack_document_derives_its_variable_without_a_model_entry(cases):
 
     assert "$x_i \\in \\{0,1\\}$" in document
     assert "\\max \\sum" in document
-    assert "`knapsack_capacity`" in document
+    assert "knapsack_capacity" not in document
 
 
 def test_out_of_catalog_objective_falls_back_to_its_expression():
@@ -75,7 +87,7 @@ def test_model_math_tool_returns_the_document(cases):
     tool = ModelMathTool()
     document = tool.forward(json.dumps(case["input_ir"]))
     assert "## 数学模型" in document
-    assert "`cardinality_open_p_facilities`" in document
+    assert "cardinality_open_p_facilities" not in document
 
 
 def test_model_math_tool_reports_bad_json():
