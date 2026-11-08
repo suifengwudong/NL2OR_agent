@@ -58,6 +58,53 @@ def test_weighted_objective_defines_default_demand_symbol(cases):
     assert "默认 1" in document
 
 
+def test_covering_objective_defines_demand_as_weight(cases):
+    ir = _normalized_ir(cases["maximum_covering_cities"])
+    document = render_model_document(ir)
+    assert "$h_i$：" in document
+    assert "$d_i$：" not in document
+
+    ir["parameters"].pop("demand", None)
+    document = render_model_document(ir)
+    assert "$h_i$：" in document
+    assert "默认 1" in document
+
+
+def test_capacitated_covering_defines_both_demand_symbols(cases):
+    document = _document("capacitated_maximum_covering", cases)
+    assert "$d_i$：" in document
+    assert "$h_i = d_i$：" in document
+
+
+def test_objective_headings_do_not_repeat_the_sense(cases):
+    for case_id in (
+        "maximum_covering_cities",
+        "p_center_emergency",
+        "p_dispersion",
+        "cappmed_1",
+    ):
+        document = _document(case_id, cases)
+        heading = next(line for line in document.splitlines() if line.startswith("**目标函数："))
+        name = heading.removeprefix("**目标函数：").removesuffix("**")
+        assert "最小化最小化" not in name
+        assert "最大化最大化" not in name
+        assert "目标" not in name
+
+
+def test_all_valid_documents_hide_catalog_ids(cases):
+    from core.ir_catalog import load_block_catalog
+
+    catalog = load_block_catalog()
+    catalog_ids = set(catalog["block_ids"]) | set(catalog["objective_block_ids"])
+    for case in cases.values():
+        report = validate_problem_ir(dict(case["input_ir"]))
+        if not report["valid"]:
+            continue
+        document = render_model_document(report["normalized_ir"])
+        leaked = sorted(catalog_id for catalog_id in catalog_ids if catalog_id in document)
+        assert not leaked, (case["id"], leaked)
+
+
 def test_knapsack_document_derives_its_variable_without_a_model_entry(cases):
     document = _document("knapsack_gadget", cases)
 

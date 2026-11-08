@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .block_model import active_variable_names
+from .block_model import active_variable_names, constraint_block_ids, objective_block_id
 from .ir_catalog import load_block_catalog, load_model_bank
 from .problem_ir import ProblemIR
 
@@ -41,7 +41,9 @@ def render_model_document(
 
     family_ids = [str(f.get("id")) for f in ir.get("problem_families") or [] if f.get("id")]
     if family_ids:
-        names = [str(model_bank["by_id"].get(item, {}).get("name") or "其他模型") for item in family_ids]
+        names = [
+            str(model_bank["by_id"].get(item, {}).get("name") or "其他模型") for item in family_ids
+        ]
         lines.append(f"**问题类型**：{'、'.join(names)}")
         lines.append("")
 
@@ -94,33 +96,60 @@ def _render_parameters(ir: dict[str, Any], entries: list[dict[str, Any]]) -> lis
     if not names:
         return []
 
+    weight_demand, capacity_demand = _demand_usage(ir)
     lines = []
     for name in names:
         definition = definitions.get(name) or {}
-        used_by_objective = name == "demand" and (ir.get("objective") or {}).get("block_id") == "weighted_service_distance_objective"
-        if name not in values and not definition.get("required") and not used_by_objective:
+        is_demand = name == "demand"
+        default_demand = is_demand and weight_demand
+        if name not in values and not definition.get("required") and not default_demand:
             continue
         meaning = definition.get("description") or "模型参数"
         symbol = _parameter_symbol(name, ir)
-        if name == "demand" and symbol == "h_i":
+        if is_demand and weight_demand and capacity_demand:
+            meaning = "需求点 i 的需求量，同时作为覆盖权重"
+        elif is_demand and weight_demand:
             meaning = "需求点 i 的需求量或权重；未给出时按模型约定取 1"
         if meaning.startswith(symbol + "，"):
-            meaning = meaning[len(symbol) + 1:]
-        shown = _value_summary(values.get(name)) if name in values else ("默认 1" if used_by_objective else "缺失")
+            meaning = meaning[len(symbol) + 1 :]
+        shown = (
+            _value_summary(values.get(name))
+            if name in values
+            else ("默认 1" if default_demand else "缺失")
+        )
         lines.append(f"- ${_symbol_latex(symbol)}$：{meaning}（取值：{shown}）")
+        if is_demand and weight_demand and capacity_demand:
+            lines.append("- $h_i = d_i$：覆盖权重与容量需求使用同一数据")
     lines.append("")
     return lines
 
 
+def _demand_usage(ir: dict[str, Any]) -> tuple[bool, bool]:
+    active = set(constraint_block_ids(ir)) | {objective_block_id(ir)}
+    weight = bool(active & {"weighted_service_distance_objective", "covered_demand_objective"})
+    capacity = "facility_capacity" in active
+    return weight, capacity
+
+
 def _parameter_symbol(name: str, ir: dict[str, Any]) -> str:
-    if name == "demand" and (ir.get("objective") or {}).get("block_id") == "weighted_service_distance_objective":
-        return "h_i"
+    if name == "demand":
+        weight_demand, capacity_demand = _demand_usage(ir)
+        return "d_i" if capacity_demand else ("h_i" if weight_demand else "d_i")
     return {
-        "distance": "d_ij", "demand": "d_i", "coverage_matrix": "a_ij",
-        "fixed_cost": "f_j", "coverage_distance": "C", "service_cost": "c_ij",
-        "value": "v_i", "weight": "w_i", "capacity": "W",
-        "facility_capacity": "Q_j", "service_distance_limit": "D",
-        "availability": "a_ij", "opening_budget": "B", "facility_distance": "d_jk",
+        "distance": "d_ij",
+        "demand": "d_i",
+        "coverage_matrix": "a_ij",
+        "fixed_cost": "f_j",
+        "coverage_distance": "C",
+        "service_cost": "c_ij",
+        "value": "v_i",
+        "weight": "w_i",
+        "capacity": "W",
+        "facility_capacity": "Q_j",
+        "service_distance_limit": "D",
+        "availability": "a_ij",
+        "opening_budget": "B",
+        "facility_distance": "d_jk",
     }.get(name, name)
 
 
@@ -191,6 +220,16 @@ def _domain_latex(var_type: str) -> str:
     return ""
 
 
+def _objective_display_name(name: str) -> str:
+    text = str(name)
+    for prefix in ("最小化", "最大化"):
+        if text.startswith(prefix):
+            text = text[len(prefix) :]
+            break
+    text = text.removesuffix("目标").replace("目标（", "（")
+    return text or str(name)
+
+
 def _render_objective(ir: dict[str, Any], catalog: dict[str, Any]) -> list[str]:
     objective = ir.get("objective") or {}
     block_id = str(objective.get("block_id") or "")
@@ -199,7 +238,7 @@ def _render_objective(ir: dict[str, Any], catalog: dict[str, Any]) -> list[str]:
     name = (entry or {}).get("name") or "库外目标"
 
     sense_text = _SENSE_TEXT.get(sense, sense or "未声明方向")
-    display_name = str(name).removesuffix("目标") if entry else str(name)
+    display_name = _objective_display_name(name) if entry else str(name)
     lines = [f"**目标函数：{sense_text}{display_name}**", ""]
     math = (entry or {}).get("math")
     if math:
@@ -222,7 +261,6 @@ def _render_constraints(ir: dict[str, Any], catalog: dict[str, Any]) -> list[str
         return ["**约束条件**：未声明", ""]
 
     lines = ["**约束条件**", ""]
-    blocks = sorted(blocks, key=lambda block: (0 if block.get("block_id") == "cardinality_open_p_facilities" else 1))
     for index, block in enumerate(blocks, 1):
         block_id = str(block.get("block_id") or "")
         entry = catalog["by_id"].get(block_id) or {}

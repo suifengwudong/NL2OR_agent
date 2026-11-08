@@ -125,7 +125,7 @@
           "name": "coverage_distance",
           "type": "number",
           "required": false,
-          "description": "C，覆盖距离阈值；若给定 distance，可由 d_ij <= C 生成 a_ij"
+          "description": "C，覆盖距离阈值；若给定距离矩阵，可由 d_ij <= C 生成 a_ij"
         },
         {
           "name": "distance",
@@ -165,7 +165,7 @@
           "name": "p",
           "type": "integer",
           "required": true,
-          "description": "可开设的设施数量；若题目表述为“最多 p 个”，可使用 cardinality_open_at_most_p_facilities"
+          "description": "可开设的设施数量；若题目表述为“最多 p 个”，可改用最多 p 个的基数约束"
         },
         {
           "name": "coverage_matrix",
@@ -183,7 +183,7 @@
           "name": "coverage_distance",
           "type": "number",
           "required": false,
-          "description": "C，覆盖距离阈值；若给定 distance，可由 d_ij <= C 生成 a_ij"
+          "description": "C，覆盖距离阈值；若给定距离矩阵，可由 d_ij <= C 生成 a_ij"
         },
         {
           "name": "distance",
