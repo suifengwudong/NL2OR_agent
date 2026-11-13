@@ -330,6 +330,8 @@ Web 界面支持聊天交互、求解器文件列表查看与会话级隔离（�
 
 ## 更新记录
 
+- **2026-11-13** 修正「模型已变更」误报：`fixed_cost`/`demand` 等按键数据按实体顺序归一为列表；指纹改为只哈希可执行模型内容（忽略说明文字、块顺序、`missing_data`），并对 `[MODEL_MATH\]` 这类转义占位符做展开容忍。提示词新增「缺数据先反问」规则：必需数据缺失时不建模、不填占位，先列出缺失项；同时要求每条消息为单个 python 块、答复放在 `final_answer` 内。
+- **2026-11-13** 模型输出解析加固：`_patch_hamlet_code_parsing` 在原始解析失败后依次解包 DSML 原生调用、裁掉空 Early Stop 段、按序合并多个代码块、兜底裸代码；提示词补充「代码不要携带 LaTeX 转义」。
 - **2026-11-13** 数学模型补齐 s.t. 的变量取值范围：决策变量的 0-1 / 整数 / 非负数域以显式约束形式渲染（带 `\forall` 量词，位于结构约束与库外规则之后），不再只写在符号说明的变量定义里。
 - **2026-11-12** 上下文与校验收紧：模型库退出系统提示词，改为 `search_model_library` / `describe_model` 两阶段按需检索（提示词 20.1k→14.2k 字符，与库规模解耦）；`validate_problem_ir` 报告只留结论（删除目录回显与 `constraint_context`）；未消费数值参数在 solve_ir 路径升级为错误；`custom_constraints` 只收题面额外限制；最终答复改由运行时占位符 `[MODEL_MATH]` / `[SOLVE_RESULT]` 从 model.json 与 solve_result.json（带 IR 指纹）填充；hamlet 系统提示词残留 print 静音，agent 按 UI 实际模式构造，`LITELLM_LOCAL_MODEL_COST_MAP=true` 跳过价格表远程拉取。本轮建立的绑定约定汇总在 `../docs/AGENT.md`。
 - **2026-10-26** 组分削减：工具 7→4（删除模型库检索、块目录、脚本渲染工具）；IR 删除报表规格面与死字段；`schema/` 并入 `core/`；报表由块结构派生。

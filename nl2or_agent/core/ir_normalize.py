@@ -359,7 +359,7 @@ def _normalize_constraint_entry(
 
 
 def _normalize_parameters(params: Any, entities: dict[str, Any]) -> dict[str, Any]:
-    """Normalize named matrix data to the list-of-lists solver representation."""
+    """Normalize named data keyed by entity ids to the solver's list representation."""
     if not isinstance(params, dict):
         return {}
 
@@ -381,6 +381,25 @@ def _normalize_parameters(params: Any, entities: dict[str, Any]) -> dict[str, An
             out[key] = [[value[row_id][col_id] for col_id in col_ids] for row_id in row_ids]
         except (KeyError, TypeError):
             # Leave malformed input unchanged so validation can report it.
+            continue
+
+    # 一维数据也可能按键给出：实体 id 顺序决定求解器读到的位置
+    for key in ("demand", "value", "weight"):
+        value = out.get(key)
+        if not isinstance(value, dict):
+            continue
+        try:
+            out[key] = [value[row_id] for row_id in row_ids]
+        except (KeyError, TypeError):
+            continue
+
+    for key in ("fixed_cost", "facility_capacity"):
+        value = out.get(key)
+        if not isinstance(value, dict):
+            continue
+        try:
+            out[key] = [value[col_id] for col_id in col_ids]
+        except (KeyError, TypeError):
             continue
 
     value = out.get("facility_distance")

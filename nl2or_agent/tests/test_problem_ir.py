@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from core.problem_ir import READABLE_DATA_KEYS, ProblemIR
+from core.problem_ir import READABLE_DATA_KEYS, ProblemIR, fingerprint
 
 _BASE = Path(__file__).parent.parent
 
@@ -76,6 +76,76 @@ class TestParameters:
         )
 
         assert ir.parameters == {"p": 2, "demand": [1], "distance": [[1, 2]]}
+
+
+# ---------------------------------------------------------------------------
+# 指纹：只认决定模型的内容
+# ---------------------------------------------------------------------------
+
+
+class TestFingerprint:
+    def _ir(self) -> dict:
+        return {
+            "problem_families": [{"id": "facility_location"}],
+            "entities": {
+                "I": {"size": 2, "ids": ["a", "b"]},
+                "J": {"size": 2, "ids": ["x", "y"]},
+            },
+            "parameters": {"fixed_cost": [10, 20], "service_cost": [[1, 2], [3, 4]]},
+            "objective": {
+                "block_id": "fixed_plus_service_cost_objective",
+                "sense": "minimize",
+                "natural_language": "最小化总成本",
+            },
+            "constraint_blocks": [
+                {"block_id": "assign_each_demand_once", "natural_language": "每个区域分配一次"},
+                {"block_id": "link_assignment_to_open", "natural_language": "只有开设才能分配"},
+            ],
+        }
+
+    def test_prose_and_bookkeeping_do_not_change_the_fingerprint(self):
+        first = self._ir()
+        second = self._ir()
+        second["objective"]["natural_language"] = "换一种说法"
+        second["constraint_blocks"][0]["natural_language"] = "另一种说法"
+        second["constraint_blocks"][0]["status"] = "user_specified"
+        second["missing_data"] = ["未给出配送费"]
+
+        assert fingerprint(first) == fingerprint(second)
+
+    def test_block_order_does_not_change_the_fingerprint(self):
+        first = self._ir()
+        second = self._ir()
+        second["constraint_blocks"].reverse()
+
+        assert fingerprint(first) == fingerprint(second)
+
+    def test_numeric_changes_change_the_fingerprint(self):
+        first = self._ir()
+        second = self._ir()
+        second["parameters"]["fixed_cost"][0] = 11
+
+        assert fingerprint(first) != fingerprint(second)
+
+    def test_entity_id_changes_change_the_fingerprint(self):
+        first = self._ir()
+        second = self._ir()
+        second["entities"]["J"]["ids"] = ["x", "z"]
+
+        assert fingerprint(first) != fingerprint(second)
+
+    def test_dict_keyed_and_list_parameters_match_after_normalization(self):
+        """第一阶段按键写 fixed_cost、第二阶段按位置写，同一个模型必须同指纹。"""
+        from core.ir_normalize import normalize_problem_ir
+
+        keyed = self._ir()
+        keyed["parameters"]["fixed_cost"] = {"x": 10, "y": 20}
+        positional = self._ir()
+
+        normalized_keyed, _, _ = normalize_problem_ir(keyed)
+        normalized_positional, _, _ = normalize_problem_ir(positional)
+
+        assert fingerprint(normalized_keyed) == fingerprint(normalized_positional)
 
 
 # ---------------------------------------------------------------------------

@@ -40,6 +40,6 @@ The single `final_answer` must contain, in the user's language:
   chance to confirm them before solving;
 - the solver script in the session workspace.
 
-If required data is missing and cannot be inferred, do not invent numbers: report in `final_answer`
-exactly what is missing and stop. If no run succeeded, report that failure and the error it produced
-instead of giving a number.
+If required data is missing and cannot be inferred, do not invent numbers or use placeholder values:
+report in `final_answer` exactly what is missing and stop. If no run succeeded, report that failure
+and the error it produced instead of giving a number.

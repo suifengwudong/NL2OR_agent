@@ -137,9 +137,61 @@ class ProblemIR:
         return applied
 
 
+def _executable_view(ir: dict[str, Any]) -> dict[str, Any]:
+    """Project an IR to the content that determines the solved model.
+
+    Prose fields (``natural_language``, ``missing_data``), block bookkeeping
+    (``status``, ``name``, ``category``) and string placeholders do not change
+    the optimization model, so they must not invalidate a saved solve result.
+    """
+
+    def data(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {key: data(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [data(item) for item in value]
+        return value
+
+    def parameters(value: Any) -> dict[str, Any]:
+        return {key: data(item) for key, item in (value or {}).items() if not isinstance(item, str)}
+
+    objective = ir.get("objective") or {}
+    blocks = sorted(
+        (
+            {
+                "block_id": str(entry.get("block_id") or ""),
+                "parameters": parameters(entry.get("parameters")),
+            }
+            for entry in ir.get("constraint_blocks") or []
+        ),
+        key=lambda entry: entry["block_id"],
+    )
+    entities = {
+        key: {
+            "size": entry.get("size"),
+            "ids": [str(item) for item in entry.get("ids") or []],
+        }
+        for key, entry in (ir.get("entities") or {}).items()
+    }
+    return {
+        "problem_families": sorted(
+            str(family.get("id")) for family in ir.get("problem_families") or []
+        ),
+        "entities": entities,
+        "parameters": parameters(ir.get("parameters")),
+        "objective": {
+            "block_id": str(objective.get("block_id") or ""),
+            "sense": str(objective.get("sense") or ""),
+            "expression": str(objective.get("expression") or ""),
+            "parameters": parameters(objective.get("parameters")),
+        },
+        "constraint_blocks": blocks,
+    }
+
+
 def fingerprint(ir: dict[str, Any]) -> str:
-    """Stable content hash of an IR dict (key order independent)."""
-    canonical = json.dumps(ir, sort_keys=True, ensure_ascii=False)
+    """Stable hash of the executable model content (prose and order independent)."""
+    canonical = json.dumps(_executable_view(ir), sort_keys=True, ensure_ascii=False)
     return hashlib.md5(canonical.encode("utf-8")).hexdigest()
 
 

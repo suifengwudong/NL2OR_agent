@@ -376,6 +376,26 @@ class TestSkeletonChecks:
 # ---------------------------------------------------------------------------
 
 
+class TestParameterNormalization:
+    def test_list_parameters_keyed_by_entity_ids_become_positional_lists(self):
+        """fixed_cost / demand 按实体 id 给出时，按 I/J 顺序转成求解器读取的列表。"""
+        ir = {
+            "entities": {
+                "I": {"size": 2, "ids": ["a", "b"]},
+                "J": {"size": 2, "ids": ["x", "y"]},
+            },
+            "parameters": {
+                "fixed_cost": {"x": 10, "y": 20},
+                "demand": {"b": 2, "a": 1},
+            },
+        }
+
+        normalized, _, _ = normalize_problem_ir(ir)
+
+        assert normalized["parameters"]["fixed_cost"] == [10, 20]
+        assert normalized["parameters"]["demand"] == [1, 2]
+
+
 class TestEntityChecks:
     _DISTANCE = [
         [4, 6, 9, 7, 8],

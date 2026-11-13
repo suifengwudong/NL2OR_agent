@@ -14,6 +14,7 @@ import contextlib
 import importlib.resources
 import io
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,13 @@ _CODE_BLOCK_TAGS: str | tuple[str, str] = "markdown"
 _PATCHED_ATTR = "_nl2or_parse_patched"
 _QUIET_PROMPT_ATTR = "_nl2or_prompt_quiet"
 
+# DeepSeek 原生工具调用标记：<｜DSML｜ parameter name="code" ...>...</｜DSML｜ parameter>
+_DSML_CODE_RE = re.compile(
+    r'<[｜|]DSML[｜|]\s*parameter\s+name="code"[^>]*>(.*?)</[｜|]DSML[｜|]\s*parameter>',
+    re.DOTALL,
+)
+_EARLY_STOP_MARKER = "Early Stop Strategy:"
+
 
 def _silence_system_prompt_print() -> None:
     """Suppress the stray ``print(system_prompt)`` in HAMLET's CodeAgent.
@@ -70,17 +78,59 @@ def _silence_system_prompt_print() -> None:
     setattr(cls, _QUIET_PROMPT_ATTR, True)
 
 
+def _fenced_blocks(text: str, tags: tuple[str, str]) -> list[str]:
+    """Extract fenced code blocks with the same patterns HAMLET uses."""
+    blocks = re.findall(rf"{tags[0]}\s*\n(.*?)\n{tags[1]}", text, re.DOTALL)
+    if not blocks:
+        blocks = re.findall(r"```(?:python|py)\s*\n(.*?)\n```", text, re.DOTALL)
+    return blocks
+
+
+def _repair_code_output(text: str, tags: tuple[str, str]) -> list[str]:
+    """Recover the actions a model intended, from known malformed shapes.
+
+    Three shapes are handled, all with an unambiguous intent:
+
+    - several fenced blocks without the early-stop section: concatenate them in
+      order, which is exactly the "put all tool calls in one block" contract;
+    - one fenced block plus a stray/empty ``Early Stop Strategy`` section: drop
+      the section and keep the block;
+    - DeepSeek's native ``<｜DSML｜ parameter name="code">`` tool call: unwrap its
+      payload.
+
+    A plain-prose reply is not repaired here: the system prompt requires every
+    message to be one ``python`` block ending in ``final_answer(...)``, and
+    turning arbitrary prose into a final answer would accept intermediate
+    thoughts as results.
+
+    Valid output never reaches this function (the original parser succeeds).
+    """
+    dsml = _DSML_CODE_RE.search(text)
+    if dsml:
+        return [dsml.group(1).strip()]
+
+    actions_part = text.split(_EARLY_STOP_MARKER, 1)[0]
+    blocks = [block for block in _fenced_blocks(actions_part, tags) if block.strip()]
+    if len(blocks) == 1:
+        return blocks
+    if len(blocks) > 1:
+        return ["\n\n".join(blocks)]
+    return []
+
+
 def _patch_hamlet_code_parsing() -> None:
-    """Harden HAMLET's code parsing against models that omit code tags.
+    """Harden HAMLET's code parsing against malformed model output.
 
-    HAMLET's ``parse_several_code_blobs`` requires the LLM output to be wrapped
-    in ``<code>...</code>`` (or markdown) tags.  Some models (e.g. deepseek-chat)
-    occasionally emit a bare ``final_answer(...)`` call with no tags at all;
-    HAMLET then auto-appends the closing tag and parsing fails.
+    HAMLET's ``parse_several_code_blobs`` accepts exactly two shapes: one fenced
+    block, or several blocks plus an ``Early Stop Strategy`` section.  Models
+    regularly break that contract in three ways: one block per tool call, a
+    single block plus an empty early-stop section, and DeepSeek's native
+    ``<｜DSML｜ invoke ...>`` tool markup.  None of those should cost a step.
 
-    This patch adds a fallback: strip the trailing closing tag and, when the
-    remainder parses as valid Python, treat it as a single code action.  The
-    original error is preserved when the fallback also fails.
+    The repair ladder runs only after the original parser raises: unwrap DSML,
+    drop a stray early-stop section, merge several blocks in order, and finally
+    fall back to treating a bare (unfenced) program as one action.  The original
+    error is re-raised when nothing parses.
     """
     import hamlet.core.agents as hamlet_agents
 
@@ -95,6 +145,10 @@ def _patch_hamlet_code_parsing() -> None:
         try:
             return _original(text, code_block_tags)
         except Exception as exc:
+            repaired = _repair_code_output(str(text), code_block_tags)
+            if repaired:
+                return repaired, None, None
+
             cleaned = str(text).rstrip()
             closing = code_block_tags[1]
             if closing and cleaned.endswith(closing):

@@ -54,7 +54,12 @@ def expand_placeholders(text: str, session: "Session") -> str:
     HAMLET renders the system prompt through Jinja). An unresolved placeholder
     fails loudly: leaving it as a literal, or filling it with a stale result
     from an earlier IR, would silently put a wrong model in front of the user.
+
+    Models occasionally escape the closing bracket as ``\\]`` after producing
+    LaTeX; the same placeholder in that shape is still the placeholder.
     """
+    for name in ("MODEL_MATH", "SOLVE_RESULT"):
+        text = text.replace(f"[{name}\\]", f"[{name}]").replace(f"\\[{name}\\]", f"[{name}]")
     if MODEL_MATH_PLACEHOLDER in text:
         model = session.load_model()
         if model is None:

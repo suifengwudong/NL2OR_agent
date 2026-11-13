@@ -105,6 +105,16 @@ class TestExpandPlaceholders:
 
         assert expanded.count("## 数学模型") == 1
 
+    def test_a_placeholder_with_an_escaped_bracket_is_still_expanded(self, session):
+        """模型偶尔把占位符写成 ``[MODEL_MATH\\]``，仍按占位符处理。"""
+        from core.output_format import expand_placeholders
+
+        _validated_session(session)
+        expanded = expand_placeholders(r"模型如下：[MODEL_MATH\]", session)
+
+        assert expanded.startswith("模型如下：## 数学模型")
+        assert r"[MODEL_MATH\]" not in expanded
+
     def test_solve_result_expands_the_saved_artifact(self, session):
         from core.output_format import SOLVE_RESULT_PLACEHOLDER, expand_placeholders
 

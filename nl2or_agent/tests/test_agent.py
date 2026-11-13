@@ -212,6 +212,92 @@ class TestBuildNl2orAgent:
         actions, strategy, _ = parse_fn(raw, ("```python", "```"))
         assert "print(1 + 1)" in actions[0]
 
+    def test_several_blocks_without_early_stop_are_merged(self):
+        """模型把每次工具调用各写一块时，按顺序合并成同一段程序。"""
+        import hamlet.core.agents as hamlet_agents
+
+        build_nl2or_agent(verbosity_level=0)
+        parse_fn = hamlet_agents.parse_several_code_blobs
+
+        raw = (
+            "```python\nprint(search_model_library('选址'))\n```\n\n"
+            "```python\nprint(search_model_library('容量'))\n```\n\n"
+            "```python\nprint(describe_model('facility_location'))\n```"
+        )
+        actions, strategy, _ = parse_fn(raw, ("```python", "```"))
+
+        assert strategy is None
+        assert len(actions) == 1
+        assert "search_model_library('选址')" in actions[0]
+        assert "search_model_library('容量')" in actions[0]
+        assert "describe_model('facility_location')" in actions[0]
+
+    def test_single_block_with_empty_early_stop_is_accepted(self):
+        """单块后面跟一个空的 Early Stop Code，不应被当成协议冲突。"""
+        import hamlet.core.agents as hamlet_agents
+
+        build_nl2or_agent(verbosity_level=0)
+        parse_fn = hamlet_agents.parse_several_code_blobs
+
+        raw = (
+            "```python\nprint(1 + 1)\n```\n\nEarly Stop Strategy: code\nEarly Stop Code:\n```\n```"
+        )
+        actions, strategy, _ = parse_fn(raw, ("```python", "```"))
+
+        assert strategy is None
+        assert actions == ["print(1 + 1)"]
+
+    def test_dsml_native_tool_call_is_unwrapped(self):
+        """DeepSeek 原生工具调用标记里的 code 参数按单个动作执行。"""
+        import hamlet.core.agents as hamlet_agents
+
+        build_nl2or_agent(verbosity_level=0)
+        parse_fn = hamlet_agents.parse_several_code_blobs
+
+        raw = (
+            "<｜DSML｜ calls>\n"
+            '<｜DSML｜ invoke name="python_interpreter">\n'
+            '<｜DSML｜ parameter name="code" string="true">import json\nprint(1)\n'
+            "</｜DSML｜ parameter>\n"
+            "</｜DSML｜ invoke>\n"
+            "</｜DSML｜ calls>"
+        )
+        actions, strategy, _ = parse_fn(raw, ("```python", "```"))
+
+        assert strategy is None
+        assert actions == ["import json\nprint(1)"]
+
+    def test_plain_prose_with_a_placeholder_is_rejected(self):
+        """纯文本答复属于提示词违约，由解析器回喂错误让模型重试，不猜测包裹。"""
+        import hamlet.core.agents as hamlet_agents
+
+        build_nl2or_agent(verbosity_level=0)
+        parse_fn = hamlet_agents.parse_several_code_blobs
+
+        raw = (
+            "请确认以下模型是否符合你的问题：\n\n[MODEL_MATH\\]\n\n"
+            "以上就是本问题的数学模型。\n\n请回复确认。```"
+        )
+        with pytest.raises(Exception, match="regex pattern"):
+            parse_fn(raw, ("```python", "```"))
+
+    def test_valid_early_stop_flow_is_untouched(self):
+        """原生的多块 + Early Stop 协议保持 HAMLET 的语义，不被合并。"""
+        import hamlet.core.agents as hamlet_agents
+
+        build_nl2or_agent(verbosity_level=0)
+        parse_fn = hamlet_agents.parse_several_code_blobs
+
+        raw = (
+            "Code#1:\n```python\nx = 1\n```\n"
+            "Code#2:\n```python\nprint(x)\n```\n"
+            "Early Stop Strategy: code\nEarly Stop Code:\n```python\nprint(x)\n```"
+        )
+        actions, strategy, _ = parse_fn(raw, ("```python", "```"))
+
+        assert strategy == "code"
+        assert actions == ["x = 1", "print(x)"]
+
     def test_default_mode_is_interactive(self):
         agent = build_nl2or_agent(verbosity_level=0)
         assert "one step per user turn" in agent.prompt_templates["system_prompt"]

@@ -44,6 +44,7 @@
 
 | 主题 | 约定 |
 |------|------|
+| 缺数据先反问 | `describe_model` 列出的必需数据在题面缺失且无法从文字推出时，先用 `final_answer` 列出具体缺失项并停止；不得编造数值、不得用占位字符串凑出一个「可校验」的模型。IR 只用用户真实给出的数据构建 |
 | `custom_constraints` | 只收题面明确提出、库无法表达的额外限制；「不考虑容量」「不限定开设数量」这类说明某库块不适用的语句是建模假设，进答复的「模型假设」章节，禁止写入 IR |
 | `entities.*.ids` | 按题面出现的写法抄录（中文题面用中文名，不替换成括号内外文）；无名称时用 `I1…`、`J1…` |
 | `parameters` | 只放被启用块或目标块读取的键；派生数据（如每单费率 × 订单量）先算好再放入，原始输入若无人读取则删除 |
@@ -57,7 +58,7 @@ LLM 不抄写数学模型与结果报表；答复中的两段权威文本由运�
 
 | 项 | 约定 |
 |----|------|
-| 占位符形状 | `[MODEL_MATH]`、`[SOLVE_RESULT]`，各自单独一行 |
+| 占位符形状 | `[MODEL_MATH]`、`[SOLVE_RESULT]`，各自单独一行，原样书写，不带反斜杠或 LaTeX 转义；展开时把 `[MODEL_MATH\]` 这类转义变体按同一占位符处理 |
 | Jinja 限制 | hamlet 的 `populate_template` 用 Jinja `StrictUndefined` 渲染系统提示词；**提示词与模板文件中禁止出现 `{{ }}` 与 `{% %}`**（`{{MODEL_MATH}}` 会让 agent 构造直接抛 `UndefinedError`）。需要占位符语义时用 `[名字]` 形状 |
 | `[MODEL_MATH]` 来源 | `render_model_document(model.json 的 normalized_ir)` 现场渲染，永远对应最后一次校验通过的模型 |
 | `[SOLVE_RESULT]` 来源 | 会话 `solve_result.json`（`format_solution + render_report`）；仅基准 `solve_ir` 落盘，情景变体不覆盖 |
@@ -84,8 +85,10 @@ LLM 不抄写数学模型与结果报表；答复中的两段权威文本由运�
 
 | 补丁 | 上游问题 | 位置 |
 |------|----------|------|
-| `_patch_hamlet_code_parsing` | `parse_several_code_blobs` 要求标签包裹，deepseek 偶发裸 `final_answer(...)` 解析失败 | `hamlet/core/agents.py` |
+| `_patch_hamlet_code_parsing` | `parse_several_code_blobs` 只接受「单块」或「多块 + Early Stop」两种形状；模型常见退化：每个工具调用各写一块、单块后跟空的 Early Stop、DeepSeek 原生 `<｜DSML｜ invoke>` 标记、裸 `final_answer(...)` 无围栏。补丁在原始解析失败后依次：解包 DSML 的 code 参数、裁掉 Early Stop 段、按顺序合并多块、最后把裸代码当单个动作 | `hamlet/core/utils.py::parse_several_code_blobs` |
 | `_silence_system_prompt_print` | `CodeAgent.initialize_system_prompt()` 末尾硬编码 `print(system_prompt)`（`hamlet/core/agents.py:1486`）；`__init__` 与每次 `run()` 都求值 `self.system_prompt`，整份提示词每回合打印两次，`verbosity_level=0` 不起作用 | `hamlet/core/agents.py:1486` |
+
+解析修复只处理输出形状，不改写代码内容与语义：纯文本答复（没有 ```python 块）不猜测包裹，交给提示词要求「每条消息必须是一个 python 块、答复放在 final_answer 内」；Python 里的 LaTeX 转义（`\]`、`\{`）仍按语法错误交给执行器反馈。占位符的 `[MODEL_MATH\]` 变体在展开时按同一占位符处理。验收：`tests/test_agent.py` 的解析用例（裸代码、正常围栏、多块合并、空 Early Stop、DSML 解包、原生 Early Stop 不受影响、纯文本答复被拒收）。
 
 补丁用 `contextlib.redirect_stdout` 只包住提示词构建，求解输出与日志不受影响。验收：`tests/test_agent.py::test_build_and_prompt_evaluation_are_silent`（capsys）。
 
