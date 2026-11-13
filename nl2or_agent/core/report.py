@@ -271,7 +271,7 @@ def _objective_breakdown(ir: dict[str, Any], result: SolveResult) -> str:
         else "—"
     )
     return f"**{TABLE_TITLES['objective_breakdown']}**\n\n" + _table(
-        ["目标块", "方向", "目标值"], [[f"{name}（`{block_id or '未声明'}`）", sense, shown]]
+        ["目标", "方向", "目标值"], [[name, sense, shown]]
     )
 
 

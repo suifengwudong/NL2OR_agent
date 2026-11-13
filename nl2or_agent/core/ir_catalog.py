@@ -117,11 +117,45 @@ def _assert_schema_version(data: dict[str, Any], path: Path) -> None:
 
 
 def catalog_markdown(blocks_path: Path | None = None) -> str:
-    """Compact block id list for prompts."""
+    """Render the catalog with ids, parameters and the math of every block."""
     catalog = load_block_catalog(blocks_path)
-    lines = ["| block_id | category | 必填参数 |", "|----------|----------|----------|"]
-    for bid in catalog["block_ids"]:
-        b = catalog["by_id"][bid]
-        req = ", ".join(p["name"] for p in b.get("parameters", []) if p.get("required")) or "—"
-        lines.append(f"| `{bid}` | {b.get('category', '')} | {req} |")
-    return "\n".join(lines)
+    blocks = catalog["blocks"]
+    constraints = [b for b in blocks if b.get("category") != "objective"]
+    objectives = [b for b in blocks if b.get("category") == "objective"]
+
+    lines = [
+        "#### Constraint blocks",
+        "| block_id | 名称 | 类别 | 必填参数 | 典型模型 |",
+        "|----------|------|------|----------|----------|",
+    ]
+    for block in constraints:
+        req = ", ".join(p["name"] for p in block.get("parameters", []) if p.get("required")) or "—"
+        typical = "、".join(block.get("typical_models") or []) or "—"
+        lines.append(
+            f"| `{block['id']}` | {block.get('name', '')} | {block.get('category', '')} "
+            f"| {req} | {typical} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "#### Objective blocks",
+            "| block_id | 名称 | 方向 | 必填参数 | 典型模型 |",
+            "|----------|------|------|----------|----------|",
+        ]
+    )
+    for block in objectives:
+        req = ", ".join(p["name"] for p in block.get("parameters", []) if p.get("required")) or "—"
+        typical = "、".join(block.get("typical_models") or []) or "—"
+        lines.append(
+            f"| `{block['id']}` | {block.get('name', '')} | {block.get('sense', '')} "
+            f"| {req} | {typical} |"
+        )
+
+    lines.extend(["", "#### Block semantics", ""])
+    for block in constraints + objectives:
+        lines.append(f"- `{block['id']}`：{block.get('description', '')}")
+        math = str(block.get("math") or "").strip()
+        if math:
+            lines.extend(["", "  $$", f"  {math}", "  $$", ""])
+    return "\n".join(lines).rstrip()

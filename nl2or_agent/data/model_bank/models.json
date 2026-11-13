@@ -1,5 +1,21 @@
 {
   "schema_version": 2,
+  "symbols": {
+    "distance": "d_ij",
+    "demand": "d_i",
+    "coverage_matrix": "a_ij",
+    "fixed_cost": "f_j",
+    "coverage_distance": "C",
+    "service_cost": "c_ij",
+    "value": "v_i",
+    "weight": "w_i",
+    "capacity": "W",
+    "facility_capacity": "Q_j",
+    "service_distance_limit": "D",
+    "availability": "a_ij",
+    "opening_budget": "B",
+    "facility_distance": "d_jk"
+  },
   "models": [
     {
       "id": "location_problem",
@@ -122,12 +138,6 @@
           "description": "f_j，在候选点 j 开设设施的固定成本；若未给出可默认为 1"
         },
         {
-          "name": "coverage_distance",
-          "type": "number",
-          "required": false,
-          "description": "C，覆盖距离阈值；若给定 distance，可由 d_ij <= C 生成 a_ij"
-        },
-        {
           "name": "distance",
           "type": "dict",
           "required": false,
@@ -165,7 +175,7 @@
           "name": "p",
           "type": "integer",
           "required": true,
-          "description": "可开设的设施数量；若题目表述为“最多 p 个”，可使用 cardinality_open_at_most_p_facilities"
+          "description": "可开设的设施数量；若题目表述为“最多 p 个”，可改用最多 p 个的基数约束"
         },
         {
           "name": "coverage_matrix",
@@ -178,12 +188,6 @@
           "type": "dict",
           "required": false,
           "description": "h_i，需求点 i 的需求量或权重；若未给出可默认为 1"
-        },
-        {
-          "name": "coverage_distance",
-          "type": "number",
-          "required": false,
-          "description": "C，覆盖距离阈值；若给定 distance，可由 d_ij <= C 生成 a_ij"
         },
         {
           "name": "distance",

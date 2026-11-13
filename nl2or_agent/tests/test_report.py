@@ -56,6 +56,7 @@ def test_p_median_report_has_openings_assignments_and_objective(cases):
     assert "2210" in text
     assert "**状态**" not in text
     assert "**目标值**" not in text
+    assert "weighted_service_distance_objective" not in text
 
 
 def test_set_covering_report_has_no_assignment_table(cases):
@@ -120,3 +121,11 @@ def test_solve_ir_tool_appends_the_report(cases, tmp_path):
     assert "[RESULT] Objective: 2210" in output
     assert "## 结果报表" in output
     assert "开设设施" in output
+
+
+def test_override_report_is_compact(cases, tmp_path):
+    case = cases["p_median_community"]
+    output = SolveIrTool(workspace_dir=tmp_path).forward(json.dumps(case["input_ir"]), {"p": 2})
+    assert "目标项" in output
+    assert "开设设施" not in output
+    assert "分配关系" not in output

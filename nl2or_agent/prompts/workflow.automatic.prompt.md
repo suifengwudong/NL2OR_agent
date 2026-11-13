@@ -26,7 +26,7 @@ exactly one `final_answer`.
 
 The single `final_answer` must state, in the user's language:
 
-- the recognized problem type and the constraint blocks used;
+- the recognized problem type and the constraints in plain language, without internal block identifiers;
 - the formal mathematical model returned by `model_math(json.dumps(ir))`, pasted with its `$$...$$`
   delimiters;
 - the objective value exactly as reported by `solve_ir` / `run_solver` and the decision variables of

@@ -365,6 +365,11 @@
           "name": "capacity",
           "type": "number",
           "required": true
+        },
+        {
+          "name": "weight",
+          "type": "list",
+          "required": true
         }
       ],
       "template_snippet": "m.addConstr(gp.quicksum(weight[i]*x[i] for i in items) <= capacity)"
@@ -433,7 +438,7 @@
         "capacitated_p_center",
         "capacitated_maximum_covering"
       ],
-      "description": "分配给某设施的需求量之和不超过该设施容量，未开设的设施容量为 0；与 knapsack_capacity（单背包总重量不超过容量）语义不同",
+      "description": "分配给某设施的需求量之和不超过该设施容量，未开设的设施容量为 0；与单背包的总重量约束语义不同",
       "math": "\\sum_{i \\in I} d_i x_{ij} \\leq Q_j y_j, \\quad \\forall j \\in J",
       "parameters": [
         {

@@ -25,12 +25,23 @@ _write_lock = threading.Lock()
 def write_model_of_record(path: Path, report: dict) -> Path:
     """Persist a validation report to *path* (the model of record).
 
-    The normalized IR lives inside ``report["normalized_ir"]``; storing it twice
-    made ``model.json`` roughly twice as large as it needed to be.
+    Derived context (the full block catalog and the turn-level constraint
+    context) is returned to the agent but not persisted: the normalized IR and
+    skeleton are enough for the web view and for later inspection.
     """
+    persisted = {
+        key: value
+        for key, value in report.items()
+        if key
+        not in {
+            "catalog_block_ids",
+            "catalog_objective_ids",
+            "constraint_context",
+        }
+    }
     payload = {
         "saved_at": datetime.now(timezone.utc).isoformat(),
-        "report": report,
+        "report": persisted,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     with _write_lock:
@@ -142,17 +153,32 @@ class Session:
 
     @classmethod
     def prune(cls, max_age_days: int = 30) -> int:
-        """Remove sessions older than *max_age_days*. Returns count removed."""
+        """Remove sessions whose newest file is older than *max_age_days*.
+
+        The session root's mtime alone misses writes into ``code/``; the newest
+        file anywhere in the session decides whether it is still active.
+        """
         if not _SESSIONS_ROOT.exists():
             return 0
         cutoff = datetime.now(timezone.utc).timestamp() - max_age_days * 86400
         removed = 0
         with _write_lock:
             for d in _SESSIONS_ROOT.iterdir():
-                if d.is_dir() and d.stat().st_mtime < cutoff:
+                if d.is_dir() and cls._latest_mtime(d) < cutoff:
                     shutil.rmtree(d)
                     removed += 1
         return removed
+
+    @staticmethod
+    def _latest_mtime(directory: Path) -> float:
+        """Newest mtime among the directory and everything under it."""
+        latest = directory.stat().st_mtime
+        for path in directory.rglob("*"):
+            try:
+                latest = max(latest, path.stat().st_mtime)
+            except OSError:
+                continue
+        return latest
 
 
 # ---------------------------------------------------------------------------

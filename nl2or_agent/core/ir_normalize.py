@@ -261,11 +261,15 @@ def _normalize_objective(
         if not isinstance(params, dict):
             warnings.append("objective.parameters 必须是对象，已忽略")
             params = {}
+        entry_def = catalog["by_id"].get(block_id) or {}
+        natural_language = str(obj.get("natural_language", "")).strip() or str(
+            entry_def.get("description") or entry_def.get("name") or ""
+        )
         return {
             "sense": sense,
             "block_id": block_id,
             "expression": str(obj.get("expression", "")),
-            "natural_language": str(obj.get("natural_language", "")),
+            "natural_language": natural_language,
             "parameters": params,
         }
 
@@ -341,13 +345,16 @@ def _normalize_constraint_entry(
     if status not in VALID_STATUS:
         warnings.append(f"块 {canon} 的 status '{status}' 已改为 required")
         status = "required"
+    natural_language = str(entry.get("natural_language", "")).strip() or str(
+        block_def.get("description") or block_def.get("name") or ""
+    )
     return {
         "block_id": canon,
         "category": block_def.get("category", ""),
         "name": block_def.get("name", ""),
         "parameters": params,
         "status": status,
-        "natural_language": str(entry.get("natural_language", "")),
+        "natural_language": natural_language,
     }
 
 

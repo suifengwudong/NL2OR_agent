@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,6 +14,14 @@ import pytest
 
 
 class TestRunCli:
+    @pytest.fixture(autouse=True)
+    def _isolate_sessions(self, tmp_path, monkeypatch):
+        """CLI 测试不得写入真实 data/workspace/sessions。"""
+        import utils.session as session_mod
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        session_mod.reset_session()
+
     @pytest.mark.parametrize("exit_word", ["quit", "exit", "q", "退出"])
     def test_exit_words_break_loop(self, exit_word: str):
         from main import _run_cli
@@ -109,6 +118,26 @@ class TestRunCli:
         assert any(
             "[代码文件]" in message and "solve.py" in message for message in printed_messages
         )
+
+    def test_cli_logs_the_conversation_turn(self):
+        """CLI 与 Web 一致：每轮写入 user/assistant 两条会话记录。"""
+        import utils.session as session_mod
+        from main import _run_cli
+
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = "模型求解完成"
+        with (
+            patch("agents.build_nl2or_agent", return_value=mock_agent),
+            patch("builtins.input", side_effect=["我有一个背包问题", "quit"]),
+            patch("builtins.print"),
+        ):
+            _run_cli()
+
+        log = session_mod.get_session().conversation_file
+        entries = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+        assert [entry["role"] for entry in entries] == ["user", "assistant"]
+        assert entries[0]["content"] == "我有一个背包问题"
+        assert entries[1]["content"] == "模型求解完成"
 
     def test_cli_intercepts_invalid_final_answer_format(self):
         from main import _run_cli
@@ -266,7 +295,7 @@ class TestRunAgentTurn:
         mock_agent.run.return_value = "最优目标值 220"
         factory = MagicMock(return_value=mock_agent)
 
-        with patch("web.app.apply_agent_mode") as mock_apply:
+        with patch("agents.runtime.apply_agent_mode") as mock_apply:
             history, cleared, sid = run_agent_turn(factory, "背包问题", [], "0", "automatic")
 
         mock_apply.assert_called_once_with(mock_agent, "automatic")

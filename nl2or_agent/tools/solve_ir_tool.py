@@ -9,8 +9,9 @@ from hamlet.core.tools import Tool
 
 from core.block_model import describe_model, format_solution, prepare_overrides, render_script
 from core.block_model import solve_ir as solve_problem_ir
+from core.ir_validate import validate_problem_ir
 from core.problem_ir import ProblemIR
-from core.report import render_report
+from core.report import default_report_spec, render_report
 from utils.session import get_session, save_code_file
 
 _SCRIPT_NAME = "solver_from_ir.py"
@@ -67,17 +68,24 @@ class SolveIrTool(Tool):
         overrides_json: str | dict[str, Any] | None = None,
     ) -> str:
         try:
-            ir = ProblemIR.parse(ir_json).normalized
+            parsed = ProblemIR.parse(ir_json)
+            report = validate_problem_ir(parsed.data)
+            if report["errors"]:
+                return "无法求解：" + "；".join(report["errors"])
+            ir = ProblemIR(report["normalized_ir"])
             overrides = prepare_overrides(ir.data, overrides_json)
             solved = ir.with_overrides(overrides)
             result = solve_problem_ir(solved.data)
         except ValueError as exc:
             return f"无法求解：{exc}"
 
+        spec = default_report_spec(solved.data)
+        if overrides:
+            spec["tables"] = ["objective_breakdown"]
         parts = [
             describe_model(ir.data),
             format_solution(result, overrides),
-            render_report(solved.data, result),
+            render_report(solved.data, result, spec=spec),
         ]
         if not overrides:
             # 快路径也要留下可查看、可重跑的脚本；情景变体不落盘，避免刷出一堆文件

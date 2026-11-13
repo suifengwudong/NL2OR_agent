@@ -110,7 +110,7 @@
 },
 ```
 
-### TODOs
+### TODOs 2026/10/22
 
 1. 定位：
    1. 用户是谁？正常交流
@@ -123,10 +123,17 @@
    6. 可视化（人的感受） + argumentation
    7. 标准化、结构化
 2. 微软 + what-if analysis
-   1. 第一公里 + 最后一公里    Problem-solving + Decision-making
+   1. 第一公里（problem -> model） + 最后一公里（solution -> explanation）
+      1. Problem-modeling + Decision-making (explanation 给出 confidence)
    2. capacitated fix charge
    3. imbalance -> 新约束
 3. 需求
    1. 写出数学模型（敬畏`:)`）的形式 ✅
       1. 公式渲染 ✅
    2. 报表类型的严格映射 ✅
+
+
+### TODOs 2026/10/29
+
+1. 约束的产生过程，如何注入上下文
+2. 页码，文字太密

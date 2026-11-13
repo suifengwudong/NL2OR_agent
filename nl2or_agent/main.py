@@ -32,15 +32,19 @@ load_dotenv()
 def _run_cli(agent_mode: str = "interactive") -> None:
     """Interactive CLI loop: read user input, run the agent, print the result."""
     from agents import build_nl2or_agent
-    from core.output_format import format_agent_output
-    from utils.session import get_session
+    from agents.runtime import run_turn
+    from utils.session import get_session, prune_old_sessions
+
+    # 与 Web 一致：启动时回收过期会话
+    prune_old_sessions(max_age_days=30)
 
     print("=" * 60)
     print(f"  NL2OR Agent  [{agent_mode}]  (输入 'quit' 或 'exit' 退出)")
     print("=" * 60)
     print()
 
-    agent = build_nl2or_agent(mode=agent_mode, verbosity_level=1)
+    agent = build_nl2or_agent(mode=agent_mode, verbosity_level=0)
+    session_id = get_session().session_id
     while True:
         try:
             user_input = input("用户 > ").strip()
@@ -54,23 +58,25 @@ def _run_cli(agent_mode: str = "interactive") -> None:
             print("再见！")
             break
 
-        try:
-            # Pass the previous state to maintain conversation in CodeAgent
-            result = agent.run(user_input, reset=False)
-            display_result = format_agent_output(str(result))
-            print(f"\nNL2OR > {display_result}\n")
-            session = get_session()
-            model_status = "已生成" if session.model_file.is_file() else "未生成"
-            code_files = session.list_code_files()
-            print(
-                f"[产物] 模型：{model_status}；"
-                f"代码：{len(code_files)} 个文件；"
-                f"会话目录：{session.workspace}"
-            )
-            if code_files:
-                print("[代码文件] " + ", ".join(str(path) for path in code_files))
-        except Exception as exc:  # noqa: BLE001
-            print(f"\n[错误] {exc}\n")
+        result = run_turn(
+            user_input,
+            session_id=session_id,
+            mode=agent_mode,
+            agent=agent,
+        )
+        if result.error:
+            print(f"\n[错误] {result.error}\n")
+            continue
+
+        print(f"\nNL2OR > {result.answer}\n")
+        model_status = "已生成" if result.model_ready else "未生成"
+        print(
+            f"[产物] 模型：{model_status}；"
+            f"代码：{len(result.code_files)} 个文件；"
+            f"会话目录：{result.workspace}"
+        )
+        if result.code_files:
+            print("[代码文件] " + ", ".join(str(path) for path in result.code_files))
 
 
 def _run_web(agent_mode: str = "interactive") -> None:

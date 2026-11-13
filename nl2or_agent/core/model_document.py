@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .block_model import active_variable_names
+from .block_model import active_variable_names, constraint_block_ids, objective_block_id
 from .ir_catalog import load_block_catalog, load_model_bank
 from .problem_ir import ProblemIR
 
@@ -41,11 +41,17 @@ def render_model_document(
 
     family_ids = [str(f.get("id")) for f in ir.get("problem_families") or [] if f.get("id")]
     if family_ids:
-        lines.append(f"**问题类型**：{'、'.join(f'`{item}`' for item in family_ids)}")
+        names = [
+            str(model_bank["by_id"].get(item, {}).get("name") or "其他模型") for item in family_ids
+        ]
+        lines.append(f"**问题类型**：{'、'.join(names)}")
         lines.append("")
 
+    lines.append("**符号说明**")
+    lines.append("")
+    symbols = model_bank.get("symbols") or {}
     lines.extend(_render_entities(ir))
-    lines.extend(_render_parameters(ir, entries))
+    lines.extend(_render_parameters(ir, entries, symbols))
     lines.extend(_render_variables(ir, entries))
     lines.extend(_render_objective(ir, catalog))
     lines.extend(_render_constraints(ir, catalog))
@@ -66,7 +72,7 @@ def _render_entities(ir: dict[str, Any]) -> list[str]:
     entities = ir.get("entities") or {}
     if not entities:
         return []
-    lines = ["**索引集合**", ""]
+    lines = []
     for key, entry in entities.items():
         size = entry.get("size")
         ids = entry.get("ids") or []
@@ -74,12 +80,17 @@ def _render_entities(ir: dict[str, Any]) -> list[str]:
         if ids:
             shown = f"，${key} = \\{{{', '.join(str(item) for item in ids)}\\}}$"
         size_text = f"$|{key}| = {size}$" if size else f"${key}$"
-        lines.append(f"- {size_text}{shown}")
+        meaning = {"I": "需求点集合", "J": "候选设施集合"}.get(key, "索引集合")
+        lines.append(f"- {size_text}：{meaning}{shown}")
     lines.append("")
     return lines
 
 
-def _render_parameters(ir: dict[str, Any], entries: list[dict[str, Any]]) -> list[str]:
+def _render_parameters(
+    ir: dict[str, Any],
+    entries: list[dict[str, Any]],
+    symbols: dict[str, str],
+) -> list[str]:
     definitions: dict[str, dict[str, Any]] = {}
     for model in entries:
         for parameter in model.get("parameters") or []:
@@ -90,16 +101,47 @@ def _render_parameters(ir: dict[str, Any], entries: list[dict[str, Any]]) -> lis
     if not names:
         return []
 
-    lines = ["**参数**", "", "| 参数 | 含义 | 取值 |", "|------|------|------|"]
+    weight_demand, capacity_demand = _demand_usage(ir)
+    lines = []
     for name in names:
         definition = definitions.get(name) or {}
-        if name not in values and not definition.get("required"):
+        is_demand = name == "demand"
+        default_demand = is_demand and weight_demand
+        if name not in values and not definition.get("required") and not default_demand:
             continue
-        meaning = definition.get("description") or "—"
-        shown = _value_summary(values.get(name)) if name in values else "缺失"
-        lines.append(f"| `{name}` | {meaning} | {shown} |")
+        meaning = definition.get("description") or "模型参数"
+        symbol = _parameter_symbol(name, ir, symbols)
+        if is_demand and weight_demand and capacity_demand:
+            meaning = "需求点 i 的需求量，同时作为覆盖权重"
+        elif is_demand and weight_demand:
+            meaning = "需求点 i 的需求量或权重；未给出时按模型约定取 1"
+        if meaning.startswith(symbol + "，"):
+            meaning = meaning[len(symbol) + 1 :]
+        shown = (
+            _value_summary(values.get(name))
+            if name in values
+            else ("默认 1" if default_demand else "缺失")
+        )
+        lines.append(f"- ${_symbol_latex(symbol)}$：{meaning}（取值：{shown}）")
+        if is_demand and weight_demand and capacity_demand:
+            lines.append("- $h_i = d_i$：覆盖权重与容量需求使用同一数据")
     lines.append("")
     return lines
+
+
+def _demand_usage(ir: dict[str, Any]) -> tuple[bool, bool]:
+    active = set(constraint_block_ids(ir)) | {objective_block_id(ir)}
+    weight = bool(active & {"weighted_service_distance_objective", "covered_demand_objective"})
+    capacity = "facility_capacity" in active
+    return weight, capacity
+
+
+def _parameter_symbol(name: str, ir: dict[str, Any], symbols: dict[str, str]) -> str:
+    if name == "demand":
+        weight_demand, capacity_demand = _demand_usage(ir)
+        if weight_demand and not capacity_demand:
+            return "h_i"
+    return symbols.get(name, name)
 
 
 def _value_summary(value: Any) -> str:
@@ -138,9 +180,9 @@ def _render_variables(ir: dict[str, Any], entries: list[dict[str, Any]]) -> list
             variables.append({"symbol": symbol, "type": var_type, "meaning": meaning})
 
     if not variables:
-        return ["**决策变量**：未声明", ""]
+        return ["- 决策变量：未声明", ""]
 
-    lines = ["**决策变量**", ""]
+    lines = []
     for variable in variables:
         symbol = _symbol_latex(str(variable.get("symbol") or ""))
         var_type = str(variable.get("type") or "")
@@ -169,6 +211,16 @@ def _domain_latex(var_type: str) -> str:
     return ""
 
 
+def _objective_display_name(name: str) -> str:
+    text = str(name)
+    for prefix in ("最小化", "最大化"):
+        if text.startswith(prefix):
+            text = text[len(prefix) :]
+            break
+    text = text.removesuffix("目标").replace("目标（", "（")
+    return text or str(name)
+
+
 def _render_objective(ir: dict[str, Any], catalog: dict[str, Any]) -> list[str]:
     objective = ir.get("objective") or {}
     block_id = str(objective.get("block_id") or "")
@@ -177,7 +229,8 @@ def _render_objective(ir: dict[str, Any], catalog: dict[str, Any]) -> list[str]:
     name = (entry or {}).get("name") or "库外目标"
 
     sense_text = _SENSE_TEXT.get(sense, sense or "未声明方向")
-    lines = [f"**目标函数**（{name}，`{block_id or '未声明'}`，{sense_text}）", ""]
+    display_name = _objective_display_name(name) if entry else str(name)
+    lines = [f"**目标函数：{sense_text}{display_name}**", ""]
     math = (entry or {}).get("math")
     if math:
         lines.append("$$")
@@ -202,8 +255,12 @@ def _render_constraints(ir: dict[str, Any], catalog: dict[str, Any]) -> list[str
     for index, block in enumerate(blocks, 1):
         block_id = str(block.get("block_id") or "")
         entry = catalog["by_id"].get(block_id) or {}
-        name = entry.get("name") or block.get("name") or block_id
-        lines.append(f"{index}. **{name}**（`{block_id}`）")
+        name = entry.get("name") or block.get("name") or "其他约束"
+        lines.append(f"{index}. **{name}**")
+        natural = str(block.get("natural_language") or entry.get("description") or "").strip()
+        if natural and natural != name:
+            lines.append("")
+            lines.append(natural)
         math = entry.get("math")
         if math:
             lines.append("")

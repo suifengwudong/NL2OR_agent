@@ -176,13 +176,30 @@ class TestSolveIrTool:
         assert "无法求解" in output
         assert "capacity" in output
 
+    def test_rejects_an_incomplete_skeleton(self, tmp_path):
+        ir = _model_ir("p_median_community")
+        ir["constraint_blocks"] = [
+            block
+            for block in ir["constraint_blocks"]
+            if block["block_id"] != "link_assignment_to_open"
+        ]
+
+        output = SolveIrTool(workspace_dir=tmp_path).forward(ir)
+
+        assert "无法求解" in output
+        assert "骨架缺少" in output
+
     def test_reports_a_block_without_executable_semantics(self, tmp_path):
         """库外目标块要如实报错，agent 才能按 appendix 回退到 run_solver。"""
         ir = {
             "problem_families": [{"id": "p_median"}],
             "entities": {"I": {"size": 2}, "J": {"size": 2}},
             "parameters": {"p": 1, "distance": [[1, 2], [3, 4]]},
-            "constraint_blocks": [{"block_id": "assign_each_demand_once"}],
+            "constraint_blocks": [
+                {"block_id": "assign_each_demand_once"},
+                {"block_id": "link_assignment_to_open"},
+                {"block_id": "cardinality_open_p_facilities"},
+            ],
             "objective": {"block_id": "not_in_the_catalog", "sense": "minimize"},
         }
 

@@ -61,7 +61,9 @@ In the same code block, before any modeling conclusion is drawn:
 4. If `report["errors"]` is not empty, fix `ir` from those errors and validate again — repeat until valid
 5. `report["skeleton"]` states the content verdict: missing required blocks, substituted blocks, the
    objective block and sense, and unbound objective parameters
-6. `model_math(json.dumps(ir))` returns the index sets, parameters, variables, objective and every
+6. `report["constraint_context"]` lists the declared family's required and optional blocks with their
+   descriptions and math. Use it when choosing or repairing constraint blocks
+7. `model_math(json.dumps(ir))` returns the index sets, parameters, variables, objective and every
    constraint as Markdown with LaTeX. Use it for the formal-model section instead of retyping formulas
 
 Write code with `False`/`True`, never JSON `false`/`true`.
@@ -96,5 +98,8 @@ Write code with `False`/`True`, never JSON `false`/`true`.
 
 - Always reply in the language of the user's message: a Chinese problem gets a Chinese answer, an English problem gets an English answer. This applies to every `final_answer`.
 - The final answer has two parts: a plain-language explanation and a formal model section. Call `model_math(json.dumps(ir))` after validation and paste the returned Markdown into the formal section. Keep its `$$...$$` delimiters and formulas as returned; do not retype them from memory.
+- In user-facing prose, use natural-language names and mathematical notation, never internal identifiers such as `weighted_service_distance_objective`, `assign_each_demand_once`, IR field names, or snake_case parameter names. Keep those identifiers only in internal tool calls and code when explicitly requested.
+- In the formal model, explain every index set, parameter and decision variable appearing in the formulas before the objective. Use the model document's symbol definitions; if a symbol is missing, define it before presenting the formula. Match the symbol used in the formula (for example $h_i$, $d_{ij}$ and $p$), and do not alternate $P$ and $p$ without a definition.
+- Put non-mathematical assumptions under “模型假设” and saved baselines or later What-if plans under “后续分析”; do not present them as mathematical constraints.
 - Keep the plain-language part compact: the problem type, the objective value on its own `Objective: <value>` line, the decisions, and the assumptions. Do not restate the input data or repeat the catalog.
 - Explain solutions in plain language, stating the objective value and the decisions behind it.

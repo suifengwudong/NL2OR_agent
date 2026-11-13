@@ -61,6 +61,7 @@ def validate_problem_ir(
         "catalog_block_ids": catalog["block_ids"],
         "catalog_objective_ids": catalog["objective_block_ids"],
         "skeleton": skeleton,
+        "constraint_context": _constraint_context(skeleton, catalog, model_bank),
     }
 
 
@@ -89,6 +90,66 @@ def _required_and_optional_blocks(
     if family_id and family_id in model_bank["by_id"]:
         optional += list(model_bank["by_id"][family_id].get("optional_blocks") or [])
     return required, optional
+
+
+def _block_context(block_id: str, catalog: dict[str, Any]) -> dict[str, Any] | None:
+    block = catalog["by_id"].get(block_id)
+    if block is None:
+        return None
+    return {
+        "block_id": block_id,
+        "name": block.get("name", ""),
+        "category": block.get("category", ""),
+        "description": block.get("description", ""),
+        "math": block.get("math", ""),
+        "parameters": block.get("parameters", []),
+    }
+
+
+def _constraint_context(
+    skeleton: dict[str, Any],
+    catalog: dict[str, Any],
+    model_bank: dict[str, Any],
+) -> dict[str, Any]:
+    """Turn-level context: the declared family's blocks and their math."""
+    models: list[dict[str, Any]] = []
+    declared = set(skeleton.get("declared_models") or [])
+    for model_id in skeleton.get("declared_models") or []:
+        model = model_bank["by_id"].get(model_id)
+        if model is None:
+            continue
+        required, optional = _required_and_optional_blocks(model_bank, model_id)
+        optional = [
+            block_id
+            for block_id in dict.fromkeys(optional)
+            if block_id not in required
+            and (
+                not (typical := set(catalog["by_id"].get(block_id, {}).get("typical_models") or []))
+                or bool(typical & declared)
+            )
+        ]
+        block_ids = list(dict.fromkeys([*required, *optional]))
+        blocks = [
+            detail
+            for block_id in block_ids
+            if (detail := _block_context(block_id, catalog)) is not None
+        ]
+        objective_id = str(model.get("objective_block") or "")
+        models.append(
+            {
+                "model": model_id,
+                "inherits": model.get("inherits") or model.get("family") or "",
+                "required_blocks": required,
+                "optional_blocks": optional,
+                "objective_block": objective_id,
+                "objective": _block_context(objective_id, catalog) if objective_id else None,
+                "blocks": blocks,
+            }
+        )
+    return {
+        "models": models,
+        "unknown_models": list(skeleton.get("unknown_models") or []),
+    }
 
 
 def _check_entities(normalized_ir: dict[str, Any], errors: list[str]) -> dict[str, Any]:

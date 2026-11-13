@@ -19,9 +19,8 @@ from typing import Any, Callable
 import gradio as gr
 from gradio.themes import Soft
 
-from agents import AGENT_MODES, apply_agent_mode
-from core.output_format import format_agent_output
-from utils.session import get_session, resolve_session
+from agents import AGENT_MODES
+from agents.runtime import run_turn
 
 from .views import (
     get_model_state,
@@ -55,6 +54,10 @@ footer { display: none !important; }
 """
 
 _THEME = Soft(primary_hue="indigo", neutral_hue="slate", radius_size="md")
+_LATEX_DELIMITERS = [
+    {"left": "$$", "right": "$$", "display": True},
+    {"left": "$", "right": "$", "display": False},
+]
 
 
 # Per-session agent cache (sid → agent instance).
@@ -88,26 +91,18 @@ def run_agent_turn(
     """
     if not message or not message.strip():
         return history, "", sid
-    try:
-        session = resolve_session(sid)
-        sid = session.session_id
-        # Tools persist model/code through the thread-local session when they
-        # are created without an explicit workspace. Bind that session to the
-        # browser's session id before running the agent.
-        get_session(sid)
-        agent = _get_or_create_agent(sid, agent_factory)
-        apply_agent_mode(agent, mode)
-        session.save_conversation_entry(role="user", content=message.strip())
-        result = agent.run(message.strip(), reset=False)
-        answer = format_agent_output(result)
-        session.save_conversation_entry(role="assistant", content=answer)
-        history.append({"role": "user", "content": message})
-        history.append({"role": "assistant", "content": answer})
-        return history, "", sid
-    except Exception as exc:
-        history.append({"role": "user", "content": message})
-        history.append({"role": "assistant", "content": f"❌ Error: {exc}"})
-        return history, "", sid
+    result = run_turn(
+        message,
+        session_id=sid,
+        mode=mode,
+        get_agent=lambda session_id: _get_or_create_agent(session_id, agent_factory),
+    )
+    history.append({"role": "user", "content": message})
+    if result.error:
+        history.append({"role": "assistant", "content": f"❌ Error: {result.error}"})
+    else:
+        history.append({"role": "assistant", "content": result.answer})
+    return history, "", result.session_id
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +129,9 @@ def create_ui(agent_factory: Callable[[], Any], default_mode: str = "interactive
             with gr.Tab("对话"):
                 with gr.Row():
                     with gr.Column(scale=7):
-                        chatbot = gr.Chatbot(label="对话", height=460)
+                        chatbot = gr.Chatbot(
+                            label="对话", height=460, latex_delimiters=_LATEX_DELIMITERS
+                        )
                         msg = gr.Textbox(
                             label="输入运筹学问题",
                             placeholder=(
@@ -171,7 +168,9 @@ def create_ui(agent_factory: Callable[[], Any], default_mode: str = "interactive
                 )
                 with gr.Row():
                     with gr.Column(scale=3):
-                        model_view = gr.Markdown(render_model_view(None))
+                        model_view = gr.Markdown(
+                            render_model_view(None), latex_delimiters=_LATEX_DELIMITERS
+                        )
                     with gr.Column(scale=2):
                         model_json = gr.Code(
                             label="归一化 Problem IR", language="json", lines=28, interactive=False

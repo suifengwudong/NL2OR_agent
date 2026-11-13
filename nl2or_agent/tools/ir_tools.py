@@ -78,7 +78,11 @@ class ModelMathTool(Tool):
 
     def forward(self, ir_json: str | dict) -> str:
         try:
-            ir = ProblemIR.parse(ir_json).normalized
+            ir = ProblemIR.parse(ir_json)
         except ValueError as exc:
             return f"无法生成数学模型：{exc}"
-        return render_model_document(ir.data)
+        report = validate_problem_ir(ir.data)
+        document = render_model_document(report["normalized_ir"])
+        if report["errors"]:
+            return "校验未通过，以下文档仅供排查：\n\n" + document
+        return document

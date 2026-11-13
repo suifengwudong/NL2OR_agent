@@ -80,11 +80,28 @@ class TestSession:
 
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         s = Session()
-        s.save_code("")
+        s.save_code("", "a.py")
         old = s.workspace.stat().st_mtime - 100 * 86400
-        os.utime(s.workspace, (old, old))
+        for path in (s.workspace, *s.workspace.rglob("*")):
+            os.utime(path, (old, old))
         removed = Session.prune(max_age_days=30)
         assert removed >= 1
+
+    def test_prune_keeps_recent_artifacts_in_an_old_root(self, tmp_path: Path, monkeypatch):
+        """只写 code/ 子目录也会刷新会话活跃度，不能按根目录 mtime 误删。"""
+        import utils.session as mod
+
+        monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        s = Session()
+        s.save_code("", "a.py")
+        old = s.workspace.stat().st_mtime - 100 * 86400
+        os.utime(s.workspace, (old, old))
+        os.utime(s.code_dir, (old, old))
+
+        removed = Session.prune(max_age_days=30)
+
+        assert removed == 0
+        assert s.workspace.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +162,25 @@ class TestModelOfRecord:
         assert loaded is not None
         assert loaded["report"] == report
         assert loaded["saved_at"]
+
+    def test_model_of_record_strips_derived_context(self, tmp_path: Path, monkeypatch):
+        session = self._session(tmp_path, monkeypatch)
+        report = {
+            "valid": True,
+            "normalized_ir": {"entities": {}},
+            "skeleton": {},
+            "constraint_context": {"models": [{"model": "p_median"}]},
+            "catalog_block_ids": ["assign_each_demand_once"],
+            "catalog_objective_ids": ["weighted_service_distance_objective"],
+        }
+
+        write_model_of_record(session.model_file, report)
+        loaded = session.load_model()
+
+        assert loaded["report"]["normalized_ir"] == {"entities": {}}
+        assert "constraint_context" not in loaded["report"]
+        assert "catalog_block_ids" not in loaded["report"]
+        assert "catalog_objective_ids" not in loaded["report"]
 
     def test_model_of_record_overwrites_previous(self, tmp_path: Path, monkeypatch):
         session = self._session(tmp_path, monkeypatch)

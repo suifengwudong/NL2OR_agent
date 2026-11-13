@@ -190,7 +190,10 @@ class TestObjectiveSkeleton:
         report = validate_problem_ir(
             {
                 "constraint_blocks": [
-                    {"block_id": "knapsack_capacity", "parameters": {"capacity": 5}}
+                    {
+                        "block_id": "knapsack_capacity",
+                        "parameters": {"capacity": 5, "weight": [1, 2, 3]},
+                    }
                 ]
             }
         )
@@ -265,6 +268,40 @@ class TestSkeletonChecks:
         report = validate_problem_ir(self._ir(["assignment", "linking", "cardinality"]))
         assert report["valid"]
         assert report["skeleton"]["missing_required_blocks"] == []
+
+    def test_constraint_context_lists_template_blocks_with_math(self):
+        report = validate_problem_ir(self._ir(["assignment", "linking", "cardinality"]))
+        context = report["constraint_context"]
+        model = context["models"][0]
+        assert model["model"] == "p_median"
+        assert "assign_each_demand_once" in model["required_blocks"]
+        assert "link_assignment_to_open" in model["required_blocks"]
+        assert "cardinality_open_p_facilities" in model["required_blocks"]
+        details = {block["block_id"]: block for block in model["blocks"]}
+        assert details["assign_each_demand_once"]["math"]
+        assert model["objective"]["math"]
+        optional = set(model["optional_blocks"])
+        assert "force_facility_open" in optional
+        assert "min_pairwise_distance_bound" not in optional
+        assert "facility_capacity" not in optional
+
+    def test_knapsack_requires_weight(self):
+        report = validate_problem_ir(
+            {
+                "problem_families": [{"id": "knapsack"}],
+                "entities": {"I": {"size": 3}},
+                "parameters": {"value": [60, 100, 120], "capacity": 50},
+                "constraint_blocks": [{"block_id": "knapsack_capacity"}],
+                "objective": {"block_id": "total_value_objective"},
+            }
+        )
+        assert not report["valid"]
+        assert any("weight" in error for error in report["errors"])
+
+    def test_constraint_natural_language_is_filled_from_catalog(self):
+        report = validate_problem_ir(self._ir(["assignment", "linking", "cardinality"]))
+        blocks = report["normalized_ir"]["constraint_blocks"]
+        assert blocks[0]["natural_language"] == "每个需求点 i 恰好分配给一个设施"
 
     def test_same_category_optional_block_substitutes(self):
         report = validate_problem_ir(

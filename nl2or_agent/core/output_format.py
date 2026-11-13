@@ -13,13 +13,13 @@ _NOISE_PREFIXES = ("Thought:", "Code:", "```", "import", "╭", "╰", "━━")
 def format_agent_output(raw: str) -> str:
     """Clean agent output for display.
 
-    Drops harness noise lines (thought/log prefixes, stray fences, imports) and
-    keeps the tail of the reply, where the model's actual answer lives.
+    Drops harness noise lines while preserving the complete answer and its
+    Markdown spacing (especially display math and lists).
     """
     text = str(raw).strip()
     if not text:
         return ""
 
-    lines = [line.strip() for line in text.split("\n") if line.strip()]
-    clean = [line for line in lines if not line.startswith(_NOISE_PREFIXES) and "```" not in line]
-    return "\n".join(clean[-20:]) or text[-500:]
+    lines = text.splitlines()
+    clean = [line for line in lines if not line.lstrip().startswith(_NOISE_PREFIXES) and "```" not in line]
+    return "\n".join(clean).strip() or text

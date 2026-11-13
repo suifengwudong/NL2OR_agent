@@ -28,6 +28,7 @@
 - `block_id`：必须是附录 catalog 表中的标准 id（禁止 `assignment`、`linking`、`forcing`、`custom_constraints`）。
 - `parameters`：该块 `required_parameters` 列出的参数必须出现（可用说明文字作为占位值）。
 - `status`：`required` | `optional` | `user_specified`
+- `natural_language`：可选；省略时由目录描述补齐，用于追溯约束来源。
 
 ## objective 对象
 
@@ -41,6 +42,7 @@
 ```
 
 - `block_id`：取自 catalog 的 `objective_block_ids`；`sense` 与该块的 `sense` 一致（`covered_demand_objective`、`maximize_min_pairwise_distance_objective` 与 `total_value_objective` 是 maximize，其余为 minimize）。
+- `natural_language`：可选；省略时由目录描述补齐。
 - 目标块的 `required_parameters` 需在 `objective.parameters` 或顶层 `parameters` 中出现。
 - 库中没有对应目标块时，保留原有 `expression` 与 `sense` 并允许它留在 `block_id` 之外；校验会把该目标标为库外目标并给出提示，不会替换成别的目标。
 
