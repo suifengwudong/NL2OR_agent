@@ -159,15 +159,16 @@ def _warehouse_case(kind: str, instance_id: int, data: str, optima: dict[str, fl
     )
     model_id = "capacitated_facility_location" if kind == "cflp" else "facility_location"
     objective_block = "fixed_plus_service_cost_objective"
+    # parameters 只放被启用块读取的键：UFLP 变体不带 demand / facility_capacity，
+    # 容量与需求是题面的建模假设说明，不是模型数据
+    parameters = {"fixed_cost": fixed_cost, "service_cost": service_cost}
+    if kind == "cflp":
+        parameters["demand"] = demand
+        parameters["facility_capacity"] = capacity
     input_ir = {
         "problem_families": [{"id": model_id}],
         "entities": {"I": {"size": n}, "J": {"size": m}},
-        "parameters": {
-            "fixed_cost": fixed_cost,
-            "service_cost": service_cost,
-            "demand": demand,
-            "facility_capacity": capacity,
-        },
+        "parameters": parameters,
         "constraint_blocks": [
             {"block_id": "assignment", "parameters": {}, "status": "required"},
             {"block_id": "linking", "parameters": {}, "status": "required"},

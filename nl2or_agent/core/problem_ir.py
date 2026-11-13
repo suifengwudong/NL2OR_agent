@@ -9,6 +9,7 @@ helper per caller.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from dataclasses import dataclass
 from typing import Any
@@ -78,6 +79,10 @@ class ProblemIR:
         normalized, _, _ = normalize_problem_ir(self.data)
         return ProblemIR(normalized)
 
+    def fingerprint(self) -> str:
+        """Stable fingerprint of the raw dict, to pair artifacts with an IR."""
+        return fingerprint(self.data)
+
     @property
     def parameters(self) -> dict[str, Any]:
         """The executable view: numeric data from parameters, blocks and objective.
@@ -132,4 +137,10 @@ class ProblemIR:
         return applied
 
 
-__all__ = ["ProblemIR", "READABLE_DATA_KEYS"]
+def fingerprint(ir: dict[str, Any]) -> str:
+    """Stable content hash of an IR dict (key order independent)."""
+    canonical = json.dumps(ir, sort_keys=True, ensure_ascii=False)
+    return hashlib.md5(canonical.encode("utf-8")).hexdigest()
+
+
+__all__ = ["ProblemIR", "READABLE_DATA_KEYS", "fingerprint"]

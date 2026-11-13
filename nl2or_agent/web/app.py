@@ -14,13 +14,13 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict
-from typing import Any, Callable
+from typing import Any
 
 import gradio as gr
 from gradio.themes import Soft
 
 from agents import AGENT_MODES
-from agents.runtime import run_turn
+from agents.runtime import AgentFactory, run_turn
 
 from .views import (
     get_model_state,
@@ -66,20 +66,24 @@ _agents: OrderedDict[str, Any] = OrderedDict()
 _agents_lock = threading.Lock()
 
 
-def _get_or_create_agent(sid: str, agent_factory: Callable[[], Any]) -> Any:
-    """Thread-safely get or create an agent instance for *sid*, evicting LRU."""
+def _get_or_create_agent(sid: str, mode: str, agent_factory: AgentFactory) -> Any:
+    """Thread-safely get or create an agent instance for *sid*, evicting LRU.
+
+    The first build uses the mode of the turn that created it, so the agent
+    never starts with a prompt for a mode the user did not select.
+    """
     with _agents_lock:
         if sid in _agents:
             _agents.move_to_end(sid)
             return _agents[sid]
         if len(_agents) >= _MAX_AGENTS:
             _agents.popitem(last=False)
-        _agents[sid] = agent_factory()
+        _agents[sid] = agent_factory(mode)
         return _agents[sid]
 
 
 def run_agent_turn(
-    agent_factory: Callable[[], Any],
+    agent_factory: AgentFactory,
     message: str,
     history: list,
     sid: str,
@@ -95,7 +99,9 @@ def run_agent_turn(
         message,
         session_id=sid,
         mode=mode,
-        get_agent=lambda session_id: _get_or_create_agent(session_id, agent_factory),
+        get_agent=lambda session_id, selected: _get_or_create_agent(
+            session_id, selected, agent_factory
+        ),
     )
     history.append({"role": "user", "content": message})
     if result.error:
@@ -110,7 +116,7 @@ def run_agent_turn(
 # ---------------------------------------------------------------------------
 
 
-def create_ui(agent_factory: Callable[[], Any], default_mode: str = "interactive"):
+def create_ui(agent_factory: AgentFactory, default_mode: str = "interactive"):
     """Build the Gradio Blocks UI. Session state is held in a hidden Textbox."""
 
     def run_agent(message: str, history: list, sid: str, mode: str) -> tuple[list, str, str]:
@@ -237,7 +243,7 @@ def create_ui(agent_factory: Callable[[], Any], default_mode: str = "interactive
 
 
 def launch_web(
-    agent_factory: Callable[[], Any],
+    agent_factory: AgentFactory,
     default_mode: str = "interactive",
     **kwargs: Any,
 ):

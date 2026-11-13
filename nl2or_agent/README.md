@@ -94,23 +94,24 @@ nl2or_agent/
 │   ├── ir_normalize.py     # Problem IR 归一化
 │   ├── ir_validate.py      # 骨架与维度校验
 │   ├── model_document.py   # IR → 数学模型文档（Markdown + LaTeX）
-│   ├── output_format.py    # agent 输出清洗
+│   ├── model_library.py    # 模型库检索：候选索引与模板细节（按需两阶段）
+│   ├── output_format.py    # agent 输出清洗与占位符展开
 │   ├── problem_ir.py       # ProblemIR 值对象与 IR 词汇表（解析 / 参数覆盖）
 │   ├── prompt_loader.py    # 提示词加载
 │   ├── report.py           # 报表类型派生与渲染
-│   └── what_if.py          # what_if skill：manual 渲染 + 可算模型表
+│   └── what_if.py          # what_if skill：可算模型表（库派生）
 │
 ├── tools/
 │   ├── __init__.py
-│   ├── ir_tools.py             # ValidateProblemIrTool / ModelMathTool
-│   ├── solver_tool.py          # RunSolverTool — 执行生成的求解代码
-│   └── solve_ir_tool.py        # SolveIrTool — 按 IR 求解单个情景
+│   ├── ir_tools.py              # ValidateProblemIrTool / ModelMathTool
+│   ├── model_library_tool.py    # SearchModelLibraryTool / DescribeModelTool
+│   ├── solver_tool.py           # RunSolverTool — 执行生成的求解代码
+│   └── solve_ir_tool.py         # SolveIrTool — 按 IR 求解单个情景
 │
 ├── data/
 │   ├── model_bank/
 │   │   ├── models.json             # OR 模型模板库
-│   │   ├── constraint_blocks.json  # 约束积木块目录
-│   │   └── what_if_manual.json     # what_if 做法的 manual（skill 层）
+│   │   └── constraint_blocks.json  # 约束积木块目录
 │   └── workspace/          # 会话工作区（模型记录与求解脚本）
 │
 ├── benchmarks/             # 五层评测：IR 判定 / 求解执行 / 端到端 / 紧约束分析 / 情景对比
@@ -234,23 +235,23 @@ graph TD
 flowchart LR
   A["constraint_blocks.json<br/>块定义"] --> B["ir_catalog.py<br/>加载与索引"]
   A2["models.json<br/>模型模板"] --> B
-  B --> C["prompt_loader.py<br/>catalog_markdown"]
-  C --> D["系统提示词附录"]
-  D --> E["LLM 生成 IR"]
-  E --> F["validate_problem_ir<br/>骨架与 constraint_context"]
+  B --> C1["model_library.py<br/>search / describe"]
+  C1 --> D1["LLM 按需检索候选与模板"]
+  D1 --> E["LLM 生成 IR"]
+  E --> F["validate_problem_ir<br/>骨架与参数读取校验"]
   F --> G["block_model.py<br/>PuLP 约束"]
   F --> H["model_document.py<br/>数学模型展示"]
+  F --> I["model.json<br/>运行时占位符来源"]
 ```
 
 | 阶段 | 承载者 | 内容 |
 |------|--------|------|
 | 定义 | `data/model_bank/constraint_blocks.json` | block_id、名称、语义、数学形式、参数、典型模型 |
-| 静态注入 | `core/ir_catalog.py` → `core/prompt_loader.py` | 附录中的约束块目录、目标块目录与数学形式 |
-| 回合级注入 | `core/ir_validate.py` | `constraint_context`：已声明族的必需块、可选块、目标块及其数学形式 |
-| 生成 | LLM | 按目录选择 block_id，缺失规则写入 `custom_constraints` |
+| 按需检索 | `core/model_library.py` + `tools/model_library_tool.py` | `search_model_library` 候选索引、`describe_model` 模板必需骨架；提示词不含块目录 |
+| 生成 | LLM | 按模板选择 block_id，题面额外限制写入 `custom_constraints` |
 | 校验 | `validate_problem_ir` | 别名归一、参数检查、骨架检查、方向检查、参数读取检查 |
 | 执行 | `core/block_model.py` | 按 block_id 调用 builder，生成 PuLP 约束 |
-| 展示 | `core/model_document.py` | 用同一份数学形式生成 LaTeX 模型 |
+| 展示 | `core/model_document.py` | 用同一份数学形式生成 LaTeX 模型；最终答复由 `expand_placeholders` 从 model.json 与 solve_result.json 填充 |
 
 `constraint_blocks` 的 `natural_language` 省略时由目录描述自动补齐，用于追溯约束来源。
 
@@ -329,6 +330,8 @@ Web 界面支持聊天交互、求解器文件列表查看与会话级隔离（�
 
 ## 更新记录
 
+- **2026-11-13** 数学模型补齐 s.t. 的变量取值范围：决策变量的 0-1 / 整数 / 非负数域以显式约束形式渲染（带 `\forall` 量词，位于结构约束与库外规则之后），不再只写在符号说明的变量定义里。
+- **2026-11-12** 上下文与校验收紧：模型库退出系统提示词，改为 `search_model_library` / `describe_model` 两阶段按需检索（提示词 20.1k→14.2k 字符，与库规模解耦）；`validate_problem_ir` 报告只留结论（删除目录回显与 `constraint_context`）；未消费数值参数在 solve_ir 路径升级为错误；`custom_constraints` 只收题面额外限制；最终答复改由运行时占位符 `[MODEL_MATH]` / `[SOLVE_RESULT]` 从 model.json 与 solve_result.json（带 IR 指纹）填充；hamlet 系统提示词残留 print 静音，agent 按 UI 实际模式构造，`LITELLM_LOCAL_MODEL_COST_MAP=true` 跳过价格表远程拉取。本轮建立的绑定约定汇总在 `../docs/AGENT.md`。
 - **2026-10-26** 组分削减：工具 7→4（删除模型库检索、块目录、脚本渲染工具）；IR 删除报表规格面与死字段；`schema/` 并入 `core/`；报表由块结构派生。
 - **2026-10-26** 模型与报表：`model_document`（LaTeX 数学模型）、`model_math`、八类结果报表、`solve_ir` 结果报表；location 扩展 7 个模型与对应约束块，模型库 schema v2（`class`/`inherits` 分离）。
 - **2026-10-22** 求解快路径：默认 `solve_ir` 按块语义求解并落盘脚本，`run_solver` 退为库外块与手写代码的退路；观测只保留 stdout 尾部 40 行；`HAMLET_REASONING=off` 关闭思考 token。

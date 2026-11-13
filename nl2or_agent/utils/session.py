@@ -25,23 +25,13 @@ _write_lock = threading.Lock()
 def write_model_of_record(path: Path, report: dict) -> Path:
     """Persist a validation report to *path* (the model of record).
 
-    Derived context (the full block catalog and the turn-level constraint
-    context) is returned to the agent but not persisted: the normalized IR and
-    skeleton are enough for the web view and for later inspection.
+    The report carries verdicts only, so the whole thing is persisted: the
+    normalized IR and skeleton are what the web view and the final-answer
+    placeholders render from.
     """
-    persisted = {
-        key: value
-        for key, value in report.items()
-        if key
-        not in {
-            "catalog_block_ids",
-            "catalog_objective_ids",
-            "constraint_context",
-        }
-    }
     payload = {
         "saved_at": datetime.now(timezone.utc).isoformat(),
-        "report": persisted,
+        "report": report,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     with _write_lock:
@@ -88,6 +78,11 @@ class Session:
     def model_file(self) -> Path:
         """Path to the validated model of record (normalized IR + report)."""
         return self.workspace / "model.json"
+
+    @property
+    def solve_result_file(self) -> Path:
+        """Path to the saved baseline solve result (for [SOLVE_RESULT])."""
+        return self.workspace / "solve_result.json"
 
     # ----------------------------------------------------------------
     # Model of record

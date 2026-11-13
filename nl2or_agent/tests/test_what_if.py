@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 import pytest
@@ -22,8 +21,8 @@ from core.block_model import (
     summarize_decisions,
 )
 from core.ir_validate import validate_problem_ir
-from core.problem_ir import READABLE_DATA_KEYS, ProblemIR
-from core.what_if import load_manual, manual_markdown, supported_models
+from core.problem_ir import ProblemIR
+from core.what_if import supported_models
 from tools import RunSolverTool, SolveIrTool
 
 _BASE = Path(__file__).parent.parent
@@ -79,37 +78,11 @@ def test_describe_model_reports_family_and_objective():
 
 
 # ---------------------------------------------------------------------------
-# 本地 manual（skill 层）
+# 可执行模型清单（库派生）
 # ---------------------------------------------------------------------------
 
 
-class TestManual:
-    def test_loads_with_schema_version(self):
-        manual = load_manual()
-
-        assert manual["name"] == "what_if"
-        assert manual["schema_version"] == 1
-
-    def test_renders_the_procedure_and_derived_tables(self):
-        text = manual_markdown()
-
-        assert "何时使用" in text and "做法" in text and "边界" in text
-        assert "可覆盖的键" in text
-        assert "`p_median`" in text and "`capacitated_facility_location`" in text
-        assert len(text) < 2500  # 附录进每次请求，保持紧凑
-
-    def test_manual_parameter_keys_are_readable_by_the_block_model(self):
-        """manual 的示例里出现的参数键必须都在 block_model 真正读取的键集合内。"""
-        manual = load_manual()
-        mentioned = {
-            key
-            for example in manual["examples"]
-            for call in example["calls"]
-            for key in re.findall(r'"([a-z_]+)":', call)
-        }
-
-        assert mentioned <= READABLE_DATA_KEYS
-
+class TestSupportedModels:
     def test_supported_models_are_executable(self):
         models = supported_models()
 
@@ -233,8 +206,30 @@ class TestSolveIrTool:
 
         assert "solve_ir" in agent.tools
         assert "what_if" not in agent.tools
-        assert "Appendix: what_if" in agent.system_prompt
+        assert "Appendix: what_if" not in agent.system_prompt
         assert "solve_ir" in agent.system_prompt
+
+    def test_baseline_saves_a_solve_result_artifact(self, tmp_path):
+        """基准求解落盘 solve_result.json，供 [SOLVE_RESULT] 原样展开。"""
+        import json as _json
+
+        SolveIrTool(workspace_dir=tmp_path).forward(_model_ir("p_median_community"))
+        artifact = tmp_path / "solve_result.json"
+
+        assert artifact.is_file()
+        payload = _json.loads(artifact.read_text(encoding="utf-8"))
+        assert payload["ir_fingerprint"]
+        assert "[RESULT] Objective: 2210" in payload["text"]
+        assert "## 结果报表" in payload["text"]
+
+    def test_scenario_solves_do_not_overwrite_the_artifact(self, tmp_path):
+        tool = SolveIrTool(workspace_dir=tmp_path)
+        tool.forward(_model_ir("p_median_community"))
+        tool.forward(_model_ir("p_median_community"), {"p": 4})
+
+        payload_text = (tmp_path / "solve_result.json").read_text(encoding="utf-8")
+        assert "Objective: 2210" in payload_text
+        assert "Objective: 2050" not in payload_text
 
 
 # ---------------------------------------------------------------------------

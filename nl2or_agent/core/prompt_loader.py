@@ -6,7 +6,11 @@ The system prompt is assembled from three sources:
 
 - ``system.prompt.md`` — the mode-independent core (role, output rules, IR flow, solving).
 - ``workflow.<mode>.prompt.md`` — the workflow for the selected agent mode.
-- the ``problem_ir_format`` appendix and the canonical block_id catalog.
+- the ``problem_ir_format`` appendix.
+
+The model bank itself is not inlined: candidates come from the
+``search_model_library`` / ``describe_model`` tools, so prompt size stays
+constant as the bank grows.
 """
 
 from __future__ import annotations
@@ -28,14 +32,11 @@ def _load_prompt(prompt_path: str | Path) -> str:
 
 
 def load_system_prompt(mode: str = "interactive") -> str:
-    """Load the system prompt for *mode*, with the IR appendix and block catalog.
+    """Load the system prompt for *mode*, with the IR format appendix.
 
     ``interactive`` advances one workflow step per user turn (parse → confirm → look up → solve);
     ``automatic`` runs the whole pipeline within a single turn.
     """
-    from .ir_catalog import catalog_markdown
-    from .what_if import manual_markdown
-
     if mode not in AGENT_MODES:
         raise ValueError(f"Unknown agent mode {mode!r}. Expected one of: {', '.join(AGENT_MODES)}.")
 
@@ -53,12 +54,4 @@ def load_system_prompt(mode: str = "interactive") -> str:
         parts.append("\n\n---\n\n## Appendix: problem_ir_format\n\n")
         parts.append(_load_prompt(ir_file))
 
-    # 附录：积木块目录
-    parts.append("\n\n### Canonical block_id catalog\n\n")
-    parts.append(catalog_markdown())
-
-    # 附录：what_if 工具的 manual（与 catalog 同一机制，本地文件 + 库派生表）
-    parts.append("\n\n---\n\n## Appendix: what_if\n\n")
-    parts.append(manual_markdown())
-
-    return "\n".join(parts)
+    return "\n".join(part for part in parts if part)

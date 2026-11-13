@@ -163,24 +163,19 @@ class TestModelOfRecord:
         assert loaded["report"] == report
         assert loaded["saved_at"]
 
-    def test_model_of_record_strips_derived_context(self, tmp_path: Path, monkeypatch):
+    def test_model_of_record_persists_the_whole_report(self, tmp_path: Path, monkeypatch):
+        """报告只含结论，无需剥离派生上下文，整体落盘。"""
         session = self._session(tmp_path, monkeypatch)
         report = {
             "valid": True,
             "normalized_ir": {"entities": {}},
             "skeleton": {},
-            "constraint_context": {"models": [{"model": "p_median"}]},
-            "catalog_block_ids": ["assign_each_demand_once"],
-            "catalog_objective_ids": ["weighted_service_distance_objective"],
         }
 
         write_model_of_record(session.model_file, report)
         loaded = session.load_model()
 
-        assert loaded["report"]["normalized_ir"] == {"entities": {}}
-        assert "constraint_context" not in loaded["report"]
-        assert "catalog_block_ids" not in loaded["report"]
-        assert "catalog_objective_ids" not in loaded["report"]
+        assert loaded["report"] == report
 
     def test_model_of_record_overwrites_previous(self, tmp_path: Path, monkeypatch):
         session = self._session(tmp_path, monkeypatch)

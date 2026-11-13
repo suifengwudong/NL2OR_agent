@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .block_model import readable_keys
+from .block_model import READ_BLOCK_KEYS, readable_keys
 from .ir_catalog import load_block_catalog, load_model_bank
 from .ir_normalize import normalize_with_context
 from .problem_ir import ProblemIR
@@ -26,7 +26,12 @@ def validate_problem_ir(
     blocks_path: Path | None = None,
     models_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Validate and normalize IR; return report dict for tools / tests."""
+    """Validate and normalize IR; return report dict for tools / tests.
+
+    The report carries verdicts only (errors, warnings, skeleton). Template
+    identification is the retrieval tools' job, so no block catalog or block
+    math is echoed back into the context.
+    """
     catalog = load_block_catalog(blocks_path)
     model_bank = load_model_bank(models_path)
     normalized, errors, warnings = normalize_with_context(ir, catalog, model_bank)
@@ -51,18 +56,41 @@ def validate_problem_ir(
     }
     unread = sorted(declared - readable_keys(normalized))
     if unread:
-        warnings.append(f"参数 {', '.join(unread)} 未被任何已启用块读取")
+        _report_unread_parameters(unread, normalized, skeleton, errors, warnings)
 
     return {
         "valid": len(errors) == 0,
         "normalized_ir": normalized,
         "errors": errors,
         "warnings": warnings,
-        "catalog_block_ids": catalog["block_ids"],
-        "catalog_objective_ids": catalog["objective_block_ids"],
         "skeleton": skeleton,
-        "constraint_context": _constraint_context(skeleton, catalog, model_bank),
     }
+
+
+def _report_unread_parameters(
+    unread: list[str],
+    normalized: dict[str, Any],
+    skeleton: dict[str, Any],
+    errors: list[str],
+    warnings: list[str],
+) -> None:
+    """Unread numeric data is an error on the solve_ir path.
+
+    库内可执行的模型以块读取的键为准：多出的参数会让符号说明出现悬空符号，
+    what_if 覆盖也会被拒绝，所以要求删除或换用读取它的块。没有可执行块的
+    库外模型（run_solver 路径）保留提示，数据仍归手写脚本使用。
+    """
+    executable = bool(normalized.get("constraint_blocks")) and bool(
+        skeleton.get("objective_in_catalog")
+    )
+    for key in unread:
+        readers = sorted(block for block, keys in READ_BLOCK_KEYS.items() if key in keys)
+        hint = f"读取它的块有 {'、'.join(readers)}" if readers else "库中没有块读取它"
+        message = f"参数 {key} 未被任何已启用块读取（{hint}）；请删除该参数，或启用一个读取它的块"
+        if executable:
+            errors.append(message)
+        else:
+            warnings.append(message)
 
 
 # ---------------------------------------------------------------------------
@@ -92,64 +120,22 @@ def _required_and_optional_blocks(
     return required, optional
 
 
-def _block_context(block_id: str, catalog: dict[str, Any]) -> dict[str, Any] | None:
-    block = catalog["by_id"].get(block_id)
-    if block is None:
-        return None
-    return {
-        "block_id": block_id,
-        "name": block.get("name", ""),
-        "category": block.get("category", ""),
-        "description": block.get("description", ""),
-        "math": block.get("math", ""),
-        "parameters": block.get("parameters", []),
-    }
-
-
-def _constraint_context(
-    skeleton: dict[str, Any],
-    catalog: dict[str, Any],
-    model_bank: dict[str, Any],
-) -> dict[str, Any]:
-    """Turn-level context: the declared family's blocks and their math."""
-    models: list[dict[str, Any]] = []
-    declared = set(skeleton.get("declared_models") or [])
-    for model_id in skeleton.get("declared_models") or []:
-        model = model_bank["by_id"].get(model_id)
-        if model is None:
+def _substitute_candidates(
+    bid: str,
+    optional: list[str],
+    by_block: dict[str, Any],
+    declared: set[str],
+) -> list[str]:
+    """Optional blocks that could stand in for the missing required block *bid*."""
+    category = (by_block.get(bid) or {}).get("category")
+    candidates: list[str] = []
+    for block_id in dict.fromkeys(optional):
+        if block_id == bid or (by_block.get(block_id) or {}).get("category") != category:
             continue
-        required, optional = _required_and_optional_blocks(model_bank, model_id)
-        optional = [
-            block_id
-            for block_id in dict.fromkeys(optional)
-            if block_id not in required
-            and (
-                not (typical := set(catalog["by_id"].get(block_id, {}).get("typical_models") or []))
-                or bool(typical & declared)
-            )
-        ]
-        block_ids = list(dict.fromkeys([*required, *optional]))
-        blocks = [
-            detail
-            for block_id in block_ids
-            if (detail := _block_context(block_id, catalog)) is not None
-        ]
-        objective_id = str(model.get("objective_block") or "")
-        models.append(
-            {
-                "model": model_id,
-                "inherits": model.get("inherits") or model.get("family") or "",
-                "required_blocks": required,
-                "optional_blocks": optional,
-                "objective_block": objective_id,
-                "objective": _block_context(objective_id, catalog) if objective_id else None,
-                "blocks": blocks,
-            }
-        )
-    return {
-        "models": models,
-        "unknown_models": list(skeleton.get("unknown_models") or []),
-    }
+        typical = set((by_block.get(block_id) or {}).get("typical_models") or [])
+        if not typical or typical & declared:
+            candidates.append(block_id)
+    return candidates
 
 
 def _check_entities(normalized_ir: dict[str, Any], errors: list[str]) -> dict[str, Any]:
@@ -253,9 +239,12 @@ def _check_skeleton(
         else:
             missing.append(bid)
     if missing:
-        errors.append(
-            f"骨架缺少模板要求的约束块 {', '.join(missing)}（来自族/模型 {', '.join(known)}）"
-        )
+        parts = [f"骨架缺少模板要求的约束块 {', '.join(missing)}（来自族/模型 {', '.join(known)}）"]
+        for bid in missing:
+            candidates = _substitute_candidates(bid, optional, by_block, set(known))
+            if candidates:
+                parts.append(f"{bid} 可用同类别可选块 {'、'.join(candidates)} 替代")
+        errors.append("；".join(parts))
 
     for bid in present:
         one_of = list((by_block.get(bid) or {}).get("requires_one_of") or [])

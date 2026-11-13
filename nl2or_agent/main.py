@@ -92,8 +92,8 @@ def _run_web(agent_mode: str = "interactive") -> None:
 
     prune_old_sessions(max_age_days=30)
 
-    def agent_factory():
-        return build_nl2or_agent(verbosity_level=0)
+    def agent_factory(mode: str):
+        return build_nl2or_agent(mode=mode, verbosity_level=0)
 
     launch_web(agent_factory, default_mode=agent_mode)
 

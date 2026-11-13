@@ -195,12 +195,12 @@ class TestRunCli:
 
 class TestRunWeb:
     def test_run_web_launches_gradio(self):
-        """Verify _run_web calls launch_web with an agent factory function."""
+        """Verify _run_web calls launch_web with a mode-aware agent factory."""
         from main import _run_web
 
         mock_agent = MagicMock()
         with (
-            patch("agents.build_nl2or_agent", return_value=mock_agent),
+            patch("agents.build_nl2or_agent", return_value=mock_agent) as mock_build,
             patch("web.launch_web") as mock_launch,
             patch("utils.session.prune_old_sessions", return_value=0),
         ):
@@ -209,9 +209,10 @@ class TestRunWeb:
         mock_launch.assert_called_once()
         factory_arg = mock_launch.call_args[0][0]
         assert callable(factory_arg)
-        # Invoke the factory to verify it delegates to build_nl2or_agent
-        agent = factory_arg()
+        # Invoke the factory to verify it builds in the requested mode
+        agent = factory_arg("automatic")
         assert agent is mock_agent
+        assert mock_build.call_args.kwargs["mode"] == "automatic"
         assert mock_launch.call_args.kwargs["default_mode"] == "interactive"
 
     def test_run_web_forwards_agent_mode(self):
@@ -321,7 +322,7 @@ class TestCreateUi:
 
         from web.app import create_ui
 
-        ui = create_ui(lambda: None, default_mode="automatic")
+        ui = create_ui(lambda mode: None, default_mode="automatic")
         radios = [b for b in ui.blocks.values() if isinstance(b, gr.Radio)]
 
         assert len(radios) == 1
@@ -333,7 +334,7 @@ class TestCreateUi:
 
         from web.app import create_ui
 
-        ui = create_ui(lambda: None)
+        ui = create_ui(lambda mode: None)
         blocks = list(ui.blocks.values())
         tab_labels = [b.label for b in blocks if isinstance(b, gr.Tab)]
 
@@ -421,18 +422,37 @@ def test_agent_cache_evicts_the_least_recently_used(monkeypatch):
     monkeypatch.setattr(app, "_MAX_AGENTS", 2)
     monkeypatch.setattr(app, "_agents", OrderedDict())
 
-    def factory():
+    def factory(mode: str):
         return object()
 
-    first = app._get_or_create_agent("a", factory)
-    second = app._get_or_create_agent("b", factory)
-    assert app._get_or_create_agent("a", factory) is first
-    third = app._get_or_create_agent("c", factory)
+    first = app._get_or_create_agent("a", "interactive", factory)
+    second = app._get_or_create_agent("b", "interactive", factory)
+    assert app._get_or_create_agent("a", "automatic", factory) is first
+    third = app._get_or_create_agent("c", "interactive", factory)
 
     assert list(app._agents) == ["a", "c"]
     assert first is app._agents["a"]
     assert third is app._agents["c"]
     assert second not in app._agents.values()
+
+
+def test_first_agent_build_uses_the_selected_mode(monkeypatch):
+    from collections import OrderedDict
+
+    import web.app as app
+
+    monkeypatch.setattr(app, "_agents", OrderedDict())
+    built: list[str] = []
+
+    def factory(mode: str):
+        built.append(mode)
+        return object()
+
+    app._get_or_create_agent("sid1", "automatic", factory)
+    app._get_or_create_agent("sid1", "interactive", factory)
+
+    # 只构造一次，且用首轮选中的模式；后续回合交给 apply_agent_mode 切换
+    assert built == ["automatic"]
 
 
 class TestModelStateFromSession:
@@ -479,7 +499,7 @@ class TestAgentSessionBinding:
 
         agent.run.side_effect = run_agent
 
-        def factory():
+        def factory(mode: str):
             return agent
 
         history, _, sid = run_agent_turn(factory, "question", [], "browser01", "interactive")

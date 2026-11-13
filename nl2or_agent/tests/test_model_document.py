@@ -43,6 +43,31 @@ def test_p_median_document_has_sets_variables_and_all_blocks(cases):
     assert document.count("$$") % 2 == 0
 
 
+def test_domains_are_written_as_constraints_after_the_structural_ones(cases):
+    """数域约束属于 s.t.：目标与结构约束之后显式列出每个变量的取值域。"""
+    document = _document("p_median_community", cases)
+
+    assert "**变量取值范围**" in document
+    assert document.index("**约束条件**") < document.index("**变量取值范围**")
+    domains = document[document.index("**变量取值范围**") :]
+    assert "y_j \\in \\{0,1\\}, \\quad \\forall j \\in J" in domains
+    assert "x_{ij} \\in \\{0,1\\}, \\quad \\forall i \\in I,\\ j \\in J" in domains
+
+
+def test_continuous_variables_get_a_nonnegativity_bound(cases):
+    p_center = _document("p_center_emergency", cases)
+    dispersion = _document("p_dispersion", cases)
+
+    assert "w \\ge 0" in p_center
+    assert "D \\ge 0" in dispersion
+
+
+def test_knapsack_domain_uses_the_fallback_variable(cases):
+    document = _document("knapsack_gadget", cases)
+
+    assert "x_i \\in \\{0,1\\}, \\quad \\forall i \\in I" in document
+
+
 def test_dispersion_document_uses_the_big_m_form(cases):
     document = _document("p_dispersion", cases)
 

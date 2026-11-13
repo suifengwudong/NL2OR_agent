@@ -269,21 +269,29 @@ class TestSkeletonChecks:
         assert report["valid"]
         assert report["skeleton"]["missing_required_blocks"] == []
 
-    def test_constraint_context_lists_template_blocks_with_math(self):
+    def test_report_carries_verdicts_only(self):
+        """检索归检索、校验归校验：报告不再回显目录与块的 math。"""
         report = validate_problem_ir(self._ir(["assignment", "linking", "cardinality"]))
-        context = report["constraint_context"]
-        model = context["models"][0]
-        assert model["model"] == "p_median"
-        assert "assign_each_demand_once" in model["required_blocks"]
-        assert "link_assignment_to_open" in model["required_blocks"]
-        assert "cardinality_open_p_facilities" in model["required_blocks"]
-        details = {block["block_id"]: block for block in model["blocks"]}
-        assert details["assign_each_demand_once"]["math"]
-        assert model["objective"]["math"]
-        optional = set(model["optional_blocks"])
-        assert "force_facility_open" in optional
-        assert "min_pairwise_distance_bound" not in optional
-        assert "facility_capacity" not in optional
+
+        assert set(report) == {"valid", "normalized_ir", "errors", "warnings", "skeleton"}
+        assert "math" not in json.dumps(report, ensure_ascii=False)
+
+    def test_missing_required_block_error_names_substitutes(self):
+        report = validate_problem_ir(self._ir(["assignment", "cardinality"]))
+
+        assert not report["valid"]
+        assert report["skeleton"]["missing_required_blocks"] == ["link_assignment_to_open"]
+        error = next(e for e in report["errors"] if "骨架缺少" in e)
+        assert "link_assignment_to_open" in error
+
+    def test_optional_candidates_are_not_advertised_on_a_complete_skeleton(self):
+        """骨架完整时，报告里不出现 capacity / cardinality 等其他变体的块。"""
+        report = validate_problem_ir(self._ir(["assignment", "linking", "cardinality"]))
+        blob = json.dumps(report, ensure_ascii=False)
+
+        assert report["valid"]
+        assert "facility_capacity" not in blob
+        assert "opening_budget" not in blob
 
     def test_knapsack_requires_weight(self):
         report = validate_problem_ir(
@@ -418,7 +426,7 @@ class TestEntityChecks:
         assert not report["valid"]
         assert any("不在设施集合 J 中" in e for e in report["errors"])
 
-    def test_unread_parameter_is_flagged(self):
+    def test_unread_parameter_is_rejected_on_the_solve_ir_path(self):
         report = validate_problem_ir(
             {
                 "entities": {"I": {"size": 2}, "J": {"size": 2}},
@@ -436,6 +444,20 @@ class TestEntityChecks:
                     "block_id": "weighted_service_distance_objective",
                     "parameters": {"distance": "给定"},
                 },
+            }
+        )
+        assert not report["valid"]
+        error = next(e for e in report["errors"] if "weight" in e)
+        assert "未被任何已启用块读取" in error
+        assert "knapsack_capacity" in error  # 错误信息列出读取它的块
+
+    def test_unread_parameter_stays_a_warning_outside_the_catalog_path(self):
+        """库外模型（run_solver 路径）的数据不设限。"""
+        report = validate_problem_ir(
+            {
+                "problem_families": [{"id": "lp_general"}],
+                "parameters": {"weight": [10, 20]},
+                "objective": {"block_id": "weighted_sum_objective", "sense": "minimize"},
             }
         )
         assert report["valid"]

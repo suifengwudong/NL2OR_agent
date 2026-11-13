@@ -12,6 +12,7 @@
 
 | 主题 | 内容 | 结果 |
 |------|------|------|
+| 上下文与校验收紧 | 模型库退出系统提示词，改 `search_model_library` / `describe_model` 两阶段检索；`validate_problem_ir` 报告只留结论；未消费参数升级为错误（UFLP 基准用例同步修）；答复改运行时占位符 `[MODEL_MATH]` / `[SOLVE_RESULT]`；hamlet 提示词 print 静音、agent 按实际模式构造、LiteLLM 本地价格表。约定见 `docs/AGENT.md` | 已完成 |
 | 奥卡姆剃刀 | 工具 7→4（删 `query_model_library`、`list_block_catalog`、`ir_to_script`）；IR 删 `report` 规格面与 4 个死字段；`schema/` 并入 `ir_normalize`；删 `solve_references.py`、`examples/`、`keywords`；`Session.save_model` 移除 | 已完成 |
 | 模型库 v2 与 location 扩展 | `class`/`inherits` 分离；新增 p-median 距离上限、禁配、有容量 p-center、预算最大覆盖、有容量最大覆盖、p-dispersion、预算设施选址；新增距离、禁配、预算、容量覆盖与设施分散块 | 已完成 |
 | 数学模型与报表 | `model_document`、`model_math`、报表 profile 与表渲染、`solve_ir` 结果报表 | 已完成 |

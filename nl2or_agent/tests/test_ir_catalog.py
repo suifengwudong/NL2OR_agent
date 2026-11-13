@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from core.ir_catalog import catalog_markdown, load_block_catalog, load_model_bank
+from core.ir_catalog import load_block_catalog, load_model_bank
 
 
 def _write(path: Path, payload: dict) -> Path:
@@ -82,13 +82,15 @@ def test_editing_the_file_invalidates_the_cache(tmp_path: Path):
     assert "second_longer" in load_model_bank(bank)["by_id"]
 
 
-def test_catalog_markdown_carries_semantics_and_math():
-    markdown = catalog_markdown()
-    assert "`assign_each_demand_once`" in markdown
-    assert "需求唯一分配" in markdown
-    assert "\\sum_{j \\in J} x_{ij} = 1" in markdown
-    assert "`weighted_service_distance_objective`" in markdown
-    assert "\\min \\sum" in markdown
+def test_catalog_markdown_is_gone_from_the_prompt_path():
+    """目录不再渲染进提示词：提示词大小与积木块数量解耦。"""
+    import inspect
+
+    import core.ir_catalog as mod
+    import core.prompt_loader as loader
+
+    assert not hasattr(mod, "catalog_markdown")
+    assert "ir_catalog" not in inspect.getsource(loader)
 
 
 def test_coverage_distance_is_not_advertised_without_an_implementation():

@@ -10,18 +10,28 @@ result = agent.run("我有一个背包问题……")
 from __future__ import annotations
 
 import ast
-import os
+import contextlib
 import importlib.resources
+import io
+import os
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+# litellm 在 import 时向 raw.githubusercontent.com 拉取价格表，当前网络环境下
+# SSL 握手超时；本地备份已足够（本项目不消费价格与上下文窗口数据）。
+# 必须在第一次导入 hamlet/litellm 之前设置。
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "true")
+
 from hamlet.core import CodeAgent, LiteLLMModel
 
 from core.prompt_loader import load_system_prompt
 from tools import (
+    DescribeModelTool,
     ModelMathTool,
     RunSolverTool,
+    SearchModelLibraryTool,
     SolveIrTool,
     ValidateProblemIrTool,
 )
@@ -32,6 +42,32 @@ from tools import (
 _CODE_BLOCK_TAGS: str | tuple[str, str] = "markdown"
 
 _PATCHED_ATTR = "_nl2or_parse_patched"
+_QUIET_PROMPT_ATTR = "_nl2or_prompt_quiet"
+
+
+def _silence_system_prompt_print() -> None:
+    """Suppress the stray ``print(system_prompt)`` in HAMLET's CodeAgent.
+
+    ``CodeAgent.initialize_system_prompt()`` ends with an unconditional
+    ``print(system_prompt)`` (hamlet/core/agents.py:1486).  Both ``__init__``
+    and every ``run()`` evaluate ``self.system_prompt``, so the whole prompt is
+    dumped to stdout twice per turn even at ``verbosity_level=0``.  Only the
+    prompt build is silenced here; tool output and logging are untouched.
+    """
+    import hamlet.core.agents as hamlet_agents
+
+    cls = hamlet_agents.CodeAgent
+    if getattr(cls, _QUIET_PROMPT_ATTR, False):
+        return
+
+    original = cls.initialize_system_prompt
+
+    def _quiet(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            return original(self)
+
+    cls.initialize_system_prompt = _quiet
+    setattr(cls, _QUIET_PROMPT_ATTR, True)
 
 
 def _patch_hamlet_code_parsing() -> None:
@@ -78,11 +114,15 @@ def apply_agent_mode(agent: CodeAgent, mode: str) -> None:
 
     Only the workflow section of the system prompt changes.  HAMLET re-reads
     ``prompt_templates["system_prompt"]`` at the start of every ``run()``, so the
-    accumulated conversation memory survives the switch.
+    accumulated conversation memory survives the switch.  A turn in the mode the
+    agent already carries skips the rebuild.
     """
+    if getattr(agent, "_nl2or_mode", None) == mode:
+        return
     system_prompt = load_system_prompt(mode)
     if system_prompt:
         agent.prompt_templates["system_prompt"] = system_prompt
+    agent._nl2or_mode = mode
 
 
 def _reasoning_kwargs() -> dict:
@@ -124,6 +164,7 @@ def build_nl2or_agent(
         A fully configured agent ready to receive natural-language OR problems.
     """
     _patch_hamlet_code_parsing()
+    _silence_system_prompt_print()
 
     resolved_model_id = os.getenv("HAMLET_MODEL_ID")
     if not resolved_model_id:
@@ -133,13 +174,17 @@ def build_nl2or_agent(
         )
     _or_key = os.getenv("OPENROUTER_API_KEY")
 
-    print(
-        f"Using model: {resolved_model_id}, with OPENROUTER_API_KEY: {'set' if _or_key else 'not set'}"
-    )
+    if verbosity_level >= 1:
+        print(
+            f"Using model: {resolved_model_id}, "
+            f"with OPENROUTER_API_KEY: {'set' if _or_key else 'not set'}"
+        )
 
     model = LiteLLMModel(model_id=resolved_model_id, api_key=_or_key, **_reasoning_kwargs())
 
     tools = [
+        SearchModelLibraryTool(),
+        DescribeModelTool(),
         ValidateProblemIrTool(workspace_dir=workspace_dir),
         ModelMathTool(),
         RunSolverTool(workspace_dir=workspace_dir),
@@ -183,5 +228,6 @@ def build_nl2or_agent(
             "os",
         ],
     )
+    agent._nl2or_mode = mode
 
     return agent

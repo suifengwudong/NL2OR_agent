@@ -8,11 +8,20 @@ instead of a list of block ids.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from .block_model import active_variable_names, constraint_block_ids, objective_block_id
+from .block_model import (
+    active_variable_names,
+    constraint_block_ids,
+    objective_block_id,
+    readable_keys,
+)
 from .ir_catalog import load_block_catalog, load_model_bank
 from .problem_ir import ProblemIR
+
+# 直接进入数学模式的实体名：ASCII 字母数字、下划线与短横线
+_PLAIN_ID = re.compile(r"[A-Za-z0-9_\-]+")
 
 _ROLE_DEFS: dict[str, tuple[str, str, str]] = {
     "y": ("y_j", "binary", "是否在候选设施 j 开设设施"),
@@ -50,12 +59,14 @@ def render_model_document(
     lines.append("**符号说明**")
     lines.append("")
     symbols = model_bank.get("symbols") or {}
+    variables = _collect_variables(ir, entries)
     lines.extend(_render_entities(ir))
     lines.extend(_render_parameters(ir, entries, symbols))
-    lines.extend(_render_variables(ir, entries))
+    lines.extend(_render_variables(variables))
     lines.extend(_render_objective(ir, catalog))
     lines.extend(_render_constraints(ir, catalog))
     lines.extend(_render_custom_constraints(ir))
+    lines.extend(_render_domains(variables))
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -78,7 +89,13 @@ def _render_entities(ir: dict[str, Any]) -> list[str]:
         ids = entry.get("ids") or []
         shown = ""
         if ids:
-            shown = f"，${key} = \\{{{', '.join(str(item) for item in ids)}\\}}$"
+            # 纯 ASCII 短名直接排版；含空格或非 ASCII 的名字包进 \text，
+            # 避免被数学模式拆成多个符号或渲染失败
+            members = ", ".join(
+                f"\\text{{{item}}}" if not _PLAIN_ID.fullmatch(str(item)) else str(item)
+                for item in ids
+            )
+            shown = f"，${key} = \\{{{members}\\}}$"
         size_text = f"$|{key}| = {size}$" if size else f"${key}$"
         meaning = {"I": "需求点集合", "J": "候选设施集合"}.get(key, "索引集合")
         lines.append(f"- {size_text}：{meaning}{shown}")
@@ -97,7 +114,9 @@ def _render_parameters(
             definitions.setdefault(str(parameter.get("name")), parameter)
 
     values = ProblemIR(ir).parameters
-    names = list(dict.fromkeys([*definitions, *values]))
+    # 只列被启用块读取的参数：符号说明中的每个符号都必须出现在某条公式里
+    readable = readable_keys(ir)
+    names = [name for name in dict.fromkeys([*definitions, *values]) if name in readable]
     if not names:
         return []
 
@@ -162,7 +181,8 @@ def _value_summary(value: Any) -> str:
     return str(value)
 
 
-def _render_variables(ir: dict[str, Any], entries: list[dict[str, Any]]) -> list[str]:
+def _collect_variables(ir: dict[str, Any], entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Decision variables of the model: template variables, else active roles."""
     variables: list[dict[str, Any]] = []
     seen: set[str] = set()
     for model in entries:
@@ -178,7 +198,10 @@ def _render_variables(ir: dict[str, Any], entries: list[dict[str, Any]]) -> list
         for role in active_variable_names(ir):
             symbol, var_type, meaning = _ROLE_DEFS[role]
             variables.append({"symbol": symbol, "type": var_type, "meaning": meaning})
+    return variables
 
+
+def _render_variables(variables: list[dict[str, Any]]) -> list[str]:
     if not variables:
         return ["- 决策变量：未声明", ""]
 
@@ -192,6 +215,40 @@ def _render_variables(ir: dict[str, Any], entries: list[dict[str, Any]]) -> list
         lines.append(f"- ${symbol}{suffix}$：{meaning}")
     lines.append("")
     return lines
+
+
+def _quantifier_latex(symbol: str) -> str:
+    """Turn the subscript of ``x_ij`` into ``\\forall i \\in I,\\ j \\in J``."""
+    if "_" not in symbol:
+        return ""
+    subscript = symbol.split("_", 1)[1]
+    indices = [char for char in subscript if char.isalpha()]
+    if not indices:
+        return ""
+    return "\\forall " + ",\\ ".join(f"{char} \\in {char.upper()}" for char in indices)
+
+
+def _render_domains(variables: list[dict[str, Any]]) -> list[str]:
+    """The s.t. tail: every decision variable's domain as an explicit constraint.
+
+    数域属于模型的约束部分，不能只写在符号说明里；目标与结构约束之后列出，
+    与 ``min/max objective; s.t. constraints; x >= 0, y in {0,1}`` 的惯例一致。
+    """
+    pieces: list[str] = []
+    for variable in variables:
+        symbol = str(variable.get("symbol") or "")
+        domain = _domain_latex(str(variable.get("type") or ""))
+        if not symbol or not domain:
+            continue
+        piece = f"{_symbol_latex(symbol)} {domain}"
+        quantifier = _quantifier_latex(symbol)
+        if quantifier:
+            piece += f", \\quad {quantifier}"
+        pieces.append(piece)
+
+    if not pieces:
+        return []
+    return ["**变量取值范围**", "", "$$", ",\\qquad ".join(pieces), "$$", ""]
 
 
 def _symbol_latex(symbol: str) -> str:

@@ -11,10 +11,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from core.output_format import format_agent_output
+from core.output_format import expand_placeholders, format_agent_output
 from utils.session import get_session, resolve_session
 
 from .nl2or_agent import apply_agent_mode
+
+AgentFactory = Callable[[str], Any]
+AgentGetter = Callable[[str, str], Any]
 
 
 @dataclass(frozen=True)
@@ -35,14 +38,15 @@ def run_turn(
     session_id: str | None,
     mode: str,
     agent: Any | None = None,
-    agent_factory: Callable[[], Any] | None = None,
-    get_agent: Callable[[str], Any] | None = None,
+    agent_factory: AgentFactory | None = None,
+    get_agent: AgentGetter | None = None,
 ) -> TurnResult:
     """Run one turn against the session identified by *session_id*.
 
     Exactly one of *agent*, *agent_factory* and *get_agent* is expected.
-    ``get_agent`` is used by the web UI to reuse its per-session cache; the CLI
-    passes its single agent.
+    ``get_agent`` is used by the web UI to reuse its per-session cache and
+    receives ``(session_id, mode)`` so a lazily built agent starts in the
+    mode the user actually selected; the CLI passes its single agent.
     """
     if agent is None and agent_factory is None and get_agent is None:
         raise ValueError("run_turn needs an agent, an agent_factory or get_agent")
@@ -51,16 +55,16 @@ def run_turn(
     try:
         get_session(sid)
         if get_agent is not None:
-            active_agent = get_agent(sid)
+            active_agent = get_agent(sid, mode)
         elif agent is not None:
             active_agent = agent
         elif agent_factory is not None:
-            active_agent = agent_factory()
+            active_agent = agent_factory(mode)
 
         apply_agent_mode(active_agent, mode)
         session.save_conversation_entry(role="user", content=message.strip())
         raw = active_agent.run(message.strip(), reset=False)
-        answer = format_agent_output(raw)
+        answer = expand_placeholders(format_agent_output(raw), session)
         session.save_conversation_entry(role="assistant", content=answer)
         return TurnResult(
             session_id=sid,

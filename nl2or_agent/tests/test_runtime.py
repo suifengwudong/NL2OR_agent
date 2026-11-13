@@ -73,10 +73,10 @@ def test_turn_records_the_error_and_keeps_the_session():
 
 def test_turn_can_use_a_session_bound_agent_getter():
     agent = _Agent("来自缓存")
-    seen: list[str] = []
+    seen: list[tuple[str, str]] = []
 
-    def get_agent(session_id: str) -> _Agent:
-        seen.append(session_id)
+    def get_agent(session_id: str, mode: str) -> _Agent:
+        seen.append((session_id, mode))
         return agent
 
     result = run_turn(
@@ -86,8 +86,22 @@ def test_turn_can_use_a_session_bound_agent_getter():
         get_agent=get_agent,
     )
 
-    assert seen == [result.session_id]
+    assert seen == [(result.session_id, "interactive")]
     assert result.answer == "来自缓存"
+
+
+def test_factory_receives_the_turn_mode():
+    agent = _Agent("按模式构造")
+    modes: list[str] = []
+
+    def factory(mode: str) -> _Agent:
+        modes.append(mode)
+        return agent
+
+    result = run_turn("问题", session_id=None, mode="automatic", agent_factory=factory)
+
+    assert modes == ["automatic"]
+    assert result.answer == "按模式构造"
 
 
 def test_turn_requires_an_agent_source():

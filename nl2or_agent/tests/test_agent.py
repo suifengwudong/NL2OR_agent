@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from agents.nl2or_agent import apply_agent_mode, build_nl2or_agent
+from core.ir_catalog import load_block_catalog
 from core.prompt_loader import AGENT_MODES, load_system_prompt
 from hamlet.core import CodeAgent
 
@@ -36,10 +37,8 @@ class TestLoadSystemPrompt:
         with patch("core.prompt_loader._PROMPTS_DIR", empty_dir):
             result = load_system_prompt()
 
-        # When system prompt file is missing, we still append appendix if
-        # ir_format prompt exists.  Since both are in the same dir, both
-        # will be missing — result is empty plus catalog markdown.
-        assert "Canonical block_id catalog" in result
+        # 没有提示词文件时返回空串；目录与 what_if 附录不再拼进提示词
+        assert result == ""
 
     def test_each_mode_selects_its_own_workflow(self):
         interactive = load_system_prompt("interactive")
@@ -50,13 +49,45 @@ class TestLoadSystemPrompt:
         assert "one step per user turn" not in automatic
         assert "complete the whole pipeline in one turn" not in interactive
 
-    def test_modes_share_core_appendix_and_catalog(self):
+    def test_modes_share_core_and_ir_appendix_without_the_catalog(self):
         for mode in AGENT_MODES:
             prompt = load_system_prompt(mode)
             assert prompt.startswith("You are NL2OR")
             assert "## Compositional modeling" in prompt
             assert "Appendix: problem_ir_format" in prompt
-            assert "Canonical block_id catalog" in prompt
+            # 模型库不再静态展开进提示词：块定义只能来自检索工具
+            assert "Canonical block_id catalog" not in prompt
+            assert "需求唯一分配" not in prompt
+            assert "典型模型" not in prompt
+            assert "search_model_library" in prompt
+            assert "describe_model" in prompt
+
+    def test_prompt_size_is_independent_of_the_block_catalog(self, tmp_path: Path):
+        """把积木块目录换成上百个条目，提示词长度必须不变。"""
+        import json as _json
+
+        big = tmp_path / "constraint_blocks.json"
+        blocks = [
+            {
+                "id": f"synthetic_block_{i}",
+                "category": "synthetic",
+                "name": f"块{i}",
+                "description": "x" * 80,
+                "math": "\\sum x",
+                "parameters": [],
+            }
+            for i in range(150)
+        ]
+        big.write_text(
+            _json.dumps({"schema_version": 2, "blocks": blocks}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        plain = load_system_prompt("automatic")
+        with patch("core.ir_catalog._BLOCKS_PATH", big):
+            loaded = load_block_catalog(big)
+            assert len(loaded["blocks"]) == 150
+        assert load_system_prompt("automatic") == plain
 
     def test_unknown_mode_raises(self):
         with pytest.raises(ValueError, match="interactive"):
@@ -92,11 +123,13 @@ class TestBuildNl2orAgent:
     def test_tools_loaded(self):
         agent = build_nl2or_agent(verbosity_level=0)
         tool_names = [t.name for t in agent.tools.values()]
-        # 四个项目工具 + HAMLET 自带的 final_answer
+        # 六个项目工具（检索、描述、校验、文档、执行、求解）+ HAMLET 自带 final_answer
         assert sorted(tool_names) == [
+            "describe_model",
             "final_answer",
             "model_math",
             "run_solver",
+            "search_model_library",
             "solve_ir",
             "validate_problem_ir",
         ]
@@ -189,12 +222,31 @@ class TestBuildNl2orAgent:
 
     def test_apply_agent_mode_switches_workflow(self):
         agent = build_nl2or_agent(verbosity_level=0)
+        interactive_prompt = agent.prompt_templates["system_prompt"]
+
+        # 同模式的回合不再重建提示词
+        apply_agent_mode(agent, "interactive")
+        assert agent.prompt_templates["system_prompt"] == interactive_prompt
 
         apply_agent_mode(agent, "automatic")
         assert "complete the whole pipeline in one turn" in agent.prompt_templates["system_prompt"]
 
         apply_agent_mode(agent, "interactive")
         assert "one step per user turn" in agent.prompt_templates["system_prompt"]
+
+    def test_build_and_prompt_evaluation_are_silent(self, capsys):
+        """HAMLET 在 initialize_system_prompt 里残留 print，补丁必须把它静音。"""
+        agent = build_nl2or_agent(verbosity_level=0)
+
+        assert agent.system_prompt  # 求值仍然成功
+        assert capsys.readouterr().out == ""
+
+    def test_startup_banner_follows_verbosity(self, capsys):
+        build_nl2or_agent(verbosity_level=0)
+        assert capsys.readouterr().out == ""
+
+        build_nl2or_agent(verbosity_level=1)
+        assert "Using model" in capsys.readouterr().out
 
     def test_unknown_mode_raises(self):
         with pytest.raises(ValueError, match="interactive"):
