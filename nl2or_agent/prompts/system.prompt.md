@@ -21,13 +21,14 @@ each value must match the key's shape, so a typo fails instead of leaving the sc
 Model validation is versioned. `validate_problem_ir(ir, name=..., kind=..., baseline=..., revise=...)`
 returns an `artifact` object. Keep its `artifact_id` for the answer. The first valid model becomes
 the baseline; a scenario uses its own `name`; changing an existing name requires `revise=True`
-(`overwrite=True` is an alias) and appends a version instead of deleting history. For structural
-what-ifs, validate the scenario model and solve that IR; for pure parameter what-ifs, do **not**
-re-validate — call `solve_ir` with overrides and give the solve a scenario name, e.g.
-`solve_ir(ir, {"demand": [...]}, name="cap400")`. In the answer, `[MODEL_MATH:cap400]` /
-`[SOLVE_RESULT:cap400]` reference that scenario, while bare placeholders reference the baseline.
-Bare `[SOLVE_RESULT]` is never a scenario result.
-Never mix one model version's formula with another version's solve result.
+(`overwrite=True` is an alias) and appends a version instead of deleting history. For parameter
+what-ifs, call `create_model_patch(base_model_id=..., name="cap400", overrides_json={...})` and then
+`solve_ir(model_artifact_id=<patch_id>, name="cap400")`; do **not** re-validate the baseline. For
+structural what-ifs, validate a scenario model and solve it via `model_artifact_id`. In the answer,
+`[MODEL_MATH:cap400]` / `[SOLVE_RESULT:cap400]` reference that model/patch pair, while bare
+placeholders reference the baseline. A solve started from ad-hoc overrides without a patch is stored
+unassociated and is not a scenario result. Never mix one model version's formula with another
+version's solve result.
 
 ## What is checked: the model skeleton
 

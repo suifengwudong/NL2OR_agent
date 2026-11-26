@@ -1,4 +1,4 @@
-"""Tool: solve one Problem IR deterministically, optionally under parameter overrides."""
+"""Tool: solve a Problem IR or an existing model/patch artifact."""
 
 from __future__ import annotations
 
@@ -8,12 +8,17 @@ from typing import Any
 
 from hamlet.core.tools import Tool
 
-from core.block_model import describe_model, format_solution, prepare_overrides, render_script
+from core.block_model import (
+    describe_model,
+    format_solution,
+    prepare_overrides,
+    render_script,
+)
 from core.block_model import solve_ir as solve_problem_ir
 from core.ir_validate import validate_problem_ir
 from core.problem_ir import ProblemIR, fingerprint
 from core.report import default_report_spec, render_report
-from utils.artifact_store import ArtifactError, ArtifactStore
+from utils.artifact_store import ArtifactError, ArtifactStore, ModelRef
 from utils.session import get_session, save_code_file
 
 _SCRIPT_NAME = "solver_from_ir.py"
@@ -30,85 +35,94 @@ def _numeric_variables(variables: dict[str, Any] | None) -> dict[str, float]:
 
 
 class SolveIrTool(Tool):
-    """Solve a Problem IR through the library's executable block semantics.
-
-    Scenarios are deliberately not looped here: the agent asks for one variant per
-    call (the baseline, then each override set) and tabulates the results itself,
-    so every number stays traceable to a single explicit input.
-    """
+    """Solve a Problem IR, a full model artifact or a parameter patch."""
 
     name = "solve_ir"
     description = (
-        "Solve a Problem IR deterministically from the library's block semantics, without "
-        "writing a solver script. This is the default way to solve: use run_solver only when "
-        "a block has no executable semantics or the user asks for hand-written code. "
-        "Use it for comparison questions about parameters too: call it once for the baseline "
-        "and once per override set, then tabulate the objective values. "
-        "Every call rebuilds the model from the same formulation, so the differences you "
-        "report come from the parameters and nothing else. "
-        "Input: ir_json (the Problem IR dict or its JSON string) and overrides_json (an object "
-        'mapping top-level parameter keys to new values, e.g. {"p": 4}; omit or pass {} for the '
-        "baseline). Only keys this model's own blocks read are accepted, and each value must "
-        "match the key's shape, so a typo fails instead of leaving the scenario unchanged. "
-        "Each solve is stored as an immutable solve artifact and auto-linked to a validated "
-        "model by IR fingerprint; pass model_artifact_id to pin the link explicitly. "
-        "Output: plain text with the status, the applied overrides, the objective on a "
-        "`[RESULT]` line, a decision summary, and (for the baseline) the saved script path."
+        "Solve a Problem IR deterministically from the library's block semantics, or "
+        "solve an existing model/patch artifact via model_artifact_id. This tool only "
+        "solves and writes a solve artifact; it never creates model/patch files. "
+        "Pass model_artifact_id (model_… / patch_…) for a named what-if; otherwise pass "
+        "ir_json and optional overrides_json. A solve with overrides but no matching "
+        "artifact is stored as unassociated (with the overrides recorded), not silently "
+        "attached. Every call writes one immutable solve_*.json."
     )
     inputs = {
         "ir_json": {
             "type": "string",
-            "description": "Problem IR as a dict or its JSON string; normalized before solving.",
+            "nullable": True,
+            "description": "Problem IR as a dict or JSON string; omit when model_artifact_id is given.",
         },
         "overrides_json": {
             "type": "string",
             "nullable": True,
-            "description": (
-                "Object (or its JSON string) of top-level parameter overrides, "
-                'e.g. {"p": 4}. Omit or pass {} for the baseline.'
-            ),
+            "description": 'Top-level parameter overrides, e.g. {"demand": [...]}; omit for baseline.',
         },
         "name": {
             "type": "string",
             "nullable": True,
-            "description": (
-                "Logical solve name. Omit to use the linked model name (or solve_N "
-                "when the result is not linked to a model)."
-            ),
+            "description": "Logical solve name; defaults to the linked model name or solve_N.",
         },
         "model_artifact_id": {
             "type": "string",
             "nullable": True,
-            "description": (
-                "Model artifact id to link this solve to. Omit to auto-link by IR "
-                "fingerprint; an explicit id whose fingerprint differs is rejected."
-            ),
+            "description": "Model/patch artifact id to solve (model_… / patch_…).",
         },
     }
     output_type = "string"
 
     def __init__(self, workspace_dir: str | Path | None = None) -> None:
         super().__init__()
-        # None 时脚本写进当前会话目录（生产路径），显式给出时写进该目录（测试/评测）
         self._workspace: Path | None = Path(workspace_dir) if workspace_dir else None
 
     def forward(
         self,
-        ir_json: str | dict[str, Any],
+        ir_json: str | dict[str, Any] | None = None,
         overrides_json: str | dict[str, Any] | None = None,
         name: str | None = None,
         model_artifact_id: str | None = None,
     ) -> str:
+        store = ArtifactStore(self._root())
         try:
-            parsed = ProblemIR.parse(ir_json)
-            report = validate_problem_ir(parsed.data)
-            if report["errors"]:
-                return "无法求解：" + "；".join(report["errors"])
-            ir = ProblemIR(report["normalized_ir"])
-            overrides = prepare_overrides(ir.data, overrides_json)
-            solved = ir.with_overrides(overrides)
+            artifact = None
+            overrides: dict[str, Any] = {}
+            base_model = None
+            if model_artifact_id:
+                artifact = store.load_model_artifact(model_artifact_id)
+                if overrides_json:
+                    raise ValueError("指定 model_artifact_id 时不要再传 overrides；补丁已包含覆盖")
+                normalized = store.effective_ir(artifact)
+                if ir_json is not None:
+                    parsed = ProblemIR.parse(ir_json)
+                    if fingerprint(parsed.data) != artifact.fingerprint:
+                        raise ValueError("ir_json 与 model_artifact_id 的指纹不一致")
+                solved = ProblemIR(normalized)
+                base = solved
+            else:
+                if ir_json is None:
+                    raise ValueError("需要 ir_json 或 model_artifact_id")
+                parsed = ProblemIR.parse(ir_json)
+                report = validate_problem_ir(parsed.data)
+                if report["errors"]:
+                    return "无法求解：" + "；".join(report["errors"])
+                base = ProblemIR(report["normalized_ir"])
+                overrides = prepare_overrides(base.data, overrides_json)
+                solved = base.with_overrides(overrides)
+                if overrides:
+                    patched_report = validate_problem_ir(solved.data)
+                    if patched_report["errors"]:
+                        return "无法求解：" + "；".join(patched_report["errors"])
+                    solved = ProblemIR(patched_report["normalized_ir"])
+                    matches = store.find_models_by_fingerprint(
+                        fingerprint(base.data), valid_only=True
+                    )
+                    if len(matches) == 1:
+                        base_model = matches[0]
+                else:
+                    solved = base
+
             result = solve_problem_ir(solved.data)
-        except ValueError as exc:
+        except (ArtifactError, ValueError) as exc:
             return f"无法求解：{exc}"
 
         spec = default_report_spec(solved.data)
@@ -116,9 +130,8 @@ class SolveIrTool(Tool):
             spec["tables"] = ["objective_breakdown"]
         solution_text = format_solution(result, overrides)
         report_text = render_report(solved.data, result, spec=spec)
-        parts = [describe_model(ir.data), solution_text, report_text]
+        parts = [describe_model(base.data), solution_text, report_text]
 
-        store = ArtifactStore(self._root())
         solve_artifact = None
         try:
             solve_artifact = store.save_solve_artifact(
@@ -127,28 +140,31 @@ class SolveIrTool(Tool):
                 objective=result.objective,
                 text=f"{solution_text}\n\n{report_text}",
                 name=name or None,
-                model_artifact_id=model_artifact_id or None,
+                model_artifact_id=artifact.artifact_id if artifact is not None else None,
                 variables=_numeric_variables(result.variables),
+                overrides=overrides,
+                base_model_ref=(
+                    ModelRef(base_model.artifact_id, base_model.name, base_model.fingerprint)
+                    if base_model is not None
+                    else None
+                ),
             )
-        except ArtifactError as exc:
-            parts.append(f"求解 artifact 未保存：{exc}")
-
-        if solve_artifact is not None:
             parts.append(
                 f"求解 artifact：{solve_artifact.artifact_id}"
                 f"（name={solve_artifact.name}，{solve_artifact.association_status}）"
             )
+        except ArtifactError as exc:
+            parts.append(f"求解 artifact 未保存：{exc}")
 
-        baseline_id = store.load_index().baseline_model
+        baseline = store.get_baseline_model()
         linked_to_baseline = (
             solve_artifact is not None
             and solve_artifact.model_ref is not None
-            and solve_artifact.model_ref.artifact_id == baseline_id
+            and baseline is not None
+            and solve_artifact.model_ref.artifact_id == baseline.artifact_id
         )
-        no_model_artifact = not store.list_model_artifacts()
-        if not overrides and (linked_to_baseline or no_model_artifact):
-            # Transitional compatibility: keep the old baseline artifacts only.
-            # A scenario or an unlinked solve never overwrites them.
+        if not overrides and artifact is None and (linked_to_baseline or not store.has_models()):
+            # Transitional compatibility: only the baseline keeps the old files.
             parts.append(f"脚本：{self._save_script(solved.data)}")
             self._save_solve_result(solved.data, solution_text, report_text)
         return "\n\n".join(parts)
@@ -157,16 +173,10 @@ class SolveIrTool(Tool):
         return self._workspace if self._workspace is not None else get_session().workspace
 
     def _save_script(self, ir: dict[str, Any]) -> Path:
-        """Write the rendered script through the same path run_solver uses."""
         directory = self._workspace if self._workspace is not None else get_session().code_dir
         return save_code_file(directory, render_script(ir), _SCRIPT_NAME)
 
     def _save_solve_result(self, ir: dict[str, Any], solution: str, report: str) -> None:
-        """Persist the baseline result for the [SOLVE_RESULT] placeholder.
-
-        Only the baseline is saved and it is fingerprinted against the IR, so a
-        later answer can never quote a result from an older model.
-        """
         target = (
             self._workspace / "solve_result.json"
             if self._workspace is not None

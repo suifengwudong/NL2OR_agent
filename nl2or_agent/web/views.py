@@ -85,15 +85,23 @@ def render_model_view(
     artifact: ModelArtifact | None = None,
     is_baseline: bool = False,
     linked_solves: list[SolveArtifact] | None = None,
+    effective_ir: dict | None = None,
+    base_model: ModelArtifact | None = None,
 ) -> str:
     """Markdown comparison between the validated IR and the template requirement."""
-    if artifact is not None and artifact.report is None:
+    if (
+        artifact is not None
+        and artifact.kind not in {"parameter_patch", "legacy"}
+        and artifact.report is None
+    ):
         return render_unvalidated_view(artifact)
     if not payload:
         return "### 尚未解析\n提交问题后，这里显示归一化后的 Problem IR 与模板要求的对照。"
 
     report = payload.get("report") or {}
-    ir = report.get("normalized_ir") or {}
+    if artifact is not None and artifact.kind == "parameter_patch":
+        report = {**(artifact.validation or {}), **report}
+    ir = effective_ir or report.get("normalized_ir") or {}
     skeleton = report.get("skeleton") or {}
     families = ir.get("problem_families") or []
     entities = ir.get("entities") or {}
@@ -115,6 +123,15 @@ def render_model_view(
         lines.append(f"- 版本：v{artifact.revision}")
         lines.append(f"- 保存时间：{artifact.saved_at}")
         lines.append(f"- 指纹：`{artifact.fingerprint}`")
+        if artifact.kind == "parameter_patch":
+            base_label = base_model.name if base_model is not None else "未知"
+            base_id = (
+                artifact.base_model_ref.artifact_id if artifact.base_model_ref is not None else "—"
+            )
+            lines.append(f"- 基座：{base_label}（`{base_id}`）")
+            overrides = artifact.overrides or {}
+            rendered = ", ".join(f"{key}={value!r}" for key, value in overrides.items())
+            lines.append(f"- 参数覆盖：{rendered or '—'}")
     else:
         lines.append(f"### 模型对照（{verdict}）")
     lines.append("")
@@ -234,15 +251,15 @@ def _imported_json(artifact: ModelArtifact) -> str:
 
 def render_model_summary(store: ArtifactStore, *, selected_id: str | None = None) -> str:
     """Session-level artifact summary: one row per current logical model."""
-    models = store.list_model_artifacts(current_only=True, include_imports=True)
+    models = store.list_models(current_only=True)
     if not models:
         return ""
-    index = store.load_index()
-    models = sorted(
-        models, key=lambda item: (item.artifact_id != index.baseline_model, item.saved_at)
-    )
+    baseline = store.get_baseline_model()
+    baseline_id = baseline.artifact_id if baseline is not None else None
+    models = sorted(models, key=lambda item: (item.artifact_id != baseline_id, item.saved_at))
     solved = 0
     unvalidated = 0
+    patch_count = 0
     rows: list[str] = []
     for model in models:
         solves = store.find_solves_by_model(model.artifact_id)
@@ -250,6 +267,8 @@ def render_model_summary(store: ArtifactStore, *, selected_id: str | None = None
             solved += 1
         if model.validation_status == "unvalidated":
             unvalidated += 1
+        if model.is_patch:
+            patch_count += 1
         latest = solves[-1] if solves else None
         solve_text = latest.status if latest is not None else "尚未求解"
         objective = (
@@ -257,22 +276,22 @@ def render_model_summary(store: ArtifactStore, *, selected_id: str | None = None
             if latest is not None and latest.status == "Optimal" and latest.objective is not None
             else "—"
         )
-        entry = index.models.get(model.name) or {}
+        selected_versions = {
+            version.artifact_id for version in store.list_model_versions(model.name)
+        }
         marker = (
             " **← 当前**"
-            if selected_id == model.artifact_id or selected_id in entry.get("versions", [])
+            if selected_id == model.artifact_id or selected_id in selected_versions
             else ""
         )
-        kind_label = "baseline" if model.artifact_id == index.baseline_model else model.kind
+        kind_label = "baseline" if model.artifact_id == baseline_id else model.kind
         rows.append(
             f"| {model.name}{marker} | {kind_label} | {model.validation_status} | "
             f"{solve_text} | {objective} | {model.saved_at} |"
         )
-    unassociated = [
-        item for item in store.list_solve_artifacts(current_only=True) if item.model_ref is None
-    ]
+    unassociated = [item for item in store.list_solves() if item.model_ref is None]
     lines = [
-        f"### 会话模型（{len(models)} 个，已求解 {solved}，"
+        f"### 会话模型（{len(models)} 个，其中补丁 {patch_count}，已求解 {solved}，"
         f"未关联 {len(unassociated)}，未校验 {unvalidated}）",
         "",
         "| 模型 | 类型 | 校验 | 求解 | 目标值 | 时间 |",
@@ -315,10 +334,10 @@ def _default_model(store: ArtifactStore, models: list[ModelArtifact]) -> ModelAr
 
 
 def get_model_state(sid: str, name: str | None = None) -> tuple[str, str]:
-    """Read the selected model artifact (or legacy model.json) and render both views."""
+    """Read the selected model/patch artifact (or legacy model.json) and render it."""
     session = resolve_session(sid)
     store = ArtifactStore(session)
-    models = store.list_model_artifacts(current_only=True, include_imports=True)
+    models = store.list_models(current_only=True)
     if not models:
         payload = session.load_model()
         return render_model_view(payload), render_model_json(payload)
@@ -332,15 +351,32 @@ def get_model_state(sid: str, name: str | None = None) -> tuple[str, str]:
         selected = _default_model(store, models)
 
     solves = store.find_solves_by_model(selected.artifact_id)
-    index = store.load_index()
-    if selected.report is None:
+    baseline = store.get_baseline_model()
+    is_baseline = baseline is not None and baseline.artifact_id == selected.artifact_id
+    if selected.kind == "parameter_patch":
+        effective_ir = store.effective_ir(selected)
+        base_model = (
+            store.load_model_artifact(selected.base_model_ref.artifact_id)
+            if selected.base_model_ref is not None
+            else None
+        )
+        detail = render_model_view(
+            {"report": selected.validation or {}},
+            artifact=selected,
+            is_baseline=is_baseline,
+            linked_solves=solves,
+            effective_ir=effective_ir,
+            base_model=base_model,
+        )
+        raw = json.dumps(effective_ir, ensure_ascii=False, indent=2)
+    elif selected.report is None:
         detail = render_unvalidated_view(selected)
-        raw = _imported_json(selected)
+        raw = ""
     else:
         detail = render_model_view(
             {"report": selected.report},
             artifact=selected,
-            is_baseline=selected.artifact_id == index.baseline_model,
+            is_baseline=is_baseline,
             linked_solves=solves,
         )
         raw = render_model_json({"report": selected.report})
@@ -352,29 +388,27 @@ def list_model_choices(sid: str) -> Any:
     """Refresh the model dropdown; every version is selectable, baseline first."""
     session = resolve_session(sid)
     store = ArtifactStore(session)
-    index = store.load_index()
-    models = store.list_model_artifacts(current_only=True, include_imports=True)
+    baseline = store.get_baseline_model()
+    baseline_id = baseline.artifact_id if baseline is not None else None
+    names = sorted({model.name for model in store.list_models(current_only=True)})
+    names.sort(key=lambda value: (store.get_current_model(value).artifact_id != baseline_id, value))
     choices: list[tuple[str, str]] = []
-    for name, entry in sorted(
-        index.models.items(),
-        key=lambda kv: (kv[1]["current"] != index.baseline_model, kv[0]),
-    ):
-        for artifact in store.list_model_versions(name):
-            kind_label = (
-                "baseline" if artifact.artifact_id == index.baseline_model else artifact.kind
+    for name in names:
+        versions = store.list_model_versions(name)
+        current = versions[-1] if versions else None
+        for artifact in versions:
+            kind_label = "baseline" if artifact.artifact_id == baseline_id else artifact.kind
+            marker = (
+                " ← 当前"
+                if current is not None and artifact.artifact_id == current.artifact_id
+                else ""
             )
-            marker = " ← 当前" if artifact.artifact_id == entry["current"] else ""
             choices.append(
-                (
-                    f"{name} v{artifact.revision}{marker}（{kind_label}）",
-                    artifact.artifact_id,
-                )
+                (f"{name} v{artifact.revision}{marker}（{kind_label}）", artifact.artifact_id)
             )
-    for item in store.scan_imported_models():
-        choices.append((f"{item.name}（imported，未校验）", item.artifact_id))
     if not choices:
         return gr.update(choices=[], value=None)
-    default = _default_model(store, models).artifact_id if models else choices[-1][1]
+    default = _default_model(store, store.list_models(current_only=True)).artifact_id
     return gr.update(choices=choices, value=default)
 
 
@@ -408,19 +442,19 @@ def open_model_session(sid: str) -> str:
 
 
 def _artifact_model_count(session: Session) -> int:
-    """Count model artifacts on disk without triggering a lazy legacy import."""
+    """Count model/patch files on disk; legacy model.json counts as one."""
     artifacts = session.workspace / "artifacts"
-    count = len(list((artifacts / "model_versions").glob("*.json")))
-    count += len(list((artifacts / "imports").glob("*.json")))
+    count = len(list(artifacts.glob("model_*.json")))
+    count += len(list(artifacts.glob("patch_*.json")))
     if count == 0 and session.model_file.is_file():
         count = 1
     return count
 
 
 def _artifact_solve_count(session: Session) -> int:
-    """Count solve artifacts on disk without triggering a lazy legacy import."""
+    """Count solve files on disk; legacy solve_result.json counts as one."""
     artifacts = session.workspace / "artifacts"
-    count = len(list((artifacts / "solves").glob("*.json")))
+    count = len(list(artifacts.glob("solve_*.json")))
     if count == 0 and session.solve_result_file.is_file():
         count = 1
     return count

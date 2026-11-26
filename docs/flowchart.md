@@ -126,13 +126,13 @@ flowchart TD
     retrieve --> modelBank[(models.json /\nconstraint_blocks.json\n模型库)]
     validate --> modelBank
     solveIr --> modelBank
-    solveIr --> workspace[(artifacts/\nmodel·solve·answer versions /\ncode/\n本地存储)]
+    solveIr --> workspace[(artifacts/\nmodel_* / patch_* / solve_* /\nstate.json /\ncode/\n本地存储)]
     solverTool --> workspace
     solverTool --> pulp[pulp / gurobipy\n求解器]
     runtime[run_turn\n会话与占位符展开 + AnswerManifest] -.->|最终答复填充\n[MODEL_MATH[:name]] / [SOLVE_RESULT[:name]]| workspace
 ```
 
-工具全集见 `nl2or_agent/tools/`（6 个项目工具 + HAMLET 自带 `final_answer`）；模型库与系统提示词的关系、占位符与校验契约见 `docs/AGENT.md`。
+工具全集见 `nl2or_agent/tools/`（7 个项目工具 + HAMLET 自带 `final_answer`）；模型库与系统提示词的关系、占位符与校验契约见 `docs/AGENT.md`。
 
 ### 活动图 → Agent 执行步骤
 

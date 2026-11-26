@@ -123,8 +123,9 @@ class TestBuildNl2orAgent:
     def test_tools_loaded(self):
         agent = build_nl2or_agent(verbosity_level=0)
         tool_names = [t.name for t in agent.tools.values()]
-        # 六个项目工具（检索、描述、校验、文档、执行、求解）+ HAMLET 自带 final_answer
+        # 七个项目工具（检索、描述、校验、补丁、文档、执行、求解）+ final_answer
         assert sorted(tool_names) == [
+            "create_model_patch",
             "describe_model",
             "final_answer",
             "model_math",

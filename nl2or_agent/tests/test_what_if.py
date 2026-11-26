@@ -23,7 +23,7 @@ from core.block_model import (
 from core.ir_validate import validate_problem_ir
 from core.problem_ir import ProblemIR
 from core.what_if import supported_models
-from tools import RunSolverTool, SolveIrTool
+from tools import CreateModelPatchTool, RunSolverTool, SolveIrTool
 from utils.artifact_store import ArtifactStore
 
 _BASE = Path(__file__).parent.parent
@@ -159,7 +159,7 @@ class TestSolveIrTool:
 
         assert "[RESULT] Objective: 2210" in output
         assert "求解 artifact" in output
-        solve = store.list_solve_artifacts()[0]
+        solve = store.list_solves()[0]
         assert solve.model_ref is not None
         assert solve.model_ref.artifact_id == model.artifact_id
 
@@ -172,7 +172,7 @@ class TestSolveIrTool:
             report["normalized_ir"], model_artifact_id=model.artifact_id
         )
 
-        solve = store.list_solve_artifacts()[0]
+        solve = store.list_solves()[0]
         assert solve.model_ref is not None
         assert solve.model_ref.artifact_id == model.artifact_id
 
@@ -187,9 +187,33 @@ class TestSolveIrTool:
             other["normalized_ir"], model_artifact_id=model.artifact_id
         )
 
-        assert "[RESULT] Objective: 2400" in output
-        assert "求解 artifact 未保存" in output
-        assert "指纹" in output
+        assert "无法求解" in output
+        assert "指纹不一致" in output
+
+    def test_create_model_patch_then_solve_it(self, tmp_path):
+        report = validate_problem_ir(_model_ir("p_median_community"))
+        store = ArtifactStore(tmp_path)
+        base = store.save_model_artifact(report, name="baseline", kind="baseline")
+
+        out = json.loads(
+            CreateModelPatchTool(workspace_dir=tmp_path).forward(
+                base.artifact_id, {"p": 2}, name="p2"
+            )
+        )
+        patch_id = out["patch"]["artifact_id"]
+
+        assert patch_id.startswith("patch_")
+        assert (tmp_path / "artifacts" / f"{patch_id}.json").is_file()
+        solve_out = SolveIrTool(workspace_dir=tmp_path).forward(
+            model_artifact_id=patch_id, name="p2"
+        )
+        assert "[RESULT] Objective: 2400" in solve_out
+        linked = [
+            item
+            for item in store.list_solves()
+            if item.model_ref is not None and item.model_ref.artifact_id == patch_id
+        ]
+        assert linked
 
     def test_applies_overrides_written_as_a_python_dict(self, tmp_path):
         """代码块里直接传 Python dict 是正常写法，不必先 json.dumps。"""

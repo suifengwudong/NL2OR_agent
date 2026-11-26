@@ -117,11 +117,12 @@ LLM 不抄写数学模型与结果报表；答复中的两段权威文本由运�
 
 | 规则 | 说明 |
 |------|------|
-| 存储 | `utils/artifact_store.py`：`models/<name>.json` 只是逻辑名指针，完整内容在 `model_versions/<artifact_id>.json`，求解结果在 `solves/<artifact_id>.json`，回答引用在 `answers/<answer_id>.json` |
-| 版本 | 同名同指纹幂等；同名不同内容必须 `revise=True`（`overwrite=True` 为别名），追加新版本并保留历史；`baseline=True` 才移动基准指针 |
-| 关联 | `SolveArtifact.model_ref` 记录 `artifact_id` + name + fingerprint；自动关联只接受唯一指纹匹配，显式 `model_artifact_id` 指纹不符即拒绝，未关联结果保留但不冒充已关联 |
-| 索引 | `index.json` 是派生数据，可由 `rebuild_artifact_index` 从版本文件与 `baseline.json` 重建；`baseline.json` 保存不可派生的基准指针 |
-| 引用 | `[MODEL_MATH]` / `[SOLVE_RESULT]` 默认 baseline；`[MODEL_MATH:name]` / `[SOLVE_RESULT:name]` 解析逻辑名或 artifact_id；一次回答解析出的 id 由 `AnswerManifest` 固定，全部占位符成功后才落盘 |
-| 兼容 | 旧 `model.json` / `solve_result.json` 懒映射为 `legacy` artifact；只有旧文件、没有 artifact 的会话仍走原指纹校验路径 |
+| 存储 | `utils/artifact_store.py`：扁平 `artifacts/` 下 `model_<id>.json`（完整模型）、`patch_<id>.json`（参数补丁：base + overrides）、`solve_<id>.json`、`state.json`；没有 index、指针目录、answers/imports。完整模型只存 `report`（不再存重复的 `validation`），`normalized_ir` 落盘前去 prose/空参数（指纹不变）；新会话不再写旧 `model.json` |
+| 版本 | 同名同指纹幂等；同名同 kind 不同内容必须 `revise=True`（`overwrite=True` 为别名）；同一逻辑名不允许在完整模型/补丁间切换 kind；`baseline=True` 才移动基准指针 |
+| 补丁 | `create_model_patch(base_model_id, name, overrides)` 只存 delta，渲染时 base + overrides 合成；skeleton（块集合/目标/实体）变化即拒绝，改走 `validate_problem_ir` |
+| 关联 | `SolveArtifact.model_ref` 记录 `artifact_id` + name + fingerprint；自动关联只接受唯一指纹匹配，显式 `model_artifact_id` 指纹不符即拒绝；`solve_ir` 只求解，不创建模型/补丁 |
+| 基准 | `state.json` 只存 `baseline_model` / `baseline_solve`；补丁不能当 baseline |
+| 引用 | `[MODEL_MATH]` / `[SOLVE_RESULT]` 默认 baseline；`[MODEL_MATH:name]` / `[SOLVE_RESULT:name]` 解析逻辑名或 artifact_id；一次回答解析出的 id 由 `AnswerManifest` 内联写入 `conversation.jsonl` 的 assistant entry |
+| 兼容 | 旧 `model.json` / `solve_result.json` 只读映射为 `legacy` 合成 artifact，不落盘、不迁移 |
 
-验收：`tests/test_artifact_store.py`（版本、索引重建、legacy、imports、AnswerManifest）、`tests/test_output_format.py`（命名占位符与 manifest）、`tests/test_ir_schema.py`（校验工具返回 artifact）、`tests/test_what_if.py`（求解 artifact 关联）、`tests/test_main.py`（模型汇总/选择/历史计数）。
+验收：`tests/test_artifact_store.py`（扁平存储、补丁、state、legacy、AnswerManifest）、`tests/test_output_format.py`（命名占位符与 manifest）、`tests/test_ir_schema.py`（校验工具返回 artifact）、`tests/test_what_if.py`（补丁 + 求解关联）、`tests/test_main.py`（模型汇总/选择/历史计数）。

@@ -29,6 +29,7 @@ from hamlet.core import CodeAgent, LiteLLMModel
 
 from core.prompt_loader import load_system_prompt
 from tools import (
+    CreateModelPatchTool,
     DescribeModelTool,
     ModelMathTool,
     RunSolverTool,
@@ -240,6 +241,7 @@ def build_nl2or_agent(
         SearchModelLibraryTool(),
         DescribeModelTool(),
         ValidateProblemIrTool(workspace_dir=workspace_dir),
+        CreateModelPatchTool(workspace_dir=workspace_dir),
         ModelMathTool(),
         RunSolverTool(workspace_dir=workspace_dir),
         SolveIrTool(workspace_dir=workspace_dir),

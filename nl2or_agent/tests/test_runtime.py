@@ -144,6 +144,43 @@ def test_turn_requires_an_agent_source():
         run_turn("问题", session_id=None, mode="interactive")
 
 
+def test_turn_rejects_multiple_agent_sources():
+    agent = _Agent()
+    with pytest.raises(ValueError, match="exactly one"):
+        run_turn(
+            "问题",
+            session_id=None,
+            mode="interactive",
+            agent=agent,
+            get_agent=lambda *_args: agent,
+        )
+
+
+def test_turn_model_ready_sees_flat_model_artifacts():
+    from core.ir_validate import validate_problem_ir
+    from utils.artifact_store import ArtifactStore
+
+    session = Session(session_id="mr01")
+    report = validate_problem_ir(
+        {
+            "problem_families": [{"id": "p_median"}],
+            "entities": {"I": {"size": 2}, "J": {"size": 2}},
+            "parameters": {"p": 1, "distance": [[1, 2], [2, 1]]},
+            "constraint_blocks": [
+                {"block_id": "assign_each_demand_once"},
+                {"block_id": "link_assignment_to_open"},
+                {"block_id": "cardinality_open_p_facilities"},
+            ],
+            "objective": {"block_id": "weighted_service_distance_objective"},
+        }
+    )
+    ArtifactStore(session).save_model_artifact(report, name="baseline", kind="baseline")
+
+    result = run_turn("问题", session_id="mr01", mode="interactive", agent=_Agent("ok"))
+
+    assert result.model_ready is True
+
+
 def test_hydrate_agent_history_seeds_empty_memory():
     from hamlet.core.memory import AgentMemory
 

@@ -664,14 +664,16 @@ class TestModelStateFromSession:
         from web.views import list_model_choices
 
         session = self._artifact_session(tmp_path, monkeypatch)
-        index = ArtifactStore(session).load_index()
+        store = ArtifactStore(session)
+        baseline = store.get_baseline_model()
 
         update = list_model_choices("web02")
 
         values = [value for _, value in update["choices"]]
-        assert update["value"] == index.baseline_model
-        assert index.models["baseline"]["current"] in values
-        assert index.models["cap400"]["current"] in values
+        assert baseline is not None
+        assert update["value"] == baseline.artifact_id
+        assert store.get_current_model("baseline").artifact_id in values
+        assert store.get_current_model("cap400").artifact_id in values
         assert len(values) == 2
 
     def test_baseline_pointer_is_labeled_even_when_kind_is_scenario(self, tmp_path, monkeypatch):

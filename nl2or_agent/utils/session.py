@@ -109,7 +109,11 @@ class Session:
     # ----------------------------------------------------------------
 
     def save_conversation_entry(
-        self, role: str, content: str, answer_id: str | None = None
+        self,
+        role: str,
+        content: str,
+        answer_id: str | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> None:
         """Append one conversation turn to the session's JSONL log file."""
         entry: dict[str, Any] = {
@@ -119,9 +123,25 @@ class Session:
         }
         if answer_id:
             entry["answer_id"] = answer_id
+        if extra:
+            entry.update(extra)
         with _write_lock:
             with open(self.conversation_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    def load_conversation_entries(self) -> list[dict[str, Any]]:
+        """Read full JSONL entries (keeps answer_id / model_refs / solve_refs)."""
+        if not self.conversation_file.is_file():
+            return []
+        entries: list[dict[str, Any]] = []
+        for line in self.conversation_file.read_text(encoding="utf-8").splitlines():
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(entry, dict) and entry.get("role") in {"user", "assistant"}:
+                entries.append(entry)
+        return entries
 
     def load_conversation(self) -> list[dict[str, str]]:
         """Read the visible user/assistant turns from the JSONL log.

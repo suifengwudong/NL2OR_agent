@@ -62,11 +62,7 @@ def format_agent_output(raw: str) -> str:
 
 
 def _has_artifacts(store: ArtifactStore) -> bool:
-    return (
-        store.index_file.is_file()
-        or any(store.versions_dir.glob("*.json"))
-        or any(store.solves_dir.glob("*.json"))
-    )
+    return store.has_artifacts()
 
 
 def _normalize_placeholders(text: str) -> str:
@@ -118,19 +114,16 @@ def _expand_legacy(text: str, session: "Session") -> str:
     return text
 
 
-def _expand_artifacts(text: str, session: "Session", store: ArtifactStore) -> str:
-    manifest = AnswerManifest(session_id=session.session_id)
-
+def _expand_artifacts(
+    text: str,
+    session: "Session",
+    store: ArtifactStore,
+    manifest: AnswerManifest,
+) -> str:
     def render_model(match: re.Match[str]) -> str:
         ref = match.group(1)
         artifact = manifest.resolve_model(store, ref)
-        report = artifact.report or {}
-        normalized = report.get("normalized_ir")
-        if not isinstance(normalized, dict):
-            raise ValueError(
-                f"模型 {artifact.name!r}（{artifact.artifact_id}）未经校验，不能生成数学模型"
-            )
-        return render_model_document(normalized)
+        return render_model_document(store.effective_ir(artifact))
 
     def render_solve(match: re.Match[str]) -> str:
         ref = match.group(1)
@@ -148,20 +141,24 @@ def _expand_artifacts(text: str, session: "Session", store: ArtifactStore) -> st
     # against the exact model version this answer references.
     text = _MODEL_RE.sub(render_model, text)
     text = _SOLVE_RE.sub(render_solve, text)
-    if manifest.model_refs or manifest.solve_refs:
-        manifest.save(store, text=text)
+    manifest.note_text(text)
     return text
 
 
-def expand_placeholders(text: str, session: "Session") -> str:
+def expand_placeholders(
+    text: str, session: "Session", manifest: AnswerManifest | None = None
+) -> str:
     """Replace the authoritative-section placeholders from session artifacts.
 
     An unresolved placeholder fails loudly: leaving it as a literal, or filling
     it with a stale result from an earlier IR, would silently put a wrong model
-    in front of the user.
+    in front of the user.  When *manifest* is given, it records the resolved
+    ids so the runtime can store them inline in the conversation entry.
     """
     text = _normalize_placeholders(text)
     store = ArtifactStore(session)
     if _has_artifacts(store):
-        return _expand_artifacts(text, session, store)
+        return _expand_artifacts(
+            text, session, store, manifest or AnswerManifest(session_id=session.session_id)
+        )
     return _expand_legacy(text, session)

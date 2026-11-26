@@ -8,11 +8,10 @@ here so the same input produces the same session state in both places.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from core.answer_manifest import latest_answer_manifest
+from core.answer_manifest import AnswerManifest
 from core.output_format import expand_placeholders, format_agent_output
 from utils.artifact_store import ArtifactStore
 from utils.session import get_session, resolve_session
@@ -69,19 +68,9 @@ class TurnResult:
     code_files: tuple[Path, ...]
 
 
-def _answer_id_of(session, started_at: datetime) -> str | None:
-    """Link this turn to the AnswerManifest saved while rendering the answer."""
-    try:
-        manifest = latest_answer_manifest(ArtifactStore(session))
-    except Exception:  # noqa: BLE001
-        return None
-    if manifest is None or not manifest.created_at:
-        return None
-    try:
-        created = datetime.fromisoformat(manifest.created_at)
-    except ValueError:
-        return None
-    return manifest.answer_id if created > started_at else None
+def _model_ready(session) -> bool:
+    """True when the session has a model/patch artifact or a legacy model.json."""
+    return ArtifactStore(session).has_models()
 
 
 def run_turn(
@@ -100,11 +89,22 @@ def run_turn(
     receives ``(session_id, mode)`` so a lazily built agent starts in the
     mode the user actually selected; the CLI passes its single agent.
     """
-    if agent is None and agent_factory is None and get_agent is None:
-        raise ValueError("run_turn needs an agent, an agent_factory or get_agent")
+    providers = [
+        name
+        for name, value in (
+            ("agent", agent),
+            ("agent_factory", agent_factory),
+            ("get_agent", get_agent),
+        )
+        if value is not None
+    ]
+    if len(providers) != 1:
+        raise ValueError(
+            "run_turn needs exactly one of agent, agent_factory, get_agent; "
+            f"got {providers or 'none'}"
+        )
     session = resolve_session(session_id)
     sid = session.session_id
-    started_at = datetime.now(timezone.utc)
     try:
         get_session(sid)
         if get_agent is not None:
@@ -118,16 +118,17 @@ def run_turn(
         apply_agent_mode(active_agent, mode)
         session.save_conversation_entry(role="user", content=message.strip())
         raw = active_agent.run(message.strip(), reset=False)
-        answer = expand_placeholders(format_agent_output(raw), session)
+        manifest = AnswerManifest(session_id=sid)
+        answer = expand_placeholders(format_agent_output(raw), session, manifest=manifest)
         session.save_conversation_entry(
-            role="assistant", content=answer, answer_id=_answer_id_of(session, started_at)
+            role="assistant", content=answer, extra=manifest.entry_extra()
         )
         return TurnResult(
             session_id=sid,
             answer=answer,
             error="",
             workspace=session.workspace,
-            model_ready=session.model_file.is_file(),
+            model_ready=_model_ready(session),
             code_files=tuple(session.list_code_files()),
         )
     except Exception as exc:  # noqa: BLE001
@@ -142,7 +143,7 @@ def run_turn(
             answer="",
             error=error,
             workspace=session.workspace,
-            model_ready=session.model_file.is_file(),
+            model_ready=_model_ready(session),
             code_files=tuple(session.list_code_files()),
         )
 

@@ -202,10 +202,8 @@ class TestIrTools:
         assert artifact["is_baseline"] is True
         assert artifact["validation_status"] == "valid"
         assert artifact["artifact_id"].startswith("model_")
-        assert (
-            tmp_path / "artifacts" / "model_versions" / f"{artifact['artifact_id']}.json"
-        ).is_file()
-        assert (tmp_path / "model.json").is_file()
+        assert (tmp_path / "artifacts" / f"{artifact['artifact_id']}.json").is_file()
+        assert not (tmp_path / "model.json").exists()
 
     def test_scenario_validation_does_not_replace_the_baseline(self, tmp_path):
         tool = ValidateProblemIrTool(workspace_dir=tmp_path)
@@ -215,9 +213,8 @@ class TestIrTools:
         )["artifact"]
 
         store = ArtifactStore(tmp_path)
-        index = store.load_index()
         assert scenario["is_baseline"] is False
-        assert index.baseline_model == baseline["artifact_id"]
+        assert store.get_baseline_model().artifact_id == baseline["artifact_id"]
         assert (
             store.load_model_artifact(baseline["artifact_id"]).fingerprint
             != store.load_model_artifact(scenario["artifact_id"]).fingerprint

@@ -11,7 +11,7 @@ from core.ir_validate import validate_problem_ir
 from core.model_document import render_model_document
 from core.problem_ir import ProblemIR
 from utils.artifact_store import ArtifactError, ArtifactStore
-from utils.session import get_session, write_model_of_record
+from utils.session import get_session
 
 
 class ValidateProblemIrTool(Tool):
@@ -102,7 +102,10 @@ class ValidateProblemIrTool(Tool):
         except ArtifactError as exc:
             payload["artifact_error"] = str(exc)
         else:
-            index = store.load_index()
+            baseline_model = store.get_baseline_model()
+            is_baseline = (
+                baseline_model is not None and baseline_model.artifact_id == artifact.artifact_id
+            )
             payload["artifact"] = {
                 "artifact_id": artifact.artifact_id,
                 "name": artifact.name,
@@ -110,17 +113,8 @@ class ValidateProblemIrTool(Tool):
                 "kind": artifact.kind,
                 "validation_status": artifact.validation_status,
                 "fingerprint": artifact.fingerprint,
-                "is_baseline": artifact.artifact_id == index.baseline_model,
+                "is_baseline": is_baseline,
             }
-            # Transitional compatibility: keep the old single-model view for the
-            # baseline only. Scenarios never overwrite it.
-            if artifact.artifact_id == index.baseline_model:
-                write_model_of_record(
-                    self._workspace / "model.json"
-                    if self._workspace is not None
-                    else get_session().model_file,
-                    report,
-                )
         return json.dumps(payload, ensure_ascii=False, indent=2)
 
     def _root(self) -> Path:

@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from core.answer_manifest import latest_answer_manifest
+from core.answer_manifest import AnswerManifest, latest_answer_manifest
 from core.ir_validate import validate_problem_ir
 from core.output_format import format_agent_output
 from utils.artifact_store import ArtifactLinkError, ArtifactNotFound, ArtifactStore
@@ -217,13 +217,12 @@ class TestExpandArtifactPlaceholders:
         from core.output_format import expand_placeholders
 
         store, _, model, solve = _baseline_artifacts(session)
+        manifest = AnswerManifest(session_id=session.session_id)
 
-        text = expand_placeholders("[MODEL_MATH]\n[SOLVE_RESULT]", session)
+        text = expand_placeholders("[MODEL_MATH]\n[SOLVE_RESULT]", session, manifest)
 
         assert "## 数学模型" in text
         assert "Objective: 2210" in text
-        manifest = latest_answer_manifest(store)
-        assert manifest is not None
         assert manifest.model_refs["baseline"] == model.artifact_id
         assert manifest.solve_refs["baseline"] == solve.artifact_id
 
@@ -248,11 +247,10 @@ class TestExpandArtifactPlaceholders:
             text="cap400 result",
         )
 
-        text = expand_placeholders("[MODEL_MATH:cap400]\n[SOLVE_RESULT:cap400]", session)
+        manifest = AnswerManifest(session_id=session.session_id)
+        text = expand_placeholders("[MODEL_MATH:cap400]\n[SOLVE_RESULT:cap400]", session, manifest)
 
         assert "cap400 result" in text
-        manifest = latest_answer_manifest(store)
-        assert manifest is not None
         assert manifest.model_refs["cap400"] == scenario.artifact_id
         assert manifest.solve_refs["cap400"] == solve2.artifact_id
 
@@ -284,15 +282,3 @@ class TestExpandArtifactPlaceholders:
         with pytest.raises(ArtifactNotFound, match="missing"):
             expand_placeholders("[MODEL_MATH:missing]", session)
         assert latest_answer_manifest(store) is None
-
-    def test_unvalidated_import_cannot_render_a_model(self, session):
-        from core.output_format import expand_placeholders
-
-        store, _, _, _ = _baseline_artifacts(session)
-        store.imports_dir.mkdir(parents=True, exist_ok=True)
-        (store.imports_dir / "custom.json").write_text(
-            json.dumps(_pmedian_report()["normalized_ir"]), encoding="utf-8"
-        )
-
-        with pytest.raises(ValueError, match="未经校验"):
-            expand_placeholders("[MODEL_MATH:custom]", session)

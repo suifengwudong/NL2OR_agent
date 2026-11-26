@@ -1,19 +1,18 @@
 """Answer-level manifest: freeze which model/solve versions one answer used.
 
-Phase 1 provides the value object and its persistence.  Phase 2 wires it into
-``expand_placeholders`` so a named placeholder resolves once, then the answer
-keeps that artifact id even if a later turn creates a new version under the same
-logical name.
+The manifest is not persisted as a separate file.  ``run_turn`` writes its
+fields inline into the assistant entry of ``conversation.jsonl``:
+
+    {"role": "assistant", "answer_id": ..., "model_refs": {...}, "solve_refs": {...}}
 """
 
 from __future__ import annotations
 
 import hashlib
-import json
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from utils.artifact_store import (
     ArtifactLinkError,
@@ -21,8 +20,10 @@ from utils.artifact_store import (
     ArtifactStore,
     ModelArtifact,
     SolveArtifact,
-    _atomic_write_json,
 )
+
+if TYPE_CHECKING:
+    from utils.session import Session
 
 
 def _now() -> str:
@@ -37,7 +38,6 @@ class AnswerManifest:
     model_refs: dict[str, str] = field(default_factory=dict)
     solve_refs: dict[str, str] = field(default_factory=dict)
     text_hash: str = ""
-    committed: bool = False
 
     def __post_init__(self) -> None:
         if not self.answer_id:
@@ -50,12 +50,6 @@ class AnswerManifest:
     # ------------------------------------------------------------------
 
     def resolve_model(self, store: ArtifactStore, ref: str | None = None) -> ModelArtifact:
-        """Resolve *ref* once and freeze the artifact id in this manifest.
-
-        ``ref`` None means the current baseline model.  A logical name resolves
-        to that name's current version at resolution time; later versions under
-        the same name do not change this manifest.
-        """
         if ref is None or ref == "baseline":
             artifact = store.get_baseline_model()
             if artifact is None:
@@ -73,31 +67,20 @@ class AnswerManifest:
         *,
         model_artifact_id: str | None = None,
     ) -> SolveArtifact:
-        """Resolve a solve result, optionally pinned to one model artifact.
-
-        Resolution order for a logical name:
-        1. an existing solve name;
-        2. a model name/artifact id, using its latest successful solve;
-        3. the baseline solve when ``ref`` is None.
-        If ``model_artifact_id`` is given, the solve must be linked to exactly
-        that model version; an unlinked or differently-linked solve is rejected.
-        """
         solve: SolveArtifact | None = None
         if ref is None or ref == "baseline":
             if model_artifact_id:
                 solve = store.latest_solve_for_model(model_artifact_id)
                 if solve is None:
                     unassociated = [
-                        item.artifact_id
-                        for item in store.list_solve_artifacts()
-                        if item.model_ref is None
+                        item.artifact_id for item in store.list_solves() if item.model_ref is None
                     ]
                     hint = (
                         f"；存在未关联的求解结果：{', '.join(unassociated)}" if unassociated else ""
                     )
                     raise ArtifactNotFound(
                         f"模型 {model_artifact_id} 没有已关联的求解结果{hint}。"
-                        "请检查求解用的 IR 是否与校验时一致，或重新求解并显式关联。"
+                        "请检查求解用的模型/补丁是否一致，或重新求解并显式关联。"
                     )
             else:
                 solve = store.get_baseline_solve()
@@ -129,13 +112,11 @@ class AnswerManifest:
         return solve
 
     # ------------------------------------------------------------------
-    # Persistence
+    # Serialization
     # ------------------------------------------------------------------
 
     def to_dict(self) -> dict[str, Any]:
-        data = asdict(self)
-        data["schema_version"] = 1
-        return data
+        return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AnswerManifest":
@@ -146,51 +127,42 @@ class AnswerManifest:
             model_refs=dict(data.get("model_refs") or {}),
             solve_refs=dict(data.get("solve_refs") or {}),
             text_hash=str(data.get("text_hash") or ""),
-            committed=bool(data.get("committed", False)),
         )
 
-    def save(self, store: ArtifactStore, *, text: str = "") -> str:
-        """Persist the manifest after the whole answer rendered successfully."""
-        self.committed = True
-        if text:
-            self.text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        path = store.answer_file(self.answer_id)
-        _atomic_write_json(path, self.to_dict())
-        return self.answer_id
+    def note_text(self, text: str) -> None:
+        self.text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-    @classmethod
-    def load(cls, store: ArtifactStore, answer_id: str) -> "AnswerManifest":
-        path = store.answer_file(answer_id)
-        if not path.is_file():
-            raise ArtifactNotFound(f"回答 manifest 不存在：{answer_id}")
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise ArtifactNotFound(f"回答 manifest 无法读取：{answer_id}") from exc
-        return cls.from_dict(data)
+    def entry_extra(self) -> dict[str, Any]:
+        extra: dict[str, Any] = {"answer_id": self.answer_id}
+        if self.model_refs:
+            extra["model_refs"] = self.model_refs
+        if self.solve_refs:
+            extra["solve_refs"] = self.solve_refs
+        return extra
 
 
-def latest_answer_manifest(store: ArtifactStore) -> AnswerManifest | None:
-    """Return the most recently saved answer manifest, if any."""
-    manifests = list_answer_manifests(store)
-    return manifests[-1] if manifests else None
-
-
-def list_answer_manifests(store: ArtifactStore) -> list[AnswerManifest]:
-    manifests: list[AnswerManifest] = []
-    for path in store.answers_dir.glob("*.json"):
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+def latest_answer_manifest(session_or_store: "Session | ArtifactStore") -> AnswerManifest | None:
+    """Read the last assistant entry that carries answer refs."""
+    if isinstance(session_or_store, ArtifactStore):
+        session = session_or_store.session
+    else:
+        session = session_or_store
+    if session is None:
+        return None
+    for entry in reversed(session.load_conversation_entries()):
+        if entry.get("role") != "assistant":
             continue
-        if isinstance(data, dict):
-            manifests.append(AnswerManifest.from_dict(data))
-    manifests.sort(key=lambda item: (item.created_at, item.answer_id))
-    return manifests
+        refs = entry.get("model_refs") or entry.get("solve_refs") or entry.get("answer_id")
+        if not refs:
+            continue
+        return AnswerManifest(
+            answer_id=str(entry.get("answer_id") or ""),
+            session_id=session.session_id,
+            created_at=str(entry.get("timestamp") or ""),
+            model_refs=dict(entry.get("model_refs") or {}),
+            solve_refs=dict(entry.get("solve_refs") or {}),
+        )
+    return None
 
 
-__all__ = [
-    "AnswerManifest",
-    "latest_answer_manifest",
-    "list_answer_manifests",
-]
+__all__ = ["AnswerManifest", "latest_answer_manifest"]

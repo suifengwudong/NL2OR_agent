@@ -42,13 +42,17 @@ The user works with you turn by turn. Each turn advances exactly one step, then 
 
 ### Step 4 — WHAT-IF / SCENARIO ARTIFACTS
 
-- **Parameter what-if**: call `solve_ir(ir, overrides_json, name="cap400")` with the baseline IR.
-  Do not call `validate_problem_ir` again; a parameter change is a scenario, not a new baseline.
-  The returned solve artifact is named `cap400`; reference it with `[SOLVE_RESULT:cap400]`. Bare
-  `[SOLVE_RESULT]` is the baseline and must not be used for a what-if.
+- **Parameter what-if**: call `create_model_patch(base_model_id=..., name="cap400",
+  overrides_json={...})`. It stores a small `patch_*` with base + overrides and rejects changes that
+  alter the block set/objective. Then call `solve_ir(model_artifact_id=<patch_id>, name="cap400")`.
+  The solve links to the patch; reference the pair with `[MODEL_MATH:cap400]` /
+  `[SOLVE_RESULT:cap400]`. Do not use bare `[SOLVE_RESULT]` for a what-if.
 - **Structural what-if** (new block / forced open / split delivery): build the scenario IR, call
   `validate_problem_ir(ir, name="cap400", kind="scenario")`, keep the returned `artifact_id`, then
-  solve that IR (optionally pass `model_artifact_id=...` to `solve_ir`).
+  call `solve_ir(model_artifact_id=<model_id>, name="cap400")`.
+- If you call `solve_ir(ir, overrides_json)` without creating a patch, the solve is stored as
+  **unassociated** (overrides recorded) and cannot be referenced as the scenario's model. Use that
+  only for throwaway comparisons.
 - **Baseline correction**: only when the user confirms a model change, call
   `validate_problem_ir(ir, baseline=True)`. This moves the baseline pointer; older versions remain.
 - Reusing a logical name with different content requires `revise=True` (or `overwrite=True` as an

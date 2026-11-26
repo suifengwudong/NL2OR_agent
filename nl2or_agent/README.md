@@ -93,7 +93,7 @@ nl2or_agent/
 │   ├── ir_catalog.py       # 模型库/积木块目录加载（按文件状态缓存）
 │   ├── ir_normalize.py     # Problem IR 归一化
 │   ├── ir_validate.py      # 骨架与维度校验
-│   ├── answer_manifest.py  # 回答级引用：固定一次回答使用的模型/求解 artifact id
+│   ├── answer_manifest.py  # 回答级引用：模型/求解 id 内联到 conversation.jsonl
 │   ├── model_document.py   # IR → 数学模型文档（Markdown + LaTeX）
 │   ├── model_library.py    # 模型库检索：候选索引与模板细节（按需两阶段）
 │   ├── output_format.py    # agent 输出清洗与占位符展开（支持命名 artifact）
@@ -119,7 +119,7 @@ nl2or_agent/
 │
 ├── utils/
 │   ├── __init__.py
-│   ├── artifact_store.py   # 模型/求解 artifact：版本、指纹、索引、基准指针、legacy 导入
+│   ├── artifact_store.py   # 扁平 artifact：model_/patch_/solve_/state.json、紧凑 IR、指纹关联、legacy 只读
 │   ├── contract.py         # 求解器输出契约（Objective: <值>）
 │   └── session.py          # 会话工作区、模型产物与求解脚本存盘
 │
@@ -332,7 +332,7 @@ Web 界面支持聊天交互、求解器文件列表查看与会话级隔离（�
 
 ## 更新记录
 
-- **2026-11-26** 模型从 Session 属性升级为会话 artifact：新增 `utils/artifact_store.py`（不可变模型/求解版本、逻辑名指针、`baseline.json`、可重建 `index.json`、旧 `model.json`/`solve_result.json` 懒导入、直接写入文件标记未校验）与 `core/answer_manifest.py`（一次回答固定模型/求解 artifact id）。`validate_problem_ir` / `solve_ir` 返回 artifact 元数据并按指纹关联；`[MODEL_MATH:name]` / `[SOLVE_RESULT:name]` 支持命名引用，裸占位符仍指 baseline；模型 tab 改为会话级 artifact 汇总 + 选中模型详情 + 关联求解。旧会话继续走原指纹校验路径。
+- **2026-11-26** 模型从 Session 属性升级为会话 artifact：`utils/artifact_store.py` 采用最简扁平布局 `artifacts/model_<id>.json` / `patch_<id>.json` / `solve_<id>.json` / `state.json`，不做 index、指针目录或 answers/imports；完整模型只存 `report`、`normalized_ir` 落盘前去 prose/空参数（指纹不变），新会话不再写旧 `model.json`；新增 `create_model_patch` 只存参数 delta（base + overrides），`solve_ir` 只求解、不建模型；`validate_problem_ir` / `solve_ir` 返回 artifact 元数据并按指纹关联；`[MODEL_MATH:name]` / `[SOLVE_RESULT:name]` 支持命名引用，回答引用内联到 `conversation.jsonl`；模型 tab 显示模型/补丁汇总、版本与关联求解；旧 `model.json` / `solve_result.json` 只读兼容。
 - **2026-11-13** 修正「模型已变更」误报：`fixed_cost`/`demand` 等按键数据按实体顺序归一为列表；指纹改为只哈希可执行模型内容（忽略说明文字、块顺序、`missing_data`），并对 `[MODEL_MATH\]` 这类转义占位符做展开容忍。提示词新增「缺数据先反问」规则：必需数据缺失时不建模、不填占位，先列出缺失项；同时要求每条消息为单个 python 块、答复放在 `final_answer` 内。
 - **2026-11-13** 模型输出解析加固：`_patch_hamlet_code_parsing` 在原始解析失败后依次解包 DSML 原生调用、裁掉空 Early Stop 段、按序合并多个代码块、兜底裸代码；提示词补充「代码不要携带 LaTeX 转义」。
 - **2026-11-13** 数学模型补齐 s.t. 的变量取值范围：决策变量的 0-1 / 整数 / 非负数域以显式约束形式渲染（带 `\forall` 量词，位于结构约束与库外规则之后），不再只写在符号说明的变量定义里。
