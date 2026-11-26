@@ -31,6 +31,7 @@ from .views import (
     load_code,
     load_history,
     open_model_session,
+    open_session_directory,
     refresh_history_choices,
     render_model_view,
     run_code,
@@ -182,7 +183,8 @@ def create_ui(agent_factory: AgentFactory, default_mode: str = "interactive"):
                             )
                             with gr.Row():
                                 history_refresh = gr.Button("刷新历史", variant="secondary")
-                                history_load = gr.Button("加载历史", variant="primary")
+                                history_open = gr.Button("打开会话目录", variant="secondary")
+                            history_load = gr.Button("加载历史", variant="primary")
                             history_status = gr.Markdown("", elem_classes="nl2or-hint")
 
             with gr.Tab("模型"):
@@ -266,9 +268,10 @@ def create_ui(agent_factory: AgentFactory, default_mode: str = "interactive"):
         )
 
         history_refresh.click(refresh_history_choices, None, [history_dropdown])
+        history_open.click(open_session_directory, [history_dropdown], [history_status])
         history_event = history_load.click(
             load_history,
-            [history_dropdown],
+            [history_dropdown, state_key],
             [chatbot, state_key, history_status],
         )
         history_event.then(list_model_choices, [state_key], [model_picker]).then(

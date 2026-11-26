@@ -348,6 +348,9 @@ class TestCreateUi:
         assert any(
             isinstance(b, gr.Button) and getattr(b, "value", "") == "加载历史" for b in blocks
         )
+        assert any(
+            isinstance(b, gr.Button) and getattr(b, "value", "") == "打开会话目录" for b in blocks
+        )
 
 
 class TestHistory:
@@ -400,7 +403,7 @@ class TestHistory:
         from web.views import load_history
 
         session = self._session(tmp_path, monkeypatch)
-        messages, sid, status = load_history(session.session_id)
+        messages, sid, status = load_history(session.session_id, "0")
 
         assert sid == session.session_id
         assert messages == [
@@ -416,7 +419,7 @@ class TestHistory:
         monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         session = session_mod.Session(session_id="empty01")
 
-        messages, sid, status = load_history(session.session_id)
+        messages, sid, status = load_history(session.session_id, "0")
 
         assert messages == []
         assert sid == session.session_id
@@ -428,10 +431,40 @@ class TestHistory:
 
         monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
 
-        _, _, status = load_history(None)
+        _, sid, status = load_history(None, "keep01")
+        assert sid == "keep01"
         assert "请选择" in status
-        _, _, status = load_history("missing")
+        _, sid, status = load_history("missing", "keep01")
+        assert sid == "keep01"
         assert "不存在" in status
+
+    def test_load_without_selection_does_not_create_a_session(self, tmp_path, monkeypatch):
+        import utils.session as session_mod
+        from web.views import load_history
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        before = set(session_mod.Session.list_all())
+
+        _, sid, _ = load_history(None, "keep01")
+
+        assert sid == "keep01"
+        assert set(session_mod.Session.list_all()) == before
+
+    def test_open_session_directory_uses_the_selected_session(self, tmp_path, monkeypatch):
+        import utils.session as session_mod
+        from web.views import open_session_directory
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        session = session_mod.Session(session_id="open01")
+        opened: list[str] = []
+        monkeypatch.setattr("web.views._open_directory", lambda path: opened.append(str(path)))
+
+        message = open_session_directory("open01")
+
+        assert opened == [str(session.workspace)]
+        assert str(session.workspace) in message
+        assert "请选择" in open_session_directory(None)
+        assert "不存在" in open_session_directory("missing")
 
 
 class TestOpenModelSession:
@@ -593,10 +626,12 @@ class TestModelStateFromSession:
         from web.views import get_model_state
 
         monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        before = session_mod.Session.list_all()
         view, raw = get_model_state("0")
 
         assert "尚未解析" in view
         assert raw == ""
+        assert session_mod.Session.list_all() == before
 
     def _artifact_session(self, tmp_path, monkeypatch):
         import utils.session as session_mod

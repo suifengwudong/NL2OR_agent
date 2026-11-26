@@ -20,7 +20,7 @@ import gradio as gr
 from core.answer_manifest import latest_answer_manifest
 from core.model_document import render_model_document
 from utils.artifact_store import ArtifactNotFound, ArtifactStore, ModelArtifact, SolveArtifact
-from utils.session import Session, resolve_session
+from utils.session import Session
 
 
 def get_workspace_files(sid: str) -> str:
@@ -333,9 +333,18 @@ def _default_model(store: ArtifactStore, models: list[ModelArtifact]) -> ModelAr
     return baseline if baseline is not None else models[0]
 
 
+def _existing_session(sid: str | None) -> Session | None:
+    """Load a session without creating one for the placeholder id."""
+    if not sid or sid == "0":
+        return None
+    return Session.load(sid)
+
+
 def get_model_state(sid: str, name: str | None = None) -> tuple[str, str]:
     """Read the selected model/patch artifact (or legacy model.json) and render it."""
-    session = resolve_session(sid)
+    session = _existing_session(sid)
+    if session is None:
+        return render_model_view(None), ""
     store = ArtifactStore(session)
     models = store.list_models(current_only=True)
     if not models:
@@ -386,7 +395,9 @@ def get_model_state(sid: str, name: str | None = None) -> tuple[str, str]:
 
 def list_model_choices(sid: str) -> Any:
     """Refresh the model dropdown; every version is selectable, baseline first."""
-    session = resolve_session(sid)
+    session = _existing_session(sid)
+    if session is None:
+        return gr.update(choices=[], value=None)
     store = ArtifactStore(session)
     baseline = store.get_baseline_model()
     baseline_id = baseline.artifact_id if baseline is not None else None
@@ -499,21 +510,37 @@ def refresh_history_choices() -> Any:
     return gr.update(choices=history_choices())
 
 
-def load_history(sid: str | None) -> tuple[Any, Any, str]:
+def load_history(sid: str | None, current_sid: str | None) -> tuple[Any, Any, str]:
     """Load one previous session's visible conversation.
 
     The selection becomes the active session, so the model and code views can
-    follow it. A fresh agent in that session is hydrated by ``run_turn``.
+    follow it. A fresh agent in that session is hydrated by ``run_turn``. When
+    no session is selected, the current session stays active; returning an empty
+    update here used to clear the hidden state and create an empty session.
     """
     if not sid:
-        return gr.update(), gr.update(), "请选择历史会话。"
+        return gr.update(), current_sid, "请选择历史会话。"
     session = Session.load(sid)
     if session is None:
-        return gr.update(), gr.update(), "该会话不存在。"
+        return gr.update(), current_sid, "该会话不存在。"
     messages = session.load_conversation()
     if not messages:
         return messages, sid, "该会话没有对话记录，已加载可用产物。"
     return messages, sid, f"已加载 {len(messages)} 条历史记录。"
+
+
+def open_session_directory(sid: str | None) -> str:
+    """Open a selected session's workspace in the platform file manager."""
+    if not sid:
+        return "请选择会话。"
+    session = Session.load(sid)
+    if session is None:
+        return "该会话不存在。"
+    try:
+        _open_directory(session.workspace)
+    except OSError as exc:
+        return f"无法打开会话目录：{exc}"
+    return f"已打开会话目录：{session.workspace}"
 
 
 # ---------------------------------------------------------------------------
@@ -523,7 +550,10 @@ def load_history(sid: str | None) -> tuple[Any, Any, str]:
 
 def list_code_choices(sid: str) -> Any:
     """Refresh the code file dropdown for the session."""
-    names = [f.name for f in reversed(resolve_session(sid).list_code_files())]
+    session = _existing_session(sid)
+    if session is None:
+        return gr.update(choices=[], value=None)
+    names = [f.name for f in reversed(session.list_code_files())]
     if not names:
         return gr.update(choices=[], value=None)
     return gr.update(choices=names, value=names[0])
@@ -533,7 +563,10 @@ def load_code(sid: str, filename: str | None) -> str:
     """Read one solver file from the session workspace."""
     if not filename:
         return ""
-    path = resolve_session(sid).code_dir / filename
+    session = _existing_session(sid)
+    if session is None:
+        return ""
+    path = session.code_dir / filename
     if not path.is_file():
         return ""
     return path.read_text(encoding="utf-8")
@@ -543,7 +576,10 @@ def save_code(sid: str, filename: str | None, code: str) -> str:
     """Write edited code back to the session workspace."""
     if not filename:
         return "未选择文件。"
-    path = resolve_session(sid).save_code(code, filename)
+    session = _existing_session(sid)
+    if session is None:
+        return "当前会话尚未创建。"
+    path = session.save_code(code, filename)
     return f"已保存：{path.name}"
 
 
@@ -553,5 +589,7 @@ def run_code(sid: str, filename: str | None, code: str) -> str:
 
     if not filename:
         return "未选择文件。"
-    session = resolve_session(sid)
+    session = _existing_session(sid)
+    if session is None:
+        return "当前会话尚未创建。"
     return RunSolverTool(workspace_dir=session.code_dir).run_file(code, filename)

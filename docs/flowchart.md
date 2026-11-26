@@ -1,7 +1,7 @@
 ---
 title: NL2OR系统流程图
 author: suifengwudong
-date: 2026-04-07
+date: 2026-11-26
 output:
     pdf_document:
         toc: true
@@ -15,16 +15,27 @@ output:
 flowchart TD
     subgraph nl2or[NL2OR系统]
         direction TB
-        interactCore[交互核心] <--> modelParser[模型库接口]
-        interactCore <--> solverInterface[求解器接口]
-        interactCore <--> codeGen[代码生成器]
+        interactCore[交互核心]
+        ir[(Problem IR\n归一化中间表示)]
+        modelParser[模型库接口]
+        solverInterface[求解器接口]
+        codeGen[代码生成器]
+
+        interactCore <--> ir
+        interactCore <--> modelParser
+        interactCore <--> solverInterface
+        interactCore <--> codeGen
+        ir <--> modelParser
+        ir <--> codeGen
+        ir <--> solverInterface
     end
     llm[(LLM)] <--> interactCore
     user((用户)) <--> interactCore
     modelParser <--> modelBank[模型库]
     solverInterface <--> solver[求解器]
     codeGen <--> localStorage[本地存储]
-    subgraph backEnd[后端/WIKI]
+    ir <--> localStorage
+    subgraph backEnd[后端/知识库]
         direction TB
         modelBank
         solver[求解器]
@@ -37,6 +48,7 @@ flowchart TD
 sequenceDiagram
     participant User as 用户
     participant InteractCore as 交互核心
+    participant IR as Problem IR（中间表示）
     participant LLM as LLM
     participant CodeGenerator as 代码生成器
     participant LocalStorage as 本地存储
@@ -47,34 +59,40 @@ sequenceDiagram
     loop 用户提问
         User->>InteractCore: 输入自然语言问题
         InteractCore->>LLM: 解析问题并组织数据发送
-        LLM-->>InteractCore: 返回中间表示
-        InteractCore-->>User: 输出自然语言，追问用户进行确认
+        LLM-->>InteractCore: 返回中间表示（Problem IR）
+        InteractCore->>IR: 归一化并保存当前 IR
+        IR-->>InteractCore: 返回当前 IR 版本
+        InteractCore-->>User: 输出自然语言与 IR 摘要，追问确认
         User->>InteractCore: 可能的回复或确认
     end
     alt 判断一轮对话结束（常规任务）
-        InteractCore->>LocalStorage: 存储对话历史和相关信息
+        InteractCore->>LocalStorage: 存储对话历史与 IR 快照
         LocalStorage-->>InteractCore: 返回是否存储成功
     end
     alt 判断模型类型信息已确定
-        InteractCore->>ModelParser: 请求相关模型信息
+        InteractCore->>ModelParser: 请求与 IR 问题族匹配的模型信息
+        ModelParser->>IR: 读取问题族与约束块
+        IR-->>ModelParser: 返回结构化字段
         ModelParser->>ModelBank: 查询模型库
         ModelBank-->>ModelParser: 返回模型信息
         ModelParser-->>InteractCore: 返回模型信息
     end
     alt 判断模型信息缺失或不准确
         InteractCore->>LLM: 请求模型矫正
-        LLM-->>InteractCore: 返回经矫正的模型/向用户请求添加模型信息
+        LLM-->>InteractCore: 返回经矫正的 IR / 向用户请求添加模型信息
     end
     alt 判断需要生成代码
         InteractCore->>LLM: 请求代码生成
         LLM-->>InteractCore: 返回生成的代码/序列指令
-        InteractCore->>CodeGenerator: 将生成的代码/指令发送给代码生成器
+        InteractCore->>CodeGenerator: 提交 IR 与模型信息
+        CodeGenerator->>IR: 读取目标函数与约束块
         CodeGenerator->>LocalStorage: 存储生成的代码/指令
         LocalStorage-->>CodeGenerator: 返回是否存储成功
         CodeGenerator-->>InteractCore: 返回生成结果
     end
     alt 判断用户确认开始求解
-        InteractCore->>SolverInterface: 请求求解
+        InteractCore->>SolverInterface: 提交 IR 请求求解
+        SolverInterface->>IR: 读取归一化模型数据
         SolverInterface->>Solver: 调用求解器进行求解
         Solver-->>SolverInterface: 返回求解结果
         SolverInterface-->>InteractCore: 返回求解结果
@@ -82,14 +100,39 @@ sequenceDiagram
 ```
 
 下面阐述各个模块的行为：
-1. 交互核心：负责与所有的模块进行交互，主要交互对象分为三类：用户、LLM、处理模块（模型库接口、求解器接口、代码生成器、本地存储）。交互核心的主要职责是协调各个模块之间的交互，确保系统能够顺利地完成用户的请求。最关键的是保证信息流的完整（即**有出有入**），并且在必要时进行**追问**以获取更多信息。
+1. 交互核心：负责与所有的模块进行交互，主要交互对象分为三类：用户、LLM、处理模块（中间表示、模型库接口、求解器接口、代码生成器、本地存储）。交互核心的主要职责是协调各个模块之间的交互，确保系统能够顺利地完成用户的请求。最关键的是保证信息流的完整（即**有出有入**），并且在必要时进行**追问**以获取更多信息。
 2. LLM：负责解析用户输入的自然语言问题，可以是远端调用（个人推荐），也可以是本地部署。这里主要是想运用大模型的语义理解能力来解析用户的输入（代替死板的规则解析）。
-3. 代码生成器：负责将LLM返回的中间表示（包含可执行的代码或我们预先设计好的指令）转换成真实的代码，并且将其存储到本地存储中。这里说的指令像方法接口，此处的设计是为了能够在不同的求解器之间进行适配（即不同求解器可能需要不同的输入格式）。总而言之，其更像是一个抽象层，负责将LLM的输出转换成求解器能够接受的输入。
+3. 代码生成器：负责将 Problem IR 与模型信息转换成具体求解器可执行的代码或适配指令，并且将其存储到本地存储中。这里说的指令像方法接口，此处的设计是为了能够在不同的求解器之间进行适配（即不同求解器可能需要不同的输入格式）。总而言之，其更像是一个抽象层，负责将中间表示转换成求解器能够接受的输入。
 4. 本地存储：负责存储用户的对话历史、生成的代码/指令以及相关信息。可以采用数据库或者文件系统来实现（其实我觉的文件系统就够用了，不上大量的话不需要数据库）。
 5. 模型库接口：负责与模型库进行交互，查询相关的模型信息。
 6. 求解器接口：负责与求解器进行交互，调用求解器进行求解，并返回求解结果。
 7. 模型库：负责存储各种模型的信息，可以是预先定义好的模型，也可以是用户添加的模型（必须要符合模型的规则以及“人类经验”的条件，也就是不能随意的添加，但必须要有这么个功能）。模型库的设计需要考虑到模型的分类、检索以及更新等功能。【具体的设计需要更多的实验】
 8. 求解器：负责执行求解任务，可以是各种不同类型且具有统一接口（这里就涉及分发）的求解器。目前采用 Gurobi 作为开发使用的求解器。
+
+### 中间表示（Problem IR）
+
+中间表示是跨模块共享的数据契约，不承担执行逻辑。它把自然语言解析结果固定为可核对、可校验、可替换的结构，避免各模块直接消费 LLM 的自由文本。
+
+- **内容**：问题族、索引集合、参数、决策变量、目标函数、约束块、库外规则与缺失数据。
+- **生产者**：LLM 根据自然语言与数据集生成 IR。
+- **维护者**：交互核心负责归一化、校验、版本保存与用户确认。
+- **消费者**：模型库接口按问题族与约束块检索模板；代码生成器按 IR 生成求解器输入；求解器接口按归一化 IR 执行求解。
+- **持久化**：本地存储保存 IR 快照，供会话恢复、模型对照与结果追溯。
+- **边界**：IR 描述“模型是什么”，不包含具体求解器代码；求解器差异由代码生成器与求解器接口处理。库外规则以文本保留，进入人工或代码生成路径。
+
+IR 的生命周期为：
+
+```text
+自然语言 + 数据集
+        ↓
+LLM 解析
+        ↓
+Problem IR
+        ↓ 归一化 / 校验 / 用户确认
+模型库匹配 → 代码生成 → 求解器
+        ↓
+IR 快照与结果进入本地存储
+```
 
 <!-- TODOs -->
 > 知识库
@@ -112,21 +155,26 @@ flowchart TD
     subgraph hamlet[HAMLET CodeAgent]
         direction TB
         codeAgent[CodeAgent\n交互核心 + 代码生成器]
+        ir[(Problem IR\n归一化模型结构)]
         retrieve[search_model_library /\ndescribe_model\n模型库接口]
         validate[validate_problem_ir /\nmodel_math\n模型校验与文档]
         solverTool[RunSolverTool\n求解器接口]
         solveIr[SolveIrTool\n按块语义直接求解]
+        codeAgent -->|生成/确认| ir
         codeAgent -->|调用| retrieve
         codeAgent -->|调用| validate
         codeAgent -->|调用| solveIr
         codeAgent -->|调用| solverTool
+        validate <-->|归一化/校验| ir
+        solveIr -->|读取| ir
     end
     litellm[(LiteLLMModel\nLLM)] <--> codeAgent
     user((用户)) <--> codeAgent
     retrieve --> modelBank[(models.json /\nconstraint_blocks.json\n模型库)]
     validate --> modelBank
     solveIr --> modelBank
-    solveIr --> workspace[(artifacts/\nmodel_* / patch_* / solve_* /\nstate.json /\ncode/\n本地存储)]
+    ir -->|快照| workspace[(artifacts/\nmodel_* / patch_* / solve_* /\nstate.json /\ncode/\n本地存储)]
+    solveIr --> workspace
     solverTool --> workspace
     solverTool --> pulp[pulp / gurobipy\n求解器]
     runtime[run_turn\n会话与占位符展开 + AnswerManifest] -.->|最终答复填充\n[MODEL_MATH[:name]] / [SOLVE_RESULT[:name]]| workspace
@@ -140,7 +188,8 @@ flowchart TD
 |-----------|-------------|------|
 | 用户输入自然语言问题 | `run_turn(user_input, session_id, mode)` | `agents/runtime.py` |
 | 解析问题并组织数据发送 | `CodeAgent` 内置多步推理 + `LiteLLMModel` | `hamlet.core` |
-| 返回中间表示，追问用户 | Agent 输出文本（占位符由运行时展开），CLI/Gradio 回显 | `core/output_format.py` |
+| 返回并维护中间表示，追问用户 | `validate_problem_ir` 归一化并校验 Problem IR；报告与模型快照写入会话目录；Agent 输出文本（占位符由运行时展开）在 CLI/Gradio 回显 | `tools/ir_tools.py` / `core/ir_validate.py` / `agents/runtime.py` |
+| 中间表示作为跨模块契约 | `entities`、`parameters`、`objective`、`constraint_blocks`、`custom_constraints` 由模型库匹配、求解、报表与数学模型共同消费 | `core/ir_*.py` |
 | 请求相关模型信息 | `search_model_library(keywords)` → `describe_model(model_id)` 两阶段 | `tools/model_library_tool.py` |
 | 查询模型库 | 读取 `data/model_bank/{models,constraint_blocks}.json` | `core/model_library.py` |
 | 请求代码生成 | `CodeAgent` 自动生成 Python 代码块并执行 | `hamlet.core` |
