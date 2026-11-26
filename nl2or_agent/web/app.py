@@ -25,8 +25,13 @@ from agents.runtime import AgentFactory, run_turn
 from .views import (
     get_model_state,
     get_workspace_files,
+    history_choices,
     list_code_choices,
+    list_model_choices,
     load_code,
+    load_history,
+    open_model_session,
+    refresh_history_choices,
     render_model_view,
     run_code,
     save_code,
@@ -166,12 +171,26 @@ def create_ui(agent_factory: AgentFactory, default_mode: str = "interactive"):
                                 "- 生成后到「模型」看约束块与目标函数的对照，到「代码」看求解脚本并可改后重跑",
                                 elem_classes="nl2or-hint",
                             )
+                        with gr.Group(elem_classes="nl2or-panel"):
+                            gr.Markdown("**历史会话**")
+                            history_dropdown = gr.Dropdown(
+                                label="选择会话",
+                                choices=history_choices(),
+                                value=None,
+                                interactive=True,
+                                filterable=True,
+                            )
+                            with gr.Row():
+                                history_refresh = gr.Button("刷新历史", variant="secondary")
+                                history_load = gr.Button("加载历史", variant="primary")
+                            history_status = gr.Markdown("", elem_classes="nl2or-hint")
 
             with gr.Tab("模型"):
                 gr.Markdown(
-                    "归一化后的 Problem IR 与模板要求逐块对照：命中 / 替代 / 缺失 / 额外。",
+                    "会话级模型 artifact：汇总表 + 选中模型的校验、数学模型与关联求解。",
                     elem_classes="nl2or-hint",
                 )
+                model_picker = gr.Dropdown(label="模型", choices=[], value=None)
                 with gr.Row():
                     with gr.Column(scale=3):
                         model_view = gr.Markdown(
@@ -181,7 +200,10 @@ def create_ui(agent_factory: AgentFactory, default_mode: str = "interactive"):
                         model_json = gr.Code(
                             label="归一化 Problem IR", language="json", lines=28, interactive=False
                         )
-                        model_refresh = gr.Button("刷新模型", variant="secondary")
+                        with gr.Row():
+                            model_refresh = gr.Button("刷新模型", variant="secondary")
+                            open_session = gr.Button("打开模型会话位置", variant="secondary")
+                        session_status = gr.Markdown("", elem_classes="nl2or-hint")
 
             with gr.Tab("代码"):
                 gr.Markdown(
@@ -203,20 +225,36 @@ def create_ui(agent_factory: AgentFactory, default_mode: str = "interactive"):
                     )
                     files_refresh = gr.Button("刷新文件列表", variant="secondary")
 
-        submit_event = submit_btn.click(
-            fn=run_agent,
-            inputs=[msg, chatbot, state_key, mode_selector],
-            outputs=[chatbot, msg, state_key],
-        ).then(fn=get_model_state, inputs=[state_key], outputs=[model_view, model_json])
+        submit_event = (
+            submit_btn.click(
+                fn=run_agent,
+                inputs=[msg, chatbot, state_key, mode_selector],
+                outputs=[chatbot, msg, state_key],
+            )
+            .then(fn=list_model_choices, inputs=[state_key], outputs=[model_picker])
+            .then(
+                fn=get_model_state,
+                inputs=[state_key, model_picker],
+                outputs=[model_view, model_json],
+            )
+        )
         submit_event.then(fn=list_code_choices, inputs=[state_key], outputs=[code_picker]).then(
             fn=load_code, inputs=[state_key, code_picker], outputs=[code_editor]
         )
 
-        submit_event = msg.submit(
-            fn=run_agent,
-            inputs=[msg, chatbot, state_key, mode_selector],
-            outputs=[chatbot, msg, state_key],
-        ).then(fn=get_model_state, inputs=[state_key], outputs=[model_view, model_json])
+        submit_event = (
+            msg.submit(
+                fn=run_agent,
+                inputs=[msg, chatbot, state_key, mode_selector],
+                outputs=[chatbot, msg, state_key],
+            )
+            .then(fn=list_model_choices, inputs=[state_key], outputs=[model_picker])
+            .then(
+                fn=get_model_state,
+                inputs=[state_key, model_picker],
+                outputs=[model_view, model_json],
+            )
+        )
         submit_event.then(fn=list_code_choices, inputs=[state_key], outputs=[code_picker]).then(
             fn=load_code, inputs=[state_key, code_picker], outputs=[code_editor]
         )
@@ -227,7 +265,24 @@ def create_ui(agent_factory: AgentFactory, default_mode: str = "interactive"):
             outputs=[mode_info],
         )
 
-        model_refresh.click(get_model_state, [state_key], [model_view, model_json])
+        history_refresh.click(refresh_history_choices, None, [history_dropdown])
+        history_event = history_load.click(
+            load_history,
+            [history_dropdown],
+            [chatbot, state_key, history_status],
+        )
+        history_event.then(list_model_choices, [state_key], [model_picker]).then(
+            get_model_state, [state_key, model_picker], [model_view, model_json]
+        )
+        history_event.then(list_code_choices, [state_key], [code_picker]).then(
+            load_code, [state_key, code_picker], [code_editor]
+        )
+
+        model_refresh.click(list_model_choices, [state_key], [model_picker]).then(
+            get_model_state, [state_key, model_picker], [model_view, model_json]
+        )
+        model_picker.change(get_model_state, [state_key, model_picker], [model_view, model_json])
+        open_session.click(open_model_session, [state_key], [session_status])
 
         code_refresh.click(list_code_choices, [state_key], [code_picker]).then(
             load_code, [state_key, code_picker], [code_editor]

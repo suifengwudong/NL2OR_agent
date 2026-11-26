@@ -1041,6 +1041,84 @@
           "expected_status": "Infeasible"
         }
       ]
+    },
+    {
+      "id": "cflp_warehouse_sales",
+      "name": "CFLP 仓库招商（销售案例）",
+      "family": "capacitated_facility_location",
+      "scale": "s",
+      "tiers": ["ir", "solver", "what_if"],
+      "problem": "客户是做社区团购的，有 5 个仓库可以租：城东仓月租 9000、容量 600；城西仓 12000、550；城南仓 8000、450；城北仓 14000、600；中心仓 11000、450。要服务 6 个小区：阳光花园 300 箱、锦绣江南 250、学府名苑 280、滨江壹号 220、老城街区 240、科技园 310。每箱运费见数据；每个小区只能由一个仓库负责，每个仓不能超过容量，目标是每月固定费用加运费最省。",
+      "input_ir": {
+        "problem_families": [
+          { "id": "capacitated_facility_location" }
+        ],
+        "entities": {
+          "I": {
+            "size": 6,
+            "ids": ["阳光花园", "锦绣江南", "学府名苑", "滨江壹号", "老城街区", "科技园"]
+          },
+          "J": {
+            "size": 5,
+            "ids": ["城东仓", "城西仓", "城南仓", "城北仓", "中心仓"]
+          }
+        },
+        "parameters": {
+          "fixed_cost": [9000, 12000, 8000, 14000, 11000],
+          "unit_service_cost": {
+            "城东仓": {"阳光花园": 2, "锦绣江南": 4, "学府名苑": 6, "滨江壹号": 7, "老城街区": 8, "科技园": 9},
+            "城西仓": {"阳光花园": 6, "锦绣江南": 5, "学府名苑": 2, "滨江壹号": 3, "老城街区": 6, "科技园": 8},
+            "城南仓": {"阳光花园": 5, "锦绣江南": 6, "学府名苑": 5, "滨江壹号": 4, "老城街区": 3, "科技园": 5},
+            "城北仓": {"阳光花园": 9, "锦绣江南": 8, "学府名苑": 6, "滨江壹号": 5, "老城街区": 2, "科技园": 3},
+            "中心仓": {"阳光花园": 4, "锦绣江南": 3, "学府名苑": 4, "滨江壹号": 5, "老城街区": 5, "科技园": 6}
+          },
+          "facility_capacity": [600, 550, 450, 600, 450],
+          "demand": [300, 250, 280, 220, 240, 310]
+        },
+        "constraint_blocks": [
+          { "block_id": "assign_each_demand_once" },
+          { "block_id": "link_assignment_to_open" },
+          { "block_id": "facility_capacity" }
+        ],
+        "objective": {
+          "block_id": "fixed_plus_unit_service_cost_objective",
+          "sense": "minimize"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "families": ["capacitated_facility_location"],
+        "block_ids": [
+          "assign_each_demand_once",
+          "link_assignment_to_open",
+          "facility_capacity"
+        ],
+        "objective_block": "fixed_plus_unit_service_cost_objective"
+      },
+      "solver_objective": 39230,
+      "scenarios": [
+        {
+          "id": "需求整体 +10%",
+          "overrides": {
+            "demand": [330, 275, 308, 242, 264, 341]
+          },
+          "expected_objective": 46644
+        },
+        {
+          "id": "城东仓容量降到 400",
+          "overrides": {
+            "facility_capacity": [400, 550, 450, 600, 450]
+          },
+          "expected_objective": 47700
+        },
+        {
+          "id": "城东仓月租涨到 20000",
+          "overrides": {
+            "fixed_cost": [20000, 12000, 8000, 14000, 11000]
+          },
+          "expected_objective": 49880
+        }
+      ]
     }
   ]
 }

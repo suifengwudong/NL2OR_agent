@@ -158,13 +158,27 @@ def _warehouse_case(kind: str, instance_id: int, data: str, optima: dict[str, fl
         else []
     )
     model_id = "capacitated_facility_location" if kind == "cflp" else "facility_location"
-    objective_block = "fixed_plus_service_cost_objective"
-    # parameters 只放被启用块读取的键：UFLP 变体不带 demand / facility_capacity，
-    # 容量与需求是题面的建模假设说明，不是模型数据
-    parameters = {"fixed_cost": fixed_cost, "service_cost": service_cost}
+    # CFLP keeps unit service costs so demand stays an independent parameter and
+    # quantity scenarios do not silently reuse a pre-multiplied cost matrix.
     if kind == "cflp":
-        parameters["demand"] = demand
-        parameters["facility_capacity"] = capacity
+        objective_block = "fixed_plus_unit_service_cost_objective"
+        unit_service_cost = [
+            [round(value / demand[i], 10) if demand[i] else 0.0 for value in service_cost[i]]
+            for i in range(n)
+        ]
+        parameters = {
+            "fixed_cost": fixed_cost,
+            "unit_service_cost": unit_service_cost,
+            "demand": demand,
+            "facility_capacity": capacity,
+        }
+        problem_service = unit_service_cost
+    else:
+        objective_block = "fixed_plus_service_cost_objective"
+        # parameters 只放被启用块读取的键：UFLP 变体不带 demand / facility_capacity，
+        # 容量与需求是题面的建模假设说明，不是模型数据
+        parameters = {"fixed_cost": fixed_cost, "service_cost": service_cost}
+        problem_service = service_cost
     input_ir = {
         "problem_families": [{"id": model_id}],
         "entities": {"I": {"size": n}, "J": {"size": m}},
@@ -195,7 +209,7 @@ def _warehouse_case(kind: str, instance_id: int, data: str, optima: dict[str, fl
         "scale": "m" if n <= 200 else "l",
         "tiers": ["ir", "solver", "online", "tightness"],
         "source": f"OR-Library {name}（已发表最优 {published}）",
-        "problem": _warehouse_problem(kind, m, n, capacity, fixed_cost, demand, service_cost),
+        "problem": _warehouse_problem(kind, m, n, capacity, fixed_cost, demand, problem_service),
         "input_ir": input_ir,
         "expected": {
             "valid": True,
@@ -402,7 +416,9 @@ def _warehouse_problem(
         f"仓库固定开设成本为 {fixed}。",
         capacity_note + f"仓库容量为 {capacity}。",
         f"各客户需求量分别为 {demand}。",
-        "客户 j 由仓库 i 服务时，全部需求的服务成本（矩阵第 j 行第 i 列）为：",
+        "客户 j 由仓库 i 服务时，"
+        + ("单位需求的服务成本" if kind == "cflp" else "全部需求的服务成本")
+        + "（矩阵第 j 行第 i 列）为：",
     ]
     for j, row in enumerate(service):
         lines.append(f"客户{j + 1}: {row}")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -74,6 +75,39 @@ class TestSession:
 
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         assert Session.load("nope") is None
+
+    def test_load_conversation_skips_bad_lines_and_other_roles(self, tmp_path: Path, monkeypatch):
+        import utils.session as mod
+
+        monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        session = Session()
+        session.save_conversation_entry("user", "你好")
+        session.save_conversation_entry("assistant", "你好，有什么问题？")
+        with open(session.conversation_file, "a", encoding="utf-8") as f:
+            f.write("{not json}\n")
+            f.write(json.dumps({"role": "system", "content": "ignored"}) + "\n")
+
+        assert session.load_conversation() == [
+            {"role": "user", "content": "你好"},
+            {"role": "assistant", "content": "你好，有什么问题？"},
+        ]
+
+    def test_load_conversation_missing_file_is_empty(self, tmp_path: Path, monkeypatch):
+        import utils.session as mod
+
+        monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        assert Session().load_conversation() == []
+
+    def test_last_activity_tracks_files_under_the_session(self, tmp_path: Path, monkeypatch):
+        import utils.session as mod
+
+        monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        session = Session()
+        old = session.workspace.stat().st_mtime - 100 * 86400
+        os.utime(session.workspace, (old, old))
+        session.save_code("", "a.py")
+
+        assert session.last_activity() > old
 
     def test_prune(self, tmp_path: Path, monkeypatch):
         import utils.session as mod

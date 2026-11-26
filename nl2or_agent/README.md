@@ -68,7 +68,7 @@ uv run python main.py --mode web    # Gradio 界面，说明见「使用 Gradio 
 | T2 求解执行 | `--mode solver` | 29/29 |
 | T3 端到端 | `--mode online --agent-mode automatic --repeats 3` | attempt 61/66（92.4%）；用例全过 17/22 |
 | T4 紧约束 | `--mode tightness` | 17/17 |
-| T5 情景对比 | `--mode what_if` | 19/19（43 个情景） |
+| T5 情景对比 | `--mode what_if` | 20/20（46 个情景） |
 
 T3 每次尝试同时要求：答复引用目标值（claim 95.5%），且落盘脚本重算一致（artifact 97.0%）。基础设施错误 0，time-to-success 172.2s，22 用例 × 3 次整轮 42.6 分钟，单次求解 6.8–113.8s。5 次失败尝试中，3 次为答复以「见上方输出」代替目标值（产物正确），2 次为落盘脚本未能复现答复数字（答复正确，单次现象）。
 
@@ -93,9 +93,10 @@ nl2or_agent/
 │   ├── ir_catalog.py       # 模型库/积木块目录加载（按文件状态缓存）
 │   ├── ir_normalize.py     # Problem IR 归一化
 │   ├── ir_validate.py      # 骨架与维度校验
+│   ├── answer_manifest.py  # 回答级引用：固定一次回答使用的模型/求解 artifact id
 │   ├── model_document.py   # IR → 数学模型文档（Markdown + LaTeX）
 │   ├── model_library.py    # 模型库检索：候选索引与模板细节（按需两阶段）
-│   ├── output_format.py    # agent 输出清洗与占位符展开
+│   ├── output_format.py    # agent 输出清洗与占位符展开（支持命名 artifact）
 │   ├── problem_ir.py       # ProblemIR 值对象与 IR 词汇表（解析 / 参数覆盖）
 │   ├── prompt_loader.py    # 提示词加载
 │   ├── report.py           # 报表类型派生与渲染
@@ -118,6 +119,7 @@ nl2or_agent/
 │
 ├── utils/
 │   ├── __init__.py
+│   ├── artifact_store.py   # 模型/求解 artifact：版本、指纹、索引、基准指针、legacy 导入
 │   ├── contract.py         # 求解器输出契约（Objective: <值>）
 │   └── session.py          # 会话工作区、模型产物与求解脚本存盘
 │
@@ -316,8 +318,8 @@ Web 界面支持聊天交互、求解器文件列表查看与会话级隔离（�
 
 | 标签页 | 内容 |
 |--------|------|
-| 对话 | 聊天、模式选择；提交后自动刷新模型视图 |
-| 模型 | 归一化 IR 与模板要求的逐块对照（命中 / 替代 / 缺失 / 额外）、目标块与方向、未绑定参数、库外规则、校验错误提示，以及归一化 IR 的 JSON |
+| 对话 | 聊天、模式选择；提交后自动刷新模型视图；「历史会话」可刷新、选择并加载旧会话，继续对话时恢复可见对话记忆 |
+| 模型 | 会话级模型 artifact 汇总（模型 / 类型 / 校验 / 求解 / 目标值 / 时间），下拉选择具体模型；详情含归一化 IR 与模板的逐块对照、目标块与方向、库外规则、校验错误、数学模型和关联求解；未校验的直接写入文件单独标记。「打开模型会话位置」用系统文件管理器打开当前会话目录 |
 | 代码 | agent 写出的求解脚本：选择、编辑、保存、原地重跑，输出含 `[RESULT] Objective: <值>` |
 
 ## 计划
@@ -330,6 +332,7 @@ Web 界面支持聊天交互、求解器文件列表查看与会话级隔离（�
 
 ## 更新记录
 
+- **2026-11-26** 模型从 Session 属性升级为会话 artifact：新增 `utils/artifact_store.py`（不可变模型/求解版本、逻辑名指针、`baseline.json`、可重建 `index.json`、旧 `model.json`/`solve_result.json` 懒导入、直接写入文件标记未校验）与 `core/answer_manifest.py`（一次回答固定模型/求解 artifact id）。`validate_problem_ir` / `solve_ir` 返回 artifact 元数据并按指纹关联；`[MODEL_MATH:name]` / `[SOLVE_RESULT:name]` 支持命名引用，裸占位符仍指 baseline；模型 tab 改为会话级 artifact 汇总 + 选中模型详情 + 关联求解。旧会话继续走原指纹校验路径。
 - **2026-11-13** 修正「模型已变更」误报：`fixed_cost`/`demand` 等按键数据按实体顺序归一为列表；指纹改为只哈希可执行模型内容（忽略说明文字、块顺序、`missing_data`），并对 `[MODEL_MATH\]` 这类转义占位符做展开容忍。提示词新增「缺数据先反问」规则：必需数据缺失时不建模、不填占位，先列出缺失项；同时要求每条消息为单个 python 块、答复放在 `final_answer` 内。
 - **2026-11-13** 模型输出解析加固：`_patch_hamlet_code_parsing` 在原始解析失败后依次解包 DSML 原生调用、裁掉空 Early Stop 段、按序合并多个代码块、兜底裸代码；提示词补充「代码不要携带 LaTeX 转义」。
 - **2026-11-13** 数学模型补齐 s.t. 的变量取值范围：决策变量的 0-1 / 整数 / 非负数域以显式约束形式渲染（带 `\forall` 量词，位于结构约束与库外规则之后），不再只写在符号说明的变量定义里。

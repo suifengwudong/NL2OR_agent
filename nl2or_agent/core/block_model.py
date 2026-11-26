@@ -275,6 +275,16 @@ def _objective_fixed_plus_service_cost(ctx: ModelContext) -> None:
     )
 
 
+def _objective_fixed_plus_unit_service_cost(ctx: ModelContext) -> None:
+    y, x = ctx.var["y"], ctx.var["x2"]
+    fixed = ctx.list_value("fixed_cost", ctx.n_j)
+    unit = ctx.matrix("unit_service_cost")
+    demand = ctx.list_value("demand", ctx.n_i)
+    ctx.prob += pulp.lpSum(fixed[j] * y[j] for j in range(ctx.n_j)) + pulp.lpSum(
+        demand[i] * unit[i][j] * x[i][j] for i in range(ctx.n_i) for j in range(ctx.n_j)
+    )
+
+
 def _objective_service_cost(ctx: ModelContext) -> None:
     x = ctx.var["x2"]
     service = ctx.matrix("service_cost")
@@ -325,6 +335,7 @@ OBJECTIVE_BUILDERS: dict[str, ConstraintBuilder] = {
     "total_service_distance_objective": _objective_total_service_distance,
     "facility_opening_cost_objective": _objective_facility_opening_cost,
     "fixed_plus_service_cost_objective": _objective_fixed_plus_service_cost,
+    "fixed_plus_unit_service_cost_objective": _objective_fixed_plus_unit_service_cost,
     "service_cost_objective": _objective_service_cost,
     "covered_demand_objective": _objective_covered_demand,
     "minimize_max_distance_objective": _objective_minimize_max_distance,
@@ -361,6 +372,11 @@ READ_BLOCK_KEYS: dict[str, tuple[str, ...]] = {
     "total_service_distance_objective": ("distance",),
     "facility_opening_cost_objective": ("fixed_cost",),
     "fixed_plus_service_cost_objective": ("fixed_cost", "service_cost"),
+    "fixed_plus_unit_service_cost_objective": (
+        "fixed_cost",
+        "unit_service_cost",
+        "demand",
+    ),
     "service_cost_objective": ("service_cost",),
     "covered_demand_objective": ("demand",),
     "minimize_max_distance_objective": (),
@@ -428,7 +444,13 @@ def _check_override_value(key: str, value: Any, n_i: int, n_j: int) -> None:
         ):
             fail(f"长度 {length} 的数值列表")
         return
-    if key in {"distance", "service_cost", "coverage_matrix", "availability"}:
+    if key in {
+        "distance",
+        "service_cost",
+        "unit_service_cost",
+        "coverage_matrix",
+        "availability",
+    }:
         shaped = (
             isinstance(value, list)
             and len(value) == n_i

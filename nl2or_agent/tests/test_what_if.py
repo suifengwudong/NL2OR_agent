@@ -24,6 +24,7 @@ from core.ir_validate import validate_problem_ir
 from core.problem_ir import ProblemIR
 from core.what_if import supported_models
 from tools import RunSolverTool, SolveIrTool
+from utils.artifact_store import ArtifactStore
 
 _BASE = Path(__file__).parent.parent
 
@@ -77,6 +78,51 @@ def test_describe_model_reports_family_and_objective():
     assert "weighted_service_distance_objective" in text
 
 
+def test_cflp_demand_override_is_priced_by_the_unit_rate():
+    """CFLP 的服务成本按单位需求计：需求 +1 必须增加对应线路的单位运费。"""
+    report = validate_problem_ir(
+        {
+            "problem_families": [{"id": "capacitated_facility_location"}],
+            "entities": {
+                "I": {"size": 4, "ids": ["C1", "C2", "C3", "C4"]},
+                "J": {"size": 3, "ids": ["W1", "W2", "W3"]},
+            },
+            "parameters": {
+                "fixed_cost": [100, 120, 90],
+                "unit_service_cost": [
+                    [1, 4, 6],
+                    [4, 1, 2],
+                    [6, 3, 1],
+                    [3, 5, 2],
+                ],
+                "facility_capacity": [8, 8, 8],
+                "demand": [4, 3, 3, 2],
+            },
+            "constraint_blocks": [
+                {"block_id": "assign_each_demand_once"},
+                {"block_id": "link_assignment_to_open"},
+                {
+                    "block_id": "facility_capacity",
+                    "parameters": {
+                        "facility_capacity": [8, 8, 8],
+                        "demand": [4, 3, 3, 2],
+                    },
+                },
+            ],
+            "objective": {
+                "block_id": "fixed_plus_unit_service_cost_objective",
+                "sense": "minimize",
+            },
+        }
+    )
+    assert report["valid"], report["errors"]
+    ir = report["normalized_ir"]
+    assert solve_ir(ir).objective == pytest.approx(207.0)
+
+    bumped = ProblemIR(ir).with_overrides({"demand": [5, 3, 3, 2]}).data
+    assert solve_ir(bumped).objective == pytest.approx(208.0)
+
+
 # ---------------------------------------------------------------------------
 # 可执行模型清单（库派生）
 # ---------------------------------------------------------------------------
@@ -103,6 +149,47 @@ class TestSolveIrTool:
 
         assert "[RESULT] Objective: 2210" in output
         assert "应用的覆盖：无（基准）" in output
+
+    def test_baseline_solve_links_to_a_validated_model_artifact(self, tmp_path):
+        report = validate_problem_ir(_model_ir("p_median_community"))
+        store = ArtifactStore(tmp_path)
+        model = store.save_model_artifact(report, name="baseline", kind="baseline")
+
+        output = SolveIrTool(workspace_dir=tmp_path).forward(report["normalized_ir"])
+
+        assert "[RESULT] Objective: 2210" in output
+        assert "求解 artifact" in output
+        solve = store.list_solve_artifacts()[0]
+        assert solve.model_ref is not None
+        assert solve.model_ref.artifact_id == model.artifact_id
+
+    def test_solve_accepts_an_explicit_model_artifact_id(self, tmp_path):
+        report = validate_problem_ir(_model_ir("p_median_community"))
+        store = ArtifactStore(tmp_path)
+        model = store.save_model_artifact(report, name="baseline", kind="baseline")
+
+        SolveIrTool(workspace_dir=tmp_path).forward(
+            report["normalized_ir"], model_artifact_id=model.artifact_id
+        )
+
+        solve = store.list_solve_artifacts()[0]
+        assert solve.model_ref is not None
+        assert solve.model_ref.artifact_id == model.artifact_id
+
+    def test_solve_reports_an_artifact_link_error(self, tmp_path):
+        baseline = validate_problem_ir(_model_ir("p_median_community"))
+        other_ir = ProblemIR(baseline["normalized_ir"]).with_overrides({"p": 2}).data
+        other = validate_problem_ir(other_ir)
+        store = ArtifactStore(tmp_path)
+        model = store.save_model_artifact(baseline, name="baseline", kind="baseline")
+
+        output = SolveIrTool(workspace_dir=tmp_path).forward(
+            other["normalized_ir"], model_artifact_id=model.artifact_id
+        )
+
+        assert "[RESULT] Objective: 2400" in output
+        assert "求解 artifact 未保存" in output
+        assert "指纹" in output
 
     def test_applies_overrides_written_as_a_python_dict(self, tmp_path):
         """代码块里直接传 Python dict 是正常写法，不必先 json.dumps。"""

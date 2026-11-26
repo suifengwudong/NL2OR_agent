@@ -167,7 +167,13 @@ def _check_entities(normalized_ir: dict[str, Any], errors: list[str]) -> dict[st
         values = params.get(key)
         if n_j and isinstance(values, list) and len(values) != n_j:
             report(f"参数 {key} 的长度 {len(values)} 与 |J|={n_j} 不符")
-    for key in ("distance", "service_cost", "coverage_matrix", "availability"):
+    for key in (
+        "distance",
+        "service_cost",
+        "unit_service_cost",
+        "coverage_matrix",
+        "availability",
+    ):
         values = params.get(key)
         if n_i and n_j and isinstance(values, list) and values and isinstance(values[0], list):
             shape = (len(values), len(values[0]))

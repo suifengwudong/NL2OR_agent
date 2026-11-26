@@ -14,6 +14,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 _WORKSPACE_ROOT = Path(
     os.getenv("NL2OR_WORKSPACE_DIR") or Path(__file__).parent.parent / "data" / "workspace"
@@ -107,24 +108,53 @@ class Session:
     # Conversation history persistence
     # ----------------------------------------------------------------
 
-    def save_conversation_entry(self, role: str, content: str) -> None:
+    def save_conversation_entry(
+        self, role: str, content: str, answer_id: str | None = None
+    ) -> None:
         """Append one conversation turn to the session's JSONL log file."""
-        entry = {
+        entry: dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "role": role,
             "content": content,
         }
+        if answer_id:
+            entry["answer_id"] = answer_id
         with _write_lock:
             with open(self.conversation_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    def load_conversation(self) -> list[dict[str, str]]:
+        """Read the visible user/assistant turns from the JSONL log.
+
+        Malformed lines and other roles are skipped so one bad append cannot
+        make an otherwise readable session unusable.
+        """
+        if not self.conversation_file.is_file():
+            return []
+        messages: list[dict[str, str]] = []
+        for line in self.conversation_file.read_text(encoding="utf-8").splitlines():
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            role = entry.get("role")
+            content = entry.get("content")
+            if role in {"user", "assistant"} and isinstance(content, str):
+                messages.append({"role": role, "content": content})
+        return messages
+
+    def last_activity(self) -> float:
+        """Newest mtime in the session, used to order the history list."""
+        return self._latest_mtime(self.workspace)
 
     # ----------------------------------------------------------------
     # File listing
     # ----------------------------------------------------------------
 
     def list_code_files(self) -> list[Path]:
-        """Return all solver files in this session."""
-        return sorted(self.code_dir.glob("*.py")) if self.code_dir.exists() else []
+        """Return all solver files in this session without creating ``code/``."""
+        directory = self.workspace / "code"
+        return sorted(directory.glob("*.py")) if directory.exists() else []
 
     # ----------------------------------------------------------------
     # Class methods for session discovery

@@ -10,6 +10,7 @@ from hamlet.core.tools import Tool
 from core.ir_validate import validate_problem_ir
 from core.model_document import render_model_document
 from core.problem_ir import ProblemIR
+from utils.artifact_store import ArtifactError, ArtifactStore
 from utils.session import get_session, write_model_of_record
 
 
@@ -23,13 +24,44 @@ class ValidateProblemIrTool(Tool):
         "and check the model skeleton (constraint blocks required by the declared "
         "family/model, block dependencies, objective block and its optimization direction). "
         "The report carries errors, warnings and a `skeleton` summary. "
-        "Always call in Step 1 after building ir, before final_answer."
+        "It also stores one immutable model version and returns its artifact id/name/"
+        "revision/fingerprint. Same name + same content is idempotent; changing an "
+        "existing name requires revise=True (or overwrite=True as an alias), which "
+        "appends a new version instead of deleting history."
     )
     inputs = {
         "ir_json": {
             "type": "string",
             "description": "JSON string of the Problem IR dict (from json.dumps(ir)).",
-        }
+        },
+        "name": {
+            "type": "string",
+            "nullable": True,
+            "description": (
+                "Logical model name. Omit to auto-name: the first valid model becomes "
+                "baseline; later models become scenario/scenario_2/…"
+            ),
+        },
+        "kind": {
+            "type": "string",
+            "nullable": True,
+            "description": "baseline / scenario (default scenario). Descriptive only.",
+        },
+        "baseline": {
+            "type": "boolean",
+            "nullable": True,
+            "description": "Set this valid model as the session baseline. Invalid models are rejected.",
+        },
+        "revise": {
+            "type": "boolean",
+            "nullable": True,
+            "description": "Append a new version under the same logical name; old versions are kept.",
+        },
+        "overwrite": {
+            "type": "boolean",
+            "nullable": True,
+            "description": "Alias for revise=True; never deletes old versions.",
+        },
     }
     output_type = "string"
 
@@ -38,7 +70,15 @@ class ValidateProblemIrTool(Tool):
         # None 时把模型写进当前会话目录（生产路径），显式给出时写进该目录（测试/评测）
         self._workspace: Path | None = Path(workspace_dir) if workspace_dir else None
 
-    def forward(self, ir_json: str) -> str:
+    def forward(
+        self,
+        ir_json: str,
+        name: str | None = None,
+        kind: str | None = "scenario",
+        baseline: bool | None = False,
+        revise: bool | None = False,
+        overwrite: bool | None = None,
+    ) -> str:
         try:
             ir = ProblemIR.parse(ir_json)
         except ValueError as exc:
@@ -48,13 +88,43 @@ class ValidateProblemIrTool(Tool):
                 indent=2,
             )
         report = validate_problem_ir(ir.data)
-        self._save_model(report)
-        return json.dumps(report, ensure_ascii=False, indent=2)
+        payload = dict(report)
+        store = ArtifactStore(self._root())
+        try:
+            artifact = store.save_model_artifact(
+                report,
+                name=name,
+                kind=kind or "scenario",
+                baseline=bool(baseline),
+                revise=bool(revise),
+                overwrite=overwrite,
+            )
+        except ArtifactError as exc:
+            payload["artifact_error"] = str(exc)
+        else:
+            index = store.load_index()
+            payload["artifact"] = {
+                "artifact_id": artifact.artifact_id,
+                "name": artifact.name,
+                "revision": artifact.revision,
+                "kind": artifact.kind,
+                "validation_status": artifact.validation_status,
+                "fingerprint": artifact.fingerprint,
+                "is_baseline": artifact.artifact_id == index.baseline_model,
+            }
+            # Transitional compatibility: keep the old single-model view for the
+            # baseline only. Scenarios never overwrite it.
+            if artifact.artifact_id == index.baseline_model:
+                write_model_of_record(
+                    self._workspace / "model.json"
+                    if self._workspace is not None
+                    else get_session().model_file,
+                    report,
+                )
+        return json.dumps(payload, ensure_ascii=False, indent=2)
 
-    def _save_model(self, report: dict) -> None:
-        """记录本次校验的模型：IR 是内容的载体，前端与后续对照都以它为准。"""
-        target = self._workspace if self._workspace is not None else get_session().workspace
-        write_model_of_record(target / "model.json", report)
+    def _root(self) -> Path:
+        return self._workspace if self._workspace is not None else get_session().workspace
 
 
 class ModelMathTool(Tool):

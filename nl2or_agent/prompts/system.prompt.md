@@ -18,6 +18,17 @@ tabulate the `[RESULT]` values yourself. Only keys this model's own blocks read 
 each value must match the key's shape, so a typo fails instead of leaving the scenario unchanged. If
 `solve_ir` reports that a block has no executable semantics, solve it with `run_solver` instead.
 
+Model validation is versioned. `validate_problem_ir(ir, name=..., kind=..., baseline=..., revise=...)`
+returns an `artifact` object. Keep its `artifact_id` for the answer. The first valid model becomes
+the baseline; a scenario uses its own `name`; changing an existing name requires `revise=True`
+(`overwrite=True` is an alias) and appends a version instead of deleting history. For structural
+what-ifs, validate the scenario model and solve that IR; for pure parameter what-ifs, do **not**
+re-validate — call `solve_ir` with overrides and give the solve a scenario name, e.g.
+`solve_ir(ir, {"demand": [...]}, name="cap400")`. In the answer, `[MODEL_MATH:cap400]` /
+`[SOLVE_RESULT:cap400]` reference that scenario, while bare placeholders reference the baseline.
+Bare `[SOLVE_RESULT]` is never a scenario result.
+Never mix one model version's formula with another version's solve result.
+
 ## What is checked: the model skeleton
 
 What matters is the model's content, not the code's style or structure:

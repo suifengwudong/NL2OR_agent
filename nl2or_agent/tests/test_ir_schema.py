@@ -9,8 +9,23 @@ from core.ir_catalog import load_block_catalog, load_model_bank
 from core.ir_normalize import normalize_problem_ir
 from core.ir_validate import validate_problem_ir
 from tools import ValidateProblemIrTool
+from utils.artifact_store import ArtifactStore
 
 _BASE = Path(__file__).parent.parent
+
+
+def _artifact_ir(distance: list[list[int]] | None = None) -> dict:
+    return {
+        "problem_families": [{"id": "p_median"}],
+        "entities": {"I": {"size": 2}, "J": {"size": 2}},
+        "parameters": {"p": 1, "distance": distance or [[1, 2], [2, 1]]},
+        "constraint_blocks": [
+            {"block_id": "assign_each_demand_once"},
+            {"block_id": "link_assignment_to_open"},
+            {"block_id": "cardinality_open_p_facilities"},
+        ],
+        "objective": {"block_id": "weighted_service_distance_objective"},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +186,46 @@ class TestIrTools:
         assert out["valid"]
         assert "normalized_ir" in out
         assert "skeleton" in out
+
+    def test_validate_tool_returns_artifact_metadata(self, tmp_path):
+        tool = ValidateProblemIrTool(workspace_dir=tmp_path)
+
+        out = json.loads(tool.forward(json.dumps(_artifact_ir())))
+
+        artifact = out["artifact"]
+        assert artifact["is_baseline"] is True
+        assert artifact["validation_status"] == "valid"
+        assert artifact["artifact_id"].startswith("model_")
+        assert (
+            tmp_path / "artifacts" / "model_versions" / f"{artifact['artifact_id']}.json"
+        ).is_file()
+        assert (tmp_path / "model.json").is_file()
+
+    def test_scenario_validation_does_not_replace_the_baseline(self, tmp_path):
+        tool = ValidateProblemIrTool(workspace_dir=tmp_path)
+        baseline = json.loads(tool.forward(json.dumps(_artifact_ir())))["artifact"]
+        scenario = json.loads(
+            tool.forward(json.dumps(_artifact_ir([[1, 5], [5, 1]])), name="cap400")
+        )["artifact"]
+
+        store = ArtifactStore(tmp_path)
+        index = store.load_index()
+        assert scenario["is_baseline"] is False
+        assert index.baseline_model == baseline["artifact_id"]
+        assert (
+            store.load_model_artifact(baseline["artifact_id"]).fingerprint
+            != store.load_model_artifact(scenario["artifact_id"]).fingerprint
+        )
+
+    def test_name_conflict_is_reported_without_losing_the_report(self, tmp_path):
+        tool = ValidateProblemIrTool(workspace_dir=tmp_path)
+        tool.forward(json.dumps(_artifact_ir()), name="baseline")
+
+        out = json.loads(tool.forward(json.dumps(_artifact_ir([[1, 5], [5, 1]])), name="baseline"))
+
+        assert out["valid"] is True
+        assert "artifact_error" in out
+        assert "revise=True" in out["artifact_error"]
 
 
 # ---------------------------------------------------------------------------

@@ -147,6 +147,23 @@ class TestFingerprint:
 
         assert fingerprint(normalized_keyed) == fingerprint(normalized_positional)
 
+    def test_transposed_matrix_dict_normalizes_to_i_by_j(self):
+        """仓库→客户的嵌套字典与客户→仓库的矩阵必须得到同一份归一化内容。"""
+        from core.ir_normalize import normalize_problem_ir
+
+        transposed = self._ir()
+        transposed["parameters"]["service_cost"] = {
+            "x": {"a": 1, "b": 3},
+            "y": {"a": 2, "b": 4},
+        }
+        positional = self._ir()
+
+        normalized, _, _ = normalize_problem_ir(transposed)
+        expected, _, _ = normalize_problem_ir(positional)
+
+        assert normalized["parameters"]["service_cost"] == [[1, 2], [3, 4]]
+        assert fingerprint(normalized) == fingerprint(expected)
+
 
 # ---------------------------------------------------------------------------
 # 覆盖

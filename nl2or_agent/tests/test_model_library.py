@@ -70,6 +70,14 @@ class TestDescribeModel:
         assert "$y_j$" in text
         assert "$x_ij$" in text
 
+    def test_cflp_template_uses_unit_service_cost(self):
+        """CFLP 的服务成本按单位需求计，模板不能再暴露整笔成本的旧键。"""
+        text = describe_model("capacitated_facility_location")
+
+        assert "`fixed_plus_unit_service_cost_objective`" in text
+        assert "`unit_service_cost`" in text
+        assert "`service_cost`" not in text
+
     def test_unknown_model_lists_available_ids(self):
         text = describe_model("vehicle_routing")
 

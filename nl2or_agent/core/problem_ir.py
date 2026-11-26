@@ -29,6 +29,7 @@ READABLE_DATA_KEYS: frozenset[str] = frozenset(
         "facility_capacity",
         "fixed_cost",
         "service_cost",
+        "unit_service_cost",
         "coverage_matrix",
         "forced_open",
         "forced_closed",

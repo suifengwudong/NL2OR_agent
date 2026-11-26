@@ -231,6 +231,40 @@
       "template_snippet": "m.setObjective(gp.quicksum(fixed_cost[j] * y[j] for j in facilities) + gp.quicksum(service_cost[i, j] * x[i, j] for i in demand_points for j in facilities), GRB.MINIMIZE)"
     },
     {
+      "id": "fixed_plus_unit_service_cost_objective",
+      "name": "固定成本加单位服务成本目标",
+      "category": "objective",
+      "sense": "minimize",
+      "aliases": [
+        "fixed_plus_unit_service",
+        "cflp_objective",
+        "fixed_charge_objective"
+      ],
+      "typical_models": [
+        "capacitated_facility_location"
+      ],
+      "description": "最小化设施固定开设成本与按需求量计的单位服务成本之和",
+      "math": "\\min \\sum_{j \\in J} f_j y_j + \\sum_{i \\in I}\\sum_{j \\in J} d_i c_{ij} x_{ij}",
+      "parameters": [
+        {
+          "name": "fixed_cost",
+          "type": "dict",
+          "required": true
+        },
+        {
+          "name": "unit_service_cost",
+          "type": "dict",
+          "required": true
+        },
+        {
+          "name": "demand",
+          "type": "dict",
+          "required": true
+        }
+      ],
+      "template_snippet": "m.setObjective(gp.quicksum(fixed_cost[j] * y[j] for j in facilities) + gp.quicksum(demand[i] * unit_service_cost[i, j] * x[i, j] for i in demand_points for j in facilities), GRB.MINIMIZE)"
+    },
+    {
       "id": "cover_each_demand_at_least_once",
       "name": "需求点至少覆盖一次",
       "category": "coverage",

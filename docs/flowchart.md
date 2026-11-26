@@ -126,10 +126,10 @@ flowchart TD
     retrieve --> modelBank[(models.json /\nconstraint_blocks.json\n模型库)]
     validate --> modelBank
     solveIr --> modelBank
-    solveIr --> workspace[(model.json /\nsolve_result.json /\ncode/\n本地存储)]
+    solveIr --> workspace[(artifacts/\nmodel·solve·answer versions /\ncode/\n本地存储)]
     solverTool --> workspace
     solverTool --> pulp[pulp / gurobipy\n求解器]
-    runtime[run_turn\n会话与占位符展开] -.->|最终答复填充\n[MODEL_MATH] / [SOLVE_RESULT]| workspace
+    runtime[run_turn\n会话与占位符展开 + AnswerManifest] -.->|最终答复填充\n[MODEL_MATH[:name]] / [SOLVE_RESULT[:name]]| workspace
 ```
 
 工具全集见 `nl2or_agent/tools/`（6 个项目工具 + HAMLET 自带 `final_answer`）；模型库与系统提示词的关系、占位符与校验契约见 `docs/AGENT.md`。
@@ -146,7 +146,7 @@ flowchart TD
 | 请求代码生成 | `CodeAgent` 自动生成 Python 代码块并执行 | `hamlet.core` |
 | 存储生成的代码 | `RunSolverTool.save_code()` → `data/workspace/sessions/{id}/code/` | `tools/solver_tool.py` |
 | 调用求解器求解 | `solve_ir(ir)` 按块语义构建 PuLP 并求解；`run_solver(code)` 仅库外块退路 | `tools/solve_ir_tool.py` / `tools/solver_tool.py` |
-| 返回求解结果 | `[RESULT] Objective: <值>` 回传 Agent；基准结果落盘 `solve_result.json` 供答复占位符填充 | `tools/solve_ir_tool.py` |
+| 返回求解结果 | `[RESULT] Objective: <值>` 回传 Agent；每次求解落盘不可变 solve artifact（指纹自动关联模型版本），基准结果另存 `solve_result.json` 供答复占位符填充 | `tools/solve_ir_tool.py` |
 
 ### 运行方式
 

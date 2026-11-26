@@ -170,23 +170,49 @@ def _assignments(ir: dict[str, Any], result: SolveResult) -> str:
     names_i = _ids(ir, "I", n_i)
     names_j = _ids(ir, "J", n_j)
     params = _parameters(ir)
-    cost = params.get("distance") or params.get("service_cost")
+    unit = params.get("unit_service_cost")
+    distance = params.get("distance")
+    service = params.get("service_cost")
+    demand = params.get("demand")
+
+    if isinstance(unit, list):
+        headers = ["需求点", "设施", "数量", "单位服务成本", "整笔服务成本"]
+    elif isinstance(distance, list):
+        headers = ["需求点", "设施", "距离"]
+    elif isinstance(service, list):
+        headers = ["需求点", "设施", "服务成本"]
+    else:
+        headers = ["需求点", "设施", "成本"]
+
     rows: list[list[Any]] = []
     for i in range(n_i):
         for j in range(n_j):
             if _value(result, f"x2[{i},{j}]") <= 0.5:
                 continue
-            shown = "—"
-            if isinstance(cost, list) and i < len(cost) and j < len(cost[i]):
-                shown = cost[i][j]
-            rows.append([names_i[i], names_j[j], shown])
+            if isinstance(unit, list) and i < len(unit) and j < len(unit[i]):
+                if isinstance(demand, list) and i < len(demand):
+                    qty: Any = demand[i]
+                elif isinstance(demand, dict):
+                    qty = demand.get(names_i[i])
+                else:
+                    qty = "—"
+                per = unit[i][j]
+                total = qty * per if isinstance(qty, (int, float)) else "—"
+                row = [names_i[i], names_j[j], qty, per, total]
+            elif isinstance(distance, list) and i < len(distance) and j < len(distance[i]):
+                row = [names_i[i], names_j[j], distance[i][j]]
+            elif isinstance(service, list) and i < len(service) and j < len(service[i]):
+                row = [names_i[i], names_j[j], service[i][j]]
+            else:
+                row = [names_i[i], names_j[j], "—"]
+            rows.append(row)
             if len(rows) >= MAX_ROWS:
                 break
         if len(rows) >= MAX_ROWS:
             break
     if not rows:
         return ""
-    text = f"**{TABLE_TITLES['assignments']}**\n\n" + _table(["需求点", "设施", "距离或成本"], rows)
+    text = f"**{TABLE_TITLES['assignments']}**\n\n" + _table(headers, rows)
     if len(rows) >= MAX_ROWS:
         text += f"\n\n仅显示前 {MAX_ROWS} 条分配。"
     return text

@@ -7,6 +7,7 @@
     "fixed_cost": "f_j",
     "coverage_distance": "C",
     "service_cost": "c_ij",
+    "unit_service_cost": "c_ij",
     "value": "v_i",
     "weight": "w_i",
     "capacity": "W",
@@ -390,13 +391,13 @@
     {
       "id": "capacitated_facility_location",
       "name": "有容量设施选址",
-      "description": "容量限制下的仓库选址（CFLP）：固定开设成本加服务成本，需求单一来源分配到设施且不超过设施容量",
+      "description": "容量限制下的仓库选址（CFLP）：固定开设成本加按需求量计的服务成本，需求单一来源分配到设施且不超过设施容量",
       "class": "location_problem",
       "inherits": "location_problem",
       "blocks": [
         "facility_capacity"
       ],
-      "objective_block": "fixed_plus_service_cost_objective",
+      "objective_block": "fixed_plus_unit_service_cost_objective",
       "variables": [
         {
           "symbol": "y_j",
@@ -417,10 +418,10 @@
           "description": "f_j，在候选点 j 开设仓库的固定成本"
         },
         {
-          "name": "service_cost",
+          "name": "unit_service_cost",
           "type": "matrix",
           "required": true,
-          "description": "c_ij，需求点 i 由仓库 j 服务的分配成本（总量，不乘需求量）"
+          "description": "c_ij，需求点 i 由仓库 j 服务的单位服务成本（每件；目标函数中乘需求量 d_i）"
         },
         {
           "name": "facility_capacity",

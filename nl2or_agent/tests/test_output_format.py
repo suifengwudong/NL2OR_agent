@@ -6,8 +6,10 @@ import json
 
 import pytest
 
+from core.answer_manifest import latest_answer_manifest
+from core.ir_validate import validate_problem_ir
 from core.output_format import format_agent_output
-
+from utils.artifact_store import ArtifactLinkError, ArtifactNotFound, ArtifactStore
 from utils.session import write_model_of_record
 
 
@@ -115,6 +117,15 @@ class TestExpandPlaceholders:
         assert expanded.startswith("模型如下：## 数学模型")
         assert r"[MODEL_MATH\]" not in expanded
 
+    def test_model_invented_placeholder_variant_is_normalized(self, session):
+        from core.output_format import expand_placeholders
+
+        _validated_session(session)
+        expanded = expand_placeholders("[MODEL_MATH_PLACEHOLDER]", session)
+
+        assert expanded.startswith("## 数学模型")
+        assert "PLACEHOLDER" not in expanded
+
     def test_solve_result_expands_the_saved_artifact(self, session):
         from core.output_format import SOLVE_RESULT_PLACEHOLDER, expand_placeholders
 
@@ -164,3 +175,123 @@ class TestExpandPlaceholders:
         from core.output_format import expand_placeholders
 
         assert expand_placeholders("普通答复", session) == "普通答复"
+
+
+# ---------------------------------------------------------------------------
+# Artifact-backed placeholders and AnswerManifest
+# ---------------------------------------------------------------------------
+
+
+def _pmedian_report(distance: list[list[int]] | None = None) -> dict:
+    ir = {
+        "problem_families": [{"id": "p_median"}],
+        "entities": {"I": {"size": 2}, "J": {"size": 2}},
+        "parameters": {"p": 1, "distance": distance or [[1, 2], [2, 1]]},
+        "constraint_blocks": [
+            {"block_id": "assign_each_demand_once"},
+            {"block_id": "link_assignment_to_open"},
+            {"block_id": "cardinality_open_p_facilities"},
+        ],
+        "objective": {"block_id": "weighted_service_distance_objective"},
+    }
+    report = validate_problem_ir(ir)
+    assert report["valid"], report["errors"]
+    return report
+
+
+def _baseline_artifacts(session) -> tuple[ArtifactStore, dict, object, object]:
+    store = ArtifactStore(session)
+    report = _pmedian_report()
+    model = store.save_model_artifact(report, name="baseline", kind="baseline")
+    solve = store.save_solve_artifact(
+        report["normalized_ir"],
+        status="Optimal",
+        objective=2210,
+        text="状态：最优\n[RESULT] Objective: 2210",
+    )
+    return store, report, model, solve
+
+
+class TestExpandArtifactPlaceholders:
+    def test_bare_placeholders_use_the_baseline(self, session):
+        from core.output_format import expand_placeholders
+
+        store, _, model, solve = _baseline_artifacts(session)
+
+        text = expand_placeholders("[MODEL_MATH]\n[SOLVE_RESULT]", session)
+
+        assert "## 数学模型" in text
+        assert "Objective: 2210" in text
+        manifest = latest_answer_manifest(store)
+        assert manifest is not None
+        assert manifest.model_refs["baseline"] == model.artifact_id
+        assert manifest.solve_refs["baseline"] == solve.artifact_id
+
+    def test_named_placeholders_resolve_the_named_artifacts(self, session):
+        from core.output_format import expand_placeholders
+
+        store = ArtifactStore(session)
+        report1 = _pmedian_report()
+        report2 = _pmedian_report([[1, 5], [5, 1]])
+        store.save_model_artifact(report1, name="baseline", kind="baseline")
+        scenario = store.save_model_artifact(report2, name="cap400")
+        store.save_solve_artifact(
+            report1["normalized_ir"],
+            status="Optimal",
+            objective=2210,
+            text="baseline result",
+        )
+        solve2 = store.save_solve_artifact(
+            report2["normalized_ir"],
+            status="Optimal",
+            objective=42,
+            text="cap400 result",
+        )
+
+        text = expand_placeholders("[MODEL_MATH:cap400]\n[SOLVE_RESULT:cap400]", session)
+
+        assert "cap400 result" in text
+        manifest = latest_answer_manifest(store)
+        assert manifest is not None
+        assert manifest.model_refs["cap400"] == scenario.artifact_id
+        assert manifest.solve_refs["cap400"] == solve2.artifact_id
+
+    def test_named_solve_must_match_the_named_model(self, session):
+        from core.output_format import expand_placeholders
+
+        store = ArtifactStore(session)
+        report1 = _pmedian_report()
+        report2 = _pmedian_report([[1, 5], [5, 1]])
+        store.save_model_artifact(report1, name="baseline", kind="baseline")
+        store.save_model_artifact(report2, name="cap400")
+        store.save_solve_artifact(
+            report1["normalized_ir"],
+            status="Optimal",
+            objective=2210,
+            text="baseline result",
+            name="cap400",
+        )
+
+        with pytest.raises(ArtifactLinkError):
+            expand_placeholders("[MODEL_MATH:cap400]\n[SOLVE_RESULT:cap400]", session)
+        assert latest_answer_manifest(store) is None
+
+    def test_missing_artifact_fails_loudly(self, session):
+        from core.output_format import expand_placeholders
+
+        store, _, _, _ = _baseline_artifacts(session)
+
+        with pytest.raises(ArtifactNotFound, match="missing"):
+            expand_placeholders("[MODEL_MATH:missing]", session)
+        assert latest_answer_manifest(store) is None
+
+    def test_unvalidated_import_cannot_render_a_model(self, session):
+        from core.output_format import expand_placeholders
+
+        store, _, _, _ = _baseline_artifacts(session)
+        (store.imports_dir / "custom.json").write_text(
+            json.dumps(_pmedian_report()["normalized_ir"]), encoding="utf-8"
+        )
+
+        with pytest.raises(ValueError, match="未经校验"):
+            expand_placeholders("[MODEL_MATH:custom]", session)

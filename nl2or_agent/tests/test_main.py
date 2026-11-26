@@ -341,6 +341,104 @@ class TestCreateUi:
         assert tab_labels == ["对话", "模型", "代码"]
         assert any(isinstance(b, gr.Code) and b.language == "python" for b in blocks)
         assert any(isinstance(b, gr.Code) and b.language == "json" for b in blocks)
+        assert any(
+            isinstance(b, gr.Button) and getattr(b, "value", "") == "打开模型会话位置"
+            for b in blocks
+        )
+        assert any(
+            isinstance(b, gr.Button) and getattr(b, "value", "") == "加载历史" for b in blocks
+        )
+
+
+class TestHistory:
+    def _session(self, tmp_path, monkeypatch):
+        import utils.session as session_mod
+        from utils.session import write_model_of_record
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        session = session_mod.Session(session_id="history01")
+        session.save_conversation_entry("user", "你好")
+        session.save_conversation_entry("assistant", "你好，有什么问题？")
+        write_model_of_record(session.model_file, {"valid": True, "normalized_ir": {}})
+        session.save_code("print('ok')", "solve.py")
+        return session
+
+    def test_history_choices_include_metadata(self, tmp_path, monkeypatch):
+        from web.views import history_choices
+
+        session = self._session(tmp_path, monkeypatch)
+        choices = history_choices()
+
+        assert choices
+        label, sid = choices[0]
+        assert sid == session.session_id
+        assert "2 条对话" in label
+        assert "模型 ✓" in label
+        assert "代码 1" in label
+
+    def test_load_history_returns_messages_and_session(self, tmp_path, monkeypatch):
+        from web.views import load_history
+
+        session = self._session(tmp_path, monkeypatch)
+        messages, sid, status = load_history(session.session_id)
+
+        assert sid == session.session_id
+        assert messages == [
+            {"role": "user", "content": "你好"},
+            {"role": "assistant", "content": "你好，有什么问题？"},
+        ]
+        assert "已加载 2 条历史记录" in status
+
+    def test_load_history_without_conversation(self, tmp_path, monkeypatch):
+        import utils.session as session_mod
+        from web.views import load_history
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        session = session_mod.Session(session_id="empty01")
+
+        messages, sid, status = load_history(session.session_id)
+
+        assert messages == []
+        assert sid == session.session_id
+        assert "没有对话记录" in status
+
+    def test_load_history_rejects_unknown_or_missing_selection(self, tmp_path, monkeypatch):
+        import utils.session as session_mod
+        from web.views import load_history
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+
+        _, _, status = load_history(None)
+        assert "请选择" in status
+        _, _, status = load_history("missing")
+        assert "不存在" in status
+
+
+class TestOpenModelSession:
+    def test_requires_an_existing_model(self, tmp_path, monkeypatch):
+        import utils.session as session_mod
+        from web.views import open_model_session
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        session = session_mod.Session()
+
+        assert "尚未生成模型" in open_model_session(session.session_id)
+        assert "尚未创建" in open_model_session("0")
+
+    def test_opens_the_session_workspace(self, tmp_path, monkeypatch):
+        import utils.session as session_mod
+        from web.views import open_model_session
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        session = session_mod.Session()
+        session.model_file.write_text("{}", encoding="utf-8")
+        opened: list[str] = []
+
+        monkeypatch.setattr("web.views._open_directory", lambda path: opened.append(str(path)))
+        message = open_model_session(session.session_id)
+
+        assert opened == [str(session.workspace)]
+        assert str(session.workspace) in message
 
 
 # ---------------------------------------------------------------------------
@@ -479,6 +577,144 @@ class TestModelStateFromSession:
 
         assert "尚未解析" in view
         assert raw == ""
+
+    def _artifact_session(self, tmp_path, monkeypatch):
+        import utils.session as session_mod
+        from core.ir_validate import validate_problem_ir
+        from utils.artifact_store import ArtifactStore
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        session = session_mod.Session(session_id="web02")
+        store = ArtifactStore(session)
+
+        def add(name: str, distance: list[list[int]], objective: float) -> None:
+            report = validate_problem_ir(
+                {
+                    "problem_families": [{"id": "p_median"}],
+                    "entities": {"I": {"size": 2}, "J": {"size": 2}},
+                    "parameters": {"p": 1, "distance": distance},
+                    "constraint_blocks": [
+                        {"block_id": "assign_each_demand_once"},
+                        {"block_id": "link_assignment_to_open"},
+                        {"block_id": "cardinality_open_p_facilities"},
+                    ],
+                    "objective": {"block_id": "weighted_service_distance_objective"},
+                }
+            )
+            store.save_model_artifact(
+                report, name=name, kind="baseline" if name == "baseline" else "scenario"
+            )
+            store.save_solve_artifact(
+                report["normalized_ir"],
+                status="Optimal",
+                objective=objective,
+                text=f"状态：最优\n[RESULT] Objective: {objective}",
+            )
+
+        add("baseline", [[1, 2], [2, 1]], 2210)
+        add("cap400", [[1, 5], [5, 1]], 42)
+        return session
+
+    def test_reads_the_baseline_artifact_and_summary(self, tmp_path, monkeypatch):
+        from web.views import get_model_state
+
+        self._artifact_session(tmp_path, monkeypatch)
+
+        view, raw = get_model_state("web02")
+
+        assert "会话模型（2 个" in view
+        assert "模型报告：baseline" in view
+        assert "关联求解" in view
+        assert "cap400" in view
+        assert "problem_families" in raw
+
+    def test_selects_a_named_scenario(self, tmp_path, monkeypatch):
+        from web.views import get_model_state
+
+        self._artifact_session(tmp_path, monkeypatch)
+
+        view, raw = get_model_state("web02", "cap400")
+
+        assert "模型报告：cap400" in view
+        assert "42" in view
+        assert "problem_families" in raw
+
+    def test_model_choices_list_versions_and_default_baseline(self, tmp_path, monkeypatch):
+        from utils.artifact_store import ArtifactStore
+        from web.views import list_model_choices
+
+        session = self._artifact_session(tmp_path, monkeypatch)
+        index = ArtifactStore(session).load_index()
+
+        update = list_model_choices("web02")
+
+        values = [value for _, value in update["choices"]]
+        assert update["value"] == index.baseline_model
+        assert index.models["baseline"]["current"] in values
+        assert index.models["cap400"]["current"] in values
+        assert len(values) == 2
+
+    def test_baseline_pointer_is_labeled_even_when_kind_is_scenario(self, tmp_path, monkeypatch):
+        import utils.session as session_mod
+        from core.ir_validate import validate_problem_ir
+        from utils.artifact_store import ArtifactStore
+        from web.views import get_model_state
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        session = session_mod.Session(session_id="web03")
+        store = ArtifactStore(session)
+        report = validate_problem_ir(
+            {
+                "problem_families": [{"id": "p_median"}],
+                "entities": {"I": {"size": 2}, "J": {"size": 2}},
+                "parameters": {"p": 1, "distance": [[1, 2], [2, 1]]},
+                "constraint_blocks": [
+                    {"block_id": "assign_each_demand_once"},
+                    {"block_id": "link_assignment_to_open"},
+                    {"block_id": "cardinality_open_p_facilities"},
+                ],
+                "objective": {"block_id": "weighted_service_distance_objective"},
+            }
+        )
+        store.save_model_artifact(report, name="cflp_base", kind="scenario", baseline=True)
+
+        view, _ = get_model_state("web03")
+
+        assert "baseline（当前基准）" in view
+
+    def test_summary_shows_unassociated_solves(self, tmp_path, monkeypatch):
+        from core.ir_validate import validate_problem_ir
+        from utils.artifact_store import ArtifactStore
+        from web.views import get_model_state
+
+        session = self._artifact_session(tmp_path, monkeypatch)
+        store = ArtifactStore(session)
+        report = validate_problem_ir(
+            {
+                "problem_families": [{"id": "p_median"}],
+                "entities": {"I": {"size": 2}, "J": {"size": 2}},
+                "parameters": {"p": 1, "distance": [[2, 3], [3, 2]]},
+                "constraint_blocks": [
+                    {"block_id": "assign_each_demand_once"},
+                    {"block_id": "link_assignment_to_open"},
+                    {"block_id": "cardinality_open_p_facilities"},
+                ],
+                "objective": {"block_id": "weighted_service_distance_objective"},
+            }
+        )
+        store.save_solve_artifact(
+            report["normalized_ir"],
+            status="Optimal",
+            objective=99,
+            text="scenario only",
+            name="unlinked",
+        )
+
+        view, _ = get_model_state("web02")
+
+        assert "未关联求解" in view
+        assert "unlinked" in view
+        assert "99" in view
 
 
 class TestAgentSessionBinding:

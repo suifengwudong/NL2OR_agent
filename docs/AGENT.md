@@ -47,8 +47,8 @@
 | 缺数据先反问 | `describe_model` 列出的必需数据在题面缺失且无法从文字推出时，先用 `final_answer` 列出具体缺失项并停止；不得编造数值、不得用占位字符串凑出一个「可校验」的模型。IR 只用用户真实给出的数据构建 |
 | `custom_constraints` | 只收题面明确提出、库无法表达的额外限制；「不考虑容量」「不限定开设数量」这类说明某库块不适用的语句是建模假设，进答复的「模型假设」章节，禁止写入 IR |
 | `entities.*.ids` | 按题面出现的写法抄录（中文题面用中文名，不替换成括号内外文）；无名称时用 `I1…`、`J1…` |
-| `parameters` | 只放被启用块或目标块读取的键；派生数据（如每单费率 × 订单量）先算好再放入，原始输入若无人读取则删除 |
-| 基准用例 | `benchmarks/**` 的 `input_ir.parameters` 同样只含块读取键；`benchmarks/import_orlib.py` 生成的 IR 与该规则同步（UFLP 变体不带 `demand` / `facility_capacity`，CFLP 保留） |
+| `parameters` | 只放被启用块或目标块读取的键。派生数据（如每单费率 × 订单量）只有在参数不会再被单独变化时才可预先计算；若模型要支持该参数的情景分析，保留源参数（如单位服务成本与需求量），在目标函数中相乘，不要把两者合并成单个系数 |
+| 基准用例 | `benchmarks/**` 的 `input_ir.parameters` 同样只含块读取键；`benchmarks/import_orlib.py` 生成的 IR 与该规则同步（UFLP 变体不带 `demand` / `facility_capacity`，CFLP 保留；CFLP 的 `unit_service_cost` 按单位需求存储，不预乘 `demand`） |
 
 `custom_constraints` 的语义判定（题面额外限制 vs 说明某块不适用）没有自动信号，属人工判定点：review 时逐条核对 custom_constraints 是否对应题面中的一个真实限制。
 
@@ -60,9 +60,9 @@ LLM 不抄写数学模型与结果报表；答复中的两段权威文本由运�
 |----|------|
 | 占位符形状 | `[MODEL_MATH]`、`[SOLVE_RESULT]`，各自单独一行，原样书写，不带反斜杠或 LaTeX 转义；展开时把 `[MODEL_MATH\]` 这类转义变体按同一占位符处理 |
 | Jinja 限制 | hamlet 的 `populate_template` 用 Jinja `StrictUndefined` 渲染系统提示词；**提示词与模板文件中禁止出现 `{{ }}` 与 `{% %}`**（`{{MODEL_MATH}}` 会让 agent 构造直接抛 `UndefinedError`）。需要占位符语义时用 `[名字]` 形状 |
-| `[MODEL_MATH]` 来源 | `render_model_document(model.json 的 normalized_ir)` 现场渲染，永远对应最后一次校验通过的模型 |
-| `[SOLVE_RESULT]` 来源 | 会话 `solve_result.json`（`format_solution + render_report`）；仅基准 `solve_ir` 落盘，情景变体不覆盖 |
-| 指纹配对 | `solve_result.json` 带归一化 IR 的 MD5 指纹（`core/problem_ir.py::fingerprint`）；展开时与当前 `model.json` 比对，失配报「模型已变更」并要求重新求解 |
+| `[MODEL_MATH]` 来源 | 会话 baseline model artifact 的 `normalized_ir`；`[MODEL_MATH:name]` 读命名 artifact；旧会话回退 `model.json` |
+| `[SOLVE_RESULT]` 来源 | 会话 baseline solve artifact 的 `result.text`；`[SOLVE_RESULT:name]` 读命名 artifact；旧会话回退 `solve_result.json` |
+| 指纹配对 | solve artifact 记录 `model_ref.artifact_id` 与归一化 IR 的 MD5 指纹（`core/problem_ir.py::fingerprint`）；展开时校验模型引用，失配报「模型版本不匹配」 |
 | 失败语义 | 占位符未解析（无模型 / 无产物 / 指纹失配）→ 本回合计为错误终止，不把字面量留给用户 |
 | 标题合并 | 粘贴的数学文档自带 `## 数学模型` 标题；agent 若在占位符前另写该标题，相邻重复标题合并为一个 |
 | 收益 | 防止 LLM 手抄改写公式、删减报表列、翻译实体名；同时免去逐字复述大段 LaTeX 的输出耗时 |
@@ -107,6 +107,21 @@ LLM 不抄写数学模型与结果报表；答复中的两段权威文本由运�
 
 改上述任一约定时同步改动的测试与文档：
 
-- `tests/test_agent.py`（提示词内容与静音）、`tests/test_ir_schema.py`（报告契约）、`tests/test_what_if.py`（solve_ir 产物）、`tests/test_output_format.py`（占位符）、`tests/test_model_library.py`（检索契约）、`tests/test_ir_catalog.py`（无目录渲染函数）；
+- `tests/test_agent.py`（提示词内容与静音）、`tests/test_ir_schema.py`（报告契约与 artifact 元数据）、`tests/test_what_if.py`（solve_ir 产物与求解关联）、`tests/test_output_format.py`（占位符/AnswerManifest）、`tests/test_artifact_store.py`（版本、索引、legacy、imports）、`tests/test_problem_ir.py`（指纹归一）、`tests/test_main.py`（模型汇总/选择/历史）、`tests/test_model_library.py`（检索契约）、`tests/test_ir_catalog.py`（无目录渲染函数）；
 - `nl2or_agent/README.md`（目录树、结构图、更新记录）、`issues/README.md`（归档）、本文；
 - `docs/flowchart.md` 的 HAMLET 实现映射段。
+
+## 9. 模型 Artifact 与回答引用
+
+模型是会话内可追溯的 artifact，不是 Session 的单一属性。名称是逻辑标识，`artifact_id` 才是身份；同一个名称可以有多个不可变版本。
+
+| 规则 | 说明 |
+|------|------|
+| 存储 | `utils/artifact_store.py`：`models/<name>.json` 只是逻辑名指针，完整内容在 `model_versions/<artifact_id>.json`，求解结果在 `solves/<artifact_id>.json`，回答引用在 `answers/<answer_id>.json` |
+| 版本 | 同名同指纹幂等；同名不同内容必须 `revise=True`（`overwrite=True` 为别名），追加新版本并保留历史；`baseline=True` 才移动基准指针 |
+| 关联 | `SolveArtifact.model_ref` 记录 `artifact_id` + name + fingerprint；自动关联只接受唯一指纹匹配，显式 `model_artifact_id` 指纹不符即拒绝，未关联结果保留但不冒充已关联 |
+| 索引 | `index.json` 是派生数据，可由 `rebuild_artifact_index` 从版本文件与 `baseline.json` 重建；`baseline.json` 保存不可派生的基准指针 |
+| 引用 | `[MODEL_MATH]` / `[SOLVE_RESULT]` 默认 baseline；`[MODEL_MATH:name]` / `[SOLVE_RESULT:name]` 解析逻辑名或 artifact_id；一次回答解析出的 id 由 `AnswerManifest` 固定，全部占位符成功后才落盘 |
+| 兼容 | 旧 `model.json` / `solve_result.json` 懒映射为 `legacy` artifact；只有旧文件、没有 artifact 的会话仍走原指纹校验路径 |
+
+验收：`tests/test_artifact_store.py`（版本、索引重建、legacy、imports、AnswerManifest）、`tests/test_output_format.py`（命名占位符与 manifest）、`tests/test_ir_schema.py`（校验工具返回 artifact）、`tests/test_what_if.py`（求解 artifact 关联）、`tests/test_main.py`（模型汇总/选择/历史计数）。

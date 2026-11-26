@@ -373,15 +373,27 @@ def _normalize_parameters(params: Any, entities: dict[str, Any]) -> dict[str, An
     if not row_ids or not col_ids:
         return out
 
-    for key in ("distance", "service_cost", "coverage_matrix", "availability"):
+    for key in (
+        "distance",
+        "service_cost",
+        "unit_service_cost",
+        "coverage_matrix",
+        "availability",
+    ):
         value = out.get(key)
         if not isinstance(value, dict):
             continue
         try:
             out[key] = [[value[row_id][col_id] for col_id in col_ids] for row_id in row_ids]
         except (KeyError, TypeError):
-            # Leave malformed input unchanged so validation can report it.
-            continue
+            # The table may have been supplied transposed (warehouse → customer).
+            # Prefer the documented I×J orientation; accept the transposed form
+            # only when the documented orientation cannot be read.
+            try:
+                out[key] = [[value[col_id][row_id] for col_id in col_ids] for row_id in row_ids]
+            except (KeyError, TypeError):
+                # Leave malformed input unchanged so validation can report it.
+                continue
 
     # 一维数据也可能按键给出：实体 id 顺序决定求解器读到的位置
     for key in ("demand", "value", "weight"):
