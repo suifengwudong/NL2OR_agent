@@ -143,6 +143,30 @@ class Session:
                 messages.append({"role": role, "content": content})
         return messages
 
+    def last_conversation_activity(self) -> float | None:
+        """Timestamp of the last parseable conversation entry, if any.
+
+        History labels use this before falling back to file mtimes: artifact
+        migration can touch every session directory and otherwise make all
+        conversations look like they happened at the same time.
+        """
+        if not self.conversation_file.is_file():
+            return None
+        latest: float | None = None
+        for line in self.conversation_file.read_text(encoding="utf-8").splitlines():
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            timestamp = entry.get("timestamp")
+            if not isinstance(timestamp, str):
+                continue
+            try:
+                latest = datetime.fromisoformat(timestamp).timestamp()
+            except ValueError:
+                continue
+        return latest
+
     def last_activity(self) -> float:
         """Newest mtime in the session, used to order the history list."""
         return self._latest_mtime(self.workspace)

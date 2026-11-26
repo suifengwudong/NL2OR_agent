@@ -393,8 +393,7 @@ def open_model_session(sid: str) -> str:
     session = Session.load(sid) if sid and sid != "0" else None
     if session is None:
         return "当前会话尚未创建。"
-    has_artifacts = bool(ArtifactStore(session).list_model_artifacts())
-    if not session.model_file.is_file() and not has_artifacts:
+    if not session.model_file.is_file() and not _artifact_model_count(session):
         return "当前会话尚未生成模型。"
     try:
         _open_directory(session.workspace)
@@ -408,6 +407,25 @@ def open_model_session(sid: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _artifact_model_count(session: Session) -> int:
+    """Count model artifacts on disk without triggering a lazy legacy import."""
+    artifacts = session.workspace / "artifacts"
+    count = len(list((artifacts / "model_versions").glob("*.json")))
+    count += len(list((artifacts / "imports").glob("*.json")))
+    if count == 0 and session.model_file.is_file():
+        count = 1
+    return count
+
+
+def _artifact_solve_count(session: Session) -> int:
+    """Count solve artifacts on disk without triggering a lazy legacy import."""
+    artifacts = session.workspace / "artifacts"
+    count = len(list((artifacts / "solves").glob("*.json")))
+    if count == 0 and session.solve_result_file.is_file():
+        count = 1
+    return count
+
+
 def history_choices() -> list[tuple[str, str]]:
     """Return ``(label, session_id)`` pairs, newest activity first."""
     choices: list[tuple[float, str, str]] = []
@@ -415,21 +433,17 @@ def history_choices() -> list[tuple[str, str]]:
         session = Session.load(sid)
         if session is None:
             continue
+        messages = session.load_conversation()
+        if not messages:
+            # 历史会话列表只列有可见对话的会话；纯产物目录不混进来。
+            continue
         try:
-            activity = session.last_activity()
+            activity = session.last_conversation_activity() or session.last_activity()
         except OSError:
             continue
-        messages = session.load_conversation()
         code_files = session.list_code_files()
-        store = ArtifactStore(session)
-        model_count = len(store.list_model_artifacts(current_only=True, include_imports=True))
-        solve_count = len(store.list_solve_artifacts(current_only=True))
-        if not model_count and session.model_file.is_file():
-            model_count = 1
-        if not solve_count and session.solve_result_file.is_file():
-            solve_count = 1
-        if not messages and not model_count and not code_files:
-            continue
+        model_count = _artifact_model_count(session)
+        solve_count = _artifact_solve_count(session)
         stamp = datetime.fromtimestamp(activity).strftime("%Y-%m-%d %H:%M")
         model_label = f"✓×{model_count}" if model_count else "—"
         label = (

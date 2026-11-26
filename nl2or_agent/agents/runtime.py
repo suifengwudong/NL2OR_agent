@@ -104,6 +104,7 @@ def run_turn(
         raise ValueError("run_turn needs an agent, an agent_factory or get_agent")
     session = resolve_session(session_id)
     sid = session.session_id
+    started_at = datetime.now(timezone.utc)
     try:
         get_session(sid)
         if get_agent is not None:
@@ -116,7 +117,6 @@ def run_turn(
         hydrate_agent_history(active_agent, session.load_conversation())
         apply_agent_mode(active_agent, mode)
         session.save_conversation_entry(role="user", content=message.strip())
-        started_at = datetime.now(timezone.utc)
         raw = active_agent.run(message.strip(), reset=False)
         answer = expand_placeholders(format_agent_output(raw), session)
         session.save_conversation_entry(

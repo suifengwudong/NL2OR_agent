@@ -98,6 +98,31 @@ class TestSession:
         monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
         assert Session().load_conversation() == []
 
+    def test_last_conversation_activity_uses_the_last_timestamp(self, tmp_path: Path, monkeypatch):
+        from datetime import datetime
+
+        import utils.session as mod
+
+        monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        session = Session()
+        session.conversation_file.write_text(
+            '{"timestamp": "2026-01-01T00:00:00+00:00", "role": "user", "content": "a"}\n'
+            '{"timestamp": "2026-01-02T00:00:00+00:00", "role": "assistant", "content": "b"}\n'
+            "{not json}\n",
+            encoding="utf-8",
+        )
+
+        assert (
+            session.last_conversation_activity()
+            == datetime.fromisoformat("2026-01-02T00:00:00+00:00").timestamp()
+        )
+
+    def test_last_conversation_activity_is_none_without_conversation(self, tmp_path, monkeypatch):
+        import utils.session as mod
+
+        monkeypatch.setattr(mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        assert Session().last_conversation_activity() is None
+
     def test_last_activity_tracks_files_under_the_session(self, tmp_path: Path, monkeypatch):
         import utils.session as mod
 

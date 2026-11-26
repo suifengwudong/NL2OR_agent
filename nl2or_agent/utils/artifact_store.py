@@ -235,15 +235,8 @@ class ArtifactStore:
         self.solves_dir = self.root / "solves"
         self.answers_dir = self.root / "answers"
         self.imports_dir = self.root / "imports"
-        for directory in (
-            self.root,
-            self.models_dir,
-            self.versions_dir,
-            self.solves_dir,
-            self.answers_dir,
-            self.imports_dir,
-        ):
-            directory.mkdir(parents=True, exist_ok=True)
+        # 只记录路径，不建目录：读取路径（glob/is_file）对缺失目录安全，
+        # 写路径由 _atomic_write_json 按需创建，避免只读访问产生副作用。
 
     # ------------------------------------------------------------------
     # Paths

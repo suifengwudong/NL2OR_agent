@@ -4,15 +4,18 @@ import pytest
 from agents import build_nl2or_agent
 
 
-def test_parsing_step_one():
+def test_parsing_step_one(tmp_path):
     """测试 Step 1：解析阶段。
     由于涉及真实的 LLM 调用，这里主要验证接口连通性和初步返回的格式。
     注意：这需要环境变量中有有效的 API Key。
     """
+    if os.getenv("RUN_ONLINE_TESTS") != "1":
+        pytest.skip("online LLM 测试默认跳过；置 RUN_ONLINE_TESTS=1 才运行")
     if not os.getenv("OPENROUTER_API_KEY") or not os.getenv("HAMLET_MODEL_ID"):
         pytest.skip("跳过需要 API Key 或 Model ID 的测试")
 
-    agent = build_nl2or_agent(verbosity_level=1)
+    # online 测试也必须隔离工具产物，否则会在默认工作区留下会话。
+    agent = build_nl2or_agent(verbosity_level=1, workspace_dir=tmp_path)
     question = "我有100元，想买单价3元的橘子，最多买多少个？"
 
     # 我们期望 Agent 返回一个包含 'final_answer' 的结果，而不是陷入死循环

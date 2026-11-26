@@ -174,7 +174,13 @@ class TestNormalizeProblemIr:
 
 
 class TestIrTools:
-    def test_validate_tool_json_string(self):
+    def test_validate_tool_json_string(self, tmp_path, monkeypatch):
+        import utils.session as session_mod
+
+        # 无 workspace_dir 的校验工具会写进 get_session() 的工作区；
+        # 不隔离的话每次 pytest 都会在默认工作区留下垃圾会话。
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        session_mod.reset_session()
         tool = ValidateProblemIrTool()
         ir = {
             "constraint_blocks": [

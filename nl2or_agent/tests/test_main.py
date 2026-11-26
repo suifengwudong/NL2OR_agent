@@ -376,6 +376,26 @@ class TestHistory:
         assert "模型 ✓" in label
         assert "代码 1" in label
 
+    def test_skips_sessions_without_conversation(self, tmp_path, monkeypatch):
+        import utils.session as session_mod
+        from web.views import history_choices
+
+        monkeypatch.setattr(session_mod, "_SESSIONS_ROOT", tmp_path / "sessions")
+        session = session_mod.Session(session_id="artifact_only")
+        session.model_file.write_text("{}", encoding="utf-8")
+
+        assert history_choices() == []
+
+    def test_listing_history_does_not_create_artifacts(self, tmp_path, monkeypatch):
+        from web.views import history_choices
+
+        session = self._session(tmp_path, monkeypatch)
+        assert not (session.workspace / "artifacts").exists()
+
+        history_choices()
+
+        assert not (session.workspace / "artifacts").exists()
+
     def test_load_history_returns_messages_and_session(self, tmp_path, monkeypatch):
         from web.views import load_history
 

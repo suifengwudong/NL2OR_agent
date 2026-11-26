@@ -289,6 +289,7 @@ class TestExpandArtifactPlaceholders:
         from core.output_format import expand_placeholders
 
         store, _, _, _ = _baseline_artifacts(session)
+        store.imports_dir.mkdir(parents=True, exist_ok=True)
         (store.imports_dir / "custom.json").write_text(
             json.dumps(_pmedian_report()["normalized_ir"]), encoding="utf-8"
         )
