@@ -391,7 +391,11 @@ def list_model_choices(sid: str) -> Any:
     baseline = store.get_baseline_model()
     baseline_id = baseline.artifact_id if baseline is not None else None
     names = sorted({model.name for model in store.list_models(current_only=True)})
-    names.sort(key=lambda value: (store.get_current_model(value).artifact_id != baseline_id, value))
+    current_ids = {
+        name: (model.artifact_id if (model := store.get_current_model(name)) else "")
+        for name in names
+    }
+    names.sort(key=lambda value: (current_ids[value] != baseline_id, value))
     choices: list[tuple[str, str]] = []
     for name in names:
         versions = store.list_model_versions(name)

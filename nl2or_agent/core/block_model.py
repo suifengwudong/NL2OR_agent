@@ -185,7 +185,7 @@ def _facility_capacity(ctx: ModelContext) -> None:
 
 def _assignment_distance_limit(ctx: ModelContext) -> None:
     x, d = ctx.var["x2"], ctx.matrix("distance")
-    limit = float(ctx.data.get("service_distance_limit"))
+    limit = float(ctx.data.get("service_distance_limit") or 0)
     for i in range(ctx.n_i):
         for j in range(ctx.n_j):
             if d[i][j] > limit:
@@ -202,7 +202,7 @@ def _assignment_availability(ctx: ModelContext) -> None:
 def _opening_budget(ctx: ModelContext) -> None:
     y = ctx.var["y"]
     fixed = ctx.list_value("fixed_cost", ctx.n_j)
-    budget = float(ctx.data.get("opening_budget"))
+    budget = float(ctx.data.get("opening_budget") or 0)
     ctx.prob += pulp.lpSum(fixed[j] * y[j] for j in range(ctx.n_j)) <= budget
 
 

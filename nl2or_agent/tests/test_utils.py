@@ -234,6 +234,7 @@ class TestModelOfRecord:
         write_model_of_record(session.model_file, report)
         loaded = session.load_model()
 
+        assert loaded is not None
         assert loaded["report"] == report
 
     def test_model_of_record_overwrites_previous(self, tmp_path: Path, monkeypatch):

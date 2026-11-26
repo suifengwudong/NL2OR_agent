@@ -670,10 +670,14 @@ class TestModelStateFromSession:
         update = list_model_choices("web02")
 
         values = [value for _, value in update["choices"]]
+        current_baseline = store.get_current_model("baseline")
+        current_cap400 = store.get_current_model("cap400")
         assert baseline is not None
+        assert current_baseline is not None
+        assert current_cap400 is not None
         assert update["value"] == baseline.artifact_id
-        assert store.get_current_model("baseline").artifact_id in values
-        assert store.get_current_model("cap400").artifact_id in values
+        assert current_baseline.artifact_id in values
+        assert current_cap400.artifact_id in values
         assert len(values) == 2
 
     def test_baseline_pointer_is_labeled_even_when_kind_is_scenario(self, tmp_path, monkeypatch):

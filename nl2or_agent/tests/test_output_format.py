@@ -9,7 +9,13 @@ import pytest
 from core.answer_manifest import AnswerManifest, latest_answer_manifest
 from core.ir_validate import validate_problem_ir
 from core.output_format import format_agent_output
-from utils.artifact_store import ArtifactLinkError, ArtifactNotFound, ArtifactStore
+from utils.artifact_store import (
+    ArtifactLinkError,
+    ArtifactNotFound,
+    ArtifactStore,
+    ModelArtifact,
+    SolveArtifact,
+)
 from utils.session import write_model_of_record
 
 
@@ -199,7 +205,9 @@ def _pmedian_report(distance: list[list[int]] | None = None) -> dict:
     return report
 
 
-def _baseline_artifacts(session) -> tuple[ArtifactStore, dict, object, object]:
+def _baseline_artifacts(
+    session,
+) -> tuple[ArtifactStore, dict, ModelArtifact, SolveArtifact]:
     store = ArtifactStore(session)
     report = _pmedian_report()
     model = store.save_model_artifact(report, name="baseline", kind="baseline")

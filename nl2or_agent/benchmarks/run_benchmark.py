@@ -271,6 +271,7 @@ def _score_solver_case(case: dict[str, Any], workspace: Path) -> dict[str, Any]:
     else:
         from core.block_model import render_script
 
+        assert ir is not None
         script = render_script(ir)
         detail.append(f"参考脚本由 IR 现场渲染（{script_path.name} 不存在）")
 
@@ -282,6 +283,7 @@ def _score_solver_case(case: dict[str, Any], workspace: Path) -> dict[str, Any]:
     if variants:
         from core.block_model import render_script
 
+        assert ir is not None
         for block in case.get("tight_blocks") or []:
             script = render_script(ir, drop=(block,))
             out = _run_script(script, workspace / f"{case_id}__drop_{block}")

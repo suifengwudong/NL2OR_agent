@@ -107,12 +107,14 @@ def run_turn(
     sid = session.session_id
     try:
         get_session(sid)
+        active_agent: Any = None
         if get_agent is not None:
             active_agent = get_agent(sid, mode)
         elif agent is not None:
             active_agent = agent
         elif agent_factory is not None:
             active_agent = agent_factory(mode)
+        assert active_agent is not None
 
         hydrate_agent_history(active_agent, session.load_conversation())
         apply_agent_mode(active_agent, mode)

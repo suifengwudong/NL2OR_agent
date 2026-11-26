@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -17,6 +18,7 @@ class _Agent:
         self.error = error
         self.calls: list[tuple[str, bool]] = []
         self.prompt_templates: dict[str, str] = {}
+        self.memory: Any = None
 
     def run(self, message: str, *, reset: bool) -> str:
         self.calls.append((message, reset))
@@ -34,7 +36,9 @@ def _isolate_sessions(tmp_path, monkeypatch):
 
 
 def _entries(session_id: str) -> list[dict]:
-    path = Session.load(session_id).conversation_file
+    session = Session.load(session_id)
+    assert session is not None
+    path = session.conversation_file
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 

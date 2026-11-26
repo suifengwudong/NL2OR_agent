@@ -177,7 +177,7 @@ def apply_agent_mode(agent: CodeAgent, mode: str) -> None:
     system_prompt = load_system_prompt(mode)
     if system_prompt:
         agent.prompt_templates["system_prompt"] = system_prompt
-    agent._nl2or_mode = mode
+    setattr(agent, "_nl2or_mode", mode)
 
 
 def _reasoning_kwargs() -> dict:
@@ -284,6 +284,6 @@ def build_nl2or_agent(
             "os",
         ],
     )
-    agent._nl2or_mode = mode
+    setattr(agent, "_nl2or_mode", mode)
 
     return agent

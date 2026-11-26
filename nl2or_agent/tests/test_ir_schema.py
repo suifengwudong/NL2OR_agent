@@ -213,8 +213,10 @@ class TestIrTools:
         )["artifact"]
 
         store = ArtifactStore(tmp_path)
+        baseline_model = store.get_baseline_model()
+        assert baseline_model is not None
         assert scenario["is_baseline"] is False
-        assert store.get_baseline_model().artifact_id == baseline["artifact_id"]
+        assert baseline_model.artifact_id == baseline["artifact_id"]
         assert (
             store.load_model_artifact(baseline["artifact_id"]).fingerprint
             != store.load_model_artifact(scenario["artifact_id"]).fingerprint
